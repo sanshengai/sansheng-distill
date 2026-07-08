@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{作者} · 思想演变 · 读书蒸馏</title>
+<!--
+  sansheng-distill 作者思想演变页骨架(v5 · 多书作者聚合专题)
+  用法: 本文件是模板 -- 结构 + JS 生成器固定,数据只填 </body> 前 <script id="author-data"> 槽(内嵌 author.json)。
+        生成时把 #author-data 的内容替换为真实 authors/{slug}/author.json,initAuthor() 读它通用出图,无需改 JS/CSS。
+  数据契约: references/author-craft.md §2(author.json schema)/ §4(四视图)/ §5(板块骨架,倒金字塔·成果前置)。字段名严格照它。
+  板块顺序(§5,固定): ① core_sentence 内核大字 → ② 定位名片卡 → ③ evolution_summary(连续 vs 断裂)
+        → ④ 演变总览地图(时间线 SVG ⭐) → ⑤ 分期详解(每期五栏卡) → ⑥ 关键转向(verdict 控样式,null 不渲染)
+        → ⑦ 母题 ribbon(SVG) → ⑧ 概念演化 DAG(SVG,手机端 CSS Grid 兜底) → ⑨ 影响谱系(空则整块隐藏)
+        → ⑩ 代表作导航(深链) → ⑪ 该信几分(去神话化) → ⑫ 入门路径 → footer(AI 是地图别当目的地)
+  4 张自绘 SVG(vanilla JS,坐标生成时算死,零库零 CDN,<2KB/图):
+        ① 时间线·泳道 initTimeline / ② 母题·Story Ribbons initRibbons / ③ 转向卡 initTurns / ④ 概念 DAG initDAG
+  Zero-Hex 铁律: 新增颜色只在 :root{} token 块内;组件/SVG 一律 var(--*) 或 class,JS 只设几何,禁内联 hex(fallback 除外)。
+        配色沿用蒸馏页同一套 --* token(演变页与蒸馏页同源视觉)。lang="zh";破折号用 --;零外链(仅 external.source 出处 <a href> 可 http)。
+-->
+<style>
+/* ===== TOKENS(warm-paper 默认 + brand-dark 覆盖;hex 只许出现在这两个 token 块内,组件一律 var(--*)) ===== */
+:root{
+  --ink:#171411;
+  --muted:#6d6258;
+  --paper:#f8f2e7;
+  --paper-deep:#ece1cf;
+  --line:#d8c8af;
+  --red:#b9422f;
+  --blue:#245f73;
+  --green:#177A5C;
+  --gold:#B8892F;
+  --white:#fffaf0;
+  --surface:rgba(255,250,240,.62);
+  --surface-strong:rgba(255,250,240,.72);
+  --bar-bg:rgba(248,242,231,.95);
+  --font-body:"Songti SC","Noto Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --font-display:"PingFang SC","Microsoft YaHei",sans-serif;
+  --bg:radial-gradient(circle at 22% 12%, rgba(184,137,47,.18), transparent 28rem),
+       linear-gradient(135deg,#fbf6ec 0%,#efe1ca 100%);
+  --shadow:0 18px 50px rgba(55,38,19,.14);
+  --tint-accent:rgba(184,137,47,.12);
+  --tint-accent-strong:rgba(184,137,47,.15);
+  --ink-soft:#3d332b;
+  --ink-soft-2:#44392f;
+}
+body[data-theme="brand-dark"]{
+  --ink:#CBD4E0; --muted:#8A94A6; --ink-soft:#8A94A6; --ink-soft-2:rgba(138,148,166,.7);
+  --paper:#0B111A; --paper-deep:#05080D; --line:rgba(232,238,245,.14);
+  --red:#E2654E; --blue:#5FA8C9; --green:#34D399; --gold:#E8B84B; --white:#0B111A;
+  --surface:rgba(255,255,255,.04); --surface-strong:rgba(13,18,26,.72);
+  --bar-bg:rgba(5,8,13,.95); --shadow:0 18px 50px rgba(0,0,0,.5);
+  --tint-accent:rgba(52,211,153,.12); --tint-accent-strong:rgba(52,211,153,.22);
+  --bg:radial-gradient(1200px 800px at 20% -10%, rgba(14,159,110,.12), transparent 60%), #05080D;
+}
+
+/* ===== 基础 ===== */
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);background:var(--bg);font-family:var(--font-body);font-size:17px;line-height:1.75}
+button{font:inherit;color:inherit}
+a{color:var(--blue)}
+[hidden]{display:none!important}
+main{width:min(1120px,calc(100% - 32px));margin:0 auto;padding:0 0 64px}
+
+/* ===== 通用板块 ===== */
+.ap-sec{margin:44px 0 0}
+.ap-eyebrow{margin:0 0 8px;color:var(--red);font:700 .8125rem/1.3 var(--font-display);letter-spacing:.1em}
+.ap-title{margin:0 0 6px;font:900 1.625rem/1.25 var(--font-display);color:var(--ink)}   /* T2 26px */
+.ap-lead{margin:0 0 18px;color:var(--ink-soft);font-size:1.0625rem;line-height:1.8}
+
+/* ===== ① 页顶眉题(去掉大字 hero,名片卡直接开场;core_sentence 移入 ③ 板块当编辑论点) ===== */
+.ap-hero{padding:30px 0 0}
+.ap-hero .ap-kicker{margin:0;display:inline-flex;align-items:center;gap:9px;padding:5px 13px 5px 11px;border:1.5px solid var(--gold);border-radius:999px;background:var(--tint-accent);color:var(--ink-soft);font:700 .8125rem/1.3 var(--font-display);letter-spacing:.12em}
+.ap-hero .ap-kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold)}
+
+/* ===== ② 定位名片卡(左栏结构化小传 lead+标签分段 / 右栏结构化字段,不成一坨) ===== */
+.ap-card{margin:24px 0 0;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0;border:1px solid var(--line);border-left:6px solid var(--green);border-radius:8px;background:linear-gradient(135deg,var(--paper),var(--paper-deep));box-shadow:var(--shadow);overflow:hidden}
+.ap-card .cardL{padding:26px 28px;border-right:1px solid var(--line)}
+.ap-card .cardR{padding:26px 28px;display:grid;grid-template-columns:1fr;gap:12px;align-content:center}
+.ap-card .c-name{margin:0 0 6px;font:900 2rem/1.16 var(--font-display);color:var(--ink)}
+.ap-card .c-alias{margin:0 0 10px;color:var(--muted);font:700 .8125rem/1.4 var(--font-display)}
+.ap-card .c-oneliner{margin:0;color:var(--ink-soft);font-size:1.0625rem;line-height:1.85}
+.ap-card .c-bg{margin:11px 0 0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.82}
+/* 结构化小传(v5.2):一句话定位提为 lead + 详细背景按主题打标签分段,与右栏 label:内容 节奏呼应,把「文字墙」拆成可扫读的结构 */
+.ap-card .c-lead{margin:2px 0 6px;color:var(--ink);font:600 1.09rem/1.78 var(--font-body)}
+.ap-card .c-seg{margin:16px 0 0}
+.ap-card .c-seg-k{margin:0 0 5px;color:var(--green);font:800 .75rem/1.3 var(--font-display);letter-spacing:.09em}
+.ap-card .c-seg-t{margin:0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.82}
+.ap-card .c-field{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:baseline}
+.ap-card .c-field dt{color:var(--muted);font:700 .8125rem/1.6 var(--font-display)}
+.ap-card .c-field dd{margin:0;color:var(--ink-soft);font-size:.9375rem;line-height:1.7}
+.ap-chip{display:inline-flex;align-items:center;margin:0 5px 5px 0;padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font:700 .8125rem/1.3 var(--font-display)}
+.ap-chip.chip-motif{border-color:var(--gold);background:var(--tint-accent);cursor:help}
+.ap-chip.chip-concept{border-color:var(--green);cursor:help}
+a.ap-chip.chip-book{border-color:var(--blue);color:var(--blue);text-decoration:none;transition:background .15s}
+a.ap-chip.chip-book:hover{background:var(--tint-accent)}
+
+/* ===== ③ 演变总结(连续 vs 断裂) ===== */
+.ap-evosum{margin:20px 0 0;padding:20px 24px;border:1px solid var(--line);border-left:5px solid var(--gold);background:var(--surface-strong);border-radius:6px}
+.ap-evosum .es-tag{margin:0 0 12px;color:var(--gold);font:800 .8125rem/1.3 var(--font-display);letter-spacing:.06em}
+.ap-evosum p{margin:0;color:var(--ink-soft);font-size:1.0625rem;line-height:1.9}
+.ap-evosum .es-thesis{margin:0 0 16px;padding:0 0 0 16px;border-left:3px solid var(--green);font:800 clamp(1.2rem,2.2vw,1.5rem)/1.44 var(--font-display);color:var(--ink);letter-spacing:.004em}
+.ap-evosum .es-verdict{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin:0 0 16px}
+.ev-badge{flex:none;padding:4px 14px;border-radius:999px;font:800 .8125rem/1.4 var(--font-display);white-space:nowrap}
+.ev-badge.ev-continuous{background:var(--green);color:var(--white)}
+.ev-badge.ev-segmented{background:var(--red);color:var(--white)}
+.ev-badge.ev-mixed{background:var(--tint-accent);color:var(--gold);border:1px solid var(--gold)}
+.ev-headline{font:800 1.125rem/1.4 var(--font-display);color:var(--ink)}
+.es-strip{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.es-chip{padding:3px 11px;border-radius:999px;font:700 .8125rem/1.3 var(--font-display);border:1px solid var(--line);white-space:nowrap}
+.es-chip.es-c0{background:color-mix(in srgb,var(--green) 12%,transparent);border-color:var(--green);color:var(--green)}
+.es-chip.es-c1{background:color-mix(in srgb,var(--gold) 12%,transparent);border-color:var(--gold);color:var(--gold)}
+.es-chip.es-c2{background:color-mix(in srgb,var(--blue) 12%,transparent);border-color:var(--blue);color:var(--blue)}
+.es-chip.es-c3{background:color-mix(in srgb,var(--red) 12%,transparent);border-color:var(--red);color:var(--red)}
+.es-arrow{color:var(--muted);font:700 1rem/1 var(--font-display)}
+.ap-evosum .es-body{margin:0 0 4px}
+.es-consistency{margin:16px 0 0;padding:14px 16px;border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:6px;background:var(--paper)}
+.es-consistency .ec-label{margin:0 0 8px;color:var(--muted);font:700 .75rem/1.3 var(--font-display);letter-spacing:.05em;text-transform:uppercase}
+.es-consistency blockquote{margin:0 0 8px;padding-left:12px;border-left:2px solid var(--green);color:var(--ink);font:italic 500 .9375rem/1.75 var(--font-body)}
+.es-consistency .ec-src{color:var(--blue);font:600 12px/1.5 var(--font-display);text-decoration:none}
+
+/* ===== ④ 时间线·泳道(SVG,横向 overflow 缩放) ===== */
+.tl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px}
+.tl-svg{display:block;height:auto}
+.tl-band{fill-opacity:.10;stroke:none}
+.tl-c0{fill:var(--green)} .tl-c1{fill:var(--gold)} .tl-c2{fill:var(--blue)} .tl-c3{fill:var(--red)}
+.tl-band-label{fill:var(--ink-soft);font:800 12.5px var(--font-display);text-anchor:middle}
+.tl-band-sep{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+.tl-axis{stroke:var(--line);stroke-width:1.6}
+.tl-tick{stroke:var(--line);stroke-width:1}
+.tl-tick-label{fill:var(--muted);font:600 11px var(--font-display);text-anchor:middle}
+.tl-book{fill:var(--surface-strong);stroke:var(--green);stroke-width:2.2;transition:stroke-width .15s}
+.tl-book-link{cursor:pointer}
+.tl-book-link:hover .tl-book{stroke-width:3.6}
+.tl-book-label{fill:var(--ink);font:700 11.5px var(--font-display);text-anchor:middle}
+.tl-book-year{fill:var(--red);font:700 10px var(--font-display);text-anchor:middle}
+.tl-turn{fill:var(--red);cursor:help}
+.tl-turn-label{fill:var(--red);font:700 10px var(--font-display);text-anchor:middle}
+.tl-caption{margin:10px 4px 0;color:var(--muted);font:12px/1.6 var(--font-display)}
+.tl-legend{display:flex;flex-wrap:wrap;gap:14px;margin:12px 2px 0;color:var(--muted);font:12px/1.4 var(--font-display)}
+.tl-legend span{display:inline-flex;align-items:center;gap:6px}
+.tl-legend .lg-book{width:11px;height:11px;border-radius:50%;border:2px solid var(--green);background:var(--surface-strong)}
+.tl-legend .lg-turn{width:11px;height:11px;background:var(--red);transform:rotate(45deg)}
+
+/* ===== ⑤ 分期详解(每期五栏统一卡) ===== */
+.ap-periods{display:grid;gap:14px}
+.pd-card{border:1px solid var(--line);border-top:3px solid var(--green);border-radius:6px;background:var(--surface);overflow:hidden}
+.pd-grid{display:grid;grid-template-columns:1.3fr .7fr 1.4fr 1.3fr 1.5fr;gap:0}
+.pd-cell{padding:16px 18px;border-right:1px solid var(--line)}
+.pd-cell:last-child{border-right:0}
+.pd-cell .pd-k{margin:0 0 6px;color:var(--muted);font:700 .6875rem/1.3 var(--font-display);letter-spacing:.08em;text-transform:uppercase}
+.pd-name{font:800 1.0625rem/1.4 var(--font-display);color:var(--ink)}
+.pd-year{font:800 1.0625rem/1.3 var(--font-display);color:var(--red)}
+.pd-theme{color:var(--ink-soft);font-size:.9375rem;line-height:1.65}
+.pd-books a{display:block;color:var(--blue);font:700 .9375rem/1.7 var(--font-display);text-decoration:none}
+.pd-books a:hover{text-decoration:underline}
+.pd-change{color:var(--ink-soft-2);font-size:.9375rem;line-height:1.65}
+.pd-change.first{color:var(--muted);font-style:italic}
+
+/* ===== ⑥ 关键转向(verdict 控样式) ===== */
+.ap-turns{display:grid;gap:16px}
+.tn-hint{margin:0 0 4px;color:var(--muted);font:13px/1.6 var(--font-display)}
+.turn-card{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:20px 22px}
+.turn-card.v-confirmed{border-left:5px solid var(--red);background:var(--surface-strong)}
+.turn-card.v-apparent{border-left:5px solid var(--gold)}
+.turn-card.v-refuted{border-left:5px solid var(--muted);background:var(--paper-deep)}
+.turn-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+.turn-concept{font:800 1.1875rem/1.3 var(--font-display);color:var(--ink)}
+.turn-year{color:var(--muted);font:700 .875rem/1.3 var(--font-display)}
+.turn-badge{margin-left:auto;padding:3px 12px;border-radius:999px;font:800 .75rem/1.4 var(--font-display)}
+.v-confirmed .turn-badge{background:var(--red);color:var(--white)}
+.v-apparent .turn-badge{background:var(--tint-accent);color:var(--gold);border:1px solid var(--gold)}
+.v-refuted .turn-badge{background:var(--line);color:var(--ink-soft-2)}
+.turn-cols{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch}
+.turn-col{padding:14px 16px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.turn-col .tc-k{margin:0 0 6px;color:var(--muted);font:700 .75rem/1.3 var(--font-display)}
+.turn-col .tc-book{margin:0 0 8px;font:700 .9375rem/1.4 var(--font-display);color:var(--ink)}
+.turn-col .tc-book a{color:var(--blue);text-decoration:none}
+.turn-col .tc-stance{margin:0;color:var(--ink-soft);font-size:.9375rem;line-height:1.7}
+.turn-col.tc-from{border-left:3px solid var(--muted)}
+.turn-col.tc-to{border-left:3px solid var(--red)}
+.turn-arrow{display:grid;place-items:center;color:var(--red);font:900 1.5rem/1 var(--font-display)}
+.turn-note{margin:14px 0 0;padding:12px 16px;border-left:3px solid var(--gold);background:var(--tint-accent);color:var(--ink-soft-2);font-size:.9375rem;line-height:1.75}
+.turn-ext{margin:14px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.turn-ext .ext-badge{display:inline-flex;align-items:center;gap:6px;margin:0 0 8px;padding:2px 10px;border-radius:999px;background:var(--green);color:var(--white);font:800 .6875rem/1.4 var(--font-display);letter-spacing:.04em}
+.turn-ext .ext-who{color:var(--muted);font:700 .8125rem/1.4 var(--font-display)}
+.turn-ext blockquote{margin:6px 0 6px;color:var(--ink);font:italic 500 1.0625rem/1.75 var(--font-body);padding-left:12px;border-left:2px solid var(--green)}
+.turn-ext .ext-src{color:var(--blue);font:600 12px/1.5 var(--font-display)}
+.turn-refuted-note{margin:14px 0 0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.7}
+.turn-refuted-note b{color:var(--ink)}
+@media(max-width:640px){.turn-cols{grid-template-columns:1fr}.turn-arrow{transform:rotate(90deg)}}
+
+/* ===== ⑦ 母题·Story Ribbons(SVG) ===== */
+.rb-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 6px}
+.rb-svg{display:block;height:auto}
+.rb-shape{stroke:none}
+.rb-c0{fill:var(--green)} .rb-c1{fill:var(--gold)} .rb-c2{fill:var(--blue)} .rb-c3{fill:var(--red)}
+.rb-shape.rb-c0,.rb-shape.rb-c1,.rb-shape.rb-c2,.rb-shape.rb-c3{fill-opacity:.5}
+.rb-label{fill:var(--ink);font:700 12.5px var(--font-display);text-anchor:end;dominant-baseline:middle}
+.rb-status{fill:var(--muted);font:600 10px var(--font-display);text-anchor:end;dominant-baseline:middle}
+.rb-axis-label{fill:var(--muted);font:600 10.5px var(--font-display);text-anchor:middle}
+.rb-caption{margin:10px 4px 0;color:var(--muted);font:12px/1.6 var(--font-display)}
+
+/* ===== ⑧ 概念演化·DAG(SVG + 手机端 CSS Grid 兜底) ===== */
+.dag-wrap{position:relative}
+.dag-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 6px}
+.dag-svg{display:block;height:auto}
+.dag-edge{fill:none}
+.dag-edge.derive{stroke:var(--blue);stroke-width:1.7;stroke-dasharray:5 4}
+.dag-edge.persist{stroke:var(--muted);stroke-width:1.7}
+.dag-edge-arrow.derive{fill:var(--blue)} .dag-edge-arrow.persist{fill:var(--muted)}
+.dag-edge-label{fill:var(--blue);font:700 10px var(--font-display);text-anchor:middle}
+.dag-node{cursor:pointer}
+.dag-node .dn-box{fill:var(--surface-strong);stroke:var(--line);stroke-width:1.6}
+.dag-node.persist .dn-box{stroke:var(--green);stroke-width:2}
+.dag-node.new .dn-box{stroke:var(--gold);stroke-width:2.4;fill:var(--tint-accent)}
+.dag-node.dropped .dn-box{stroke:var(--muted);stroke-dasharray:4 3}
+.dag-node.dropped{opacity:.72}
+.dag-node.sel .dn-box{stroke:var(--red);stroke-width:2.8}
+.dag-node .dn-concept{fill:var(--ink);font:700 13px var(--font-display);text-anchor:middle}
+.dag-node .dn-en{fill:var(--gold);font:italic 600 10px var(--font-body);text-anchor:middle}
+.dag-drift rect{fill:var(--red)} .dag-drift text{fill:var(--white);font:700 8.5px var(--font-display);text-anchor:middle}
+.dag-dropx{stroke:var(--muted);stroke-width:1.6}
+.dag-svg.dag-hovering .dag-node:not(.hl):not(.adj){opacity:.15}
+.dag-svg.dag-hovering .dag-edge:not(.adj),.dag-svg.dag-hovering .dag-edge-arrow:not(.adj),.dag-svg.dag-hovering .dag-edge-label:not(.adj){opacity:.12}
+.dag-legend{display:flex;flex-wrap:wrap;gap:14px;margin:12px 2px 0;color:var(--muted);font:12px/1.4 var(--font-display)}
+.dag-legend span{display:inline-flex;align-items:center;gap:6px}
+.dag-legend i{width:22px;height:0;border-top:2px solid var(--muted);display:inline-block}
+.dag-legend i.derive{border-top:2px dashed var(--blue)} .dag-legend i.persist{border-top:2px solid var(--muted)}
+.dag-legend b.drift{width:16px;height:12px;border-radius:3px;background:var(--red);display:inline-block}
+.dag-panel{margin:14px 0 0;padding:16px 18px;border:1px solid var(--line);border-left:4px solid var(--green);border-radius:6px;background:var(--surface-strong);min-height:60px}
+.dag-panel .dp-hint{margin:0;color:var(--muted);font-size:.9375rem;line-height:1.7}
+.dag-panel .dp-concept{margin:0 0 12px;font:800 1.125rem/1.3 var(--font-display);color:var(--ink)}
+.dag-panel .dp-concept .dp-en{margin-left:8px;color:var(--gold);font:italic 600 .875rem/1 var(--font-body)}
+.dag-panel .dp-app{margin:0 0 10px;padding:10px 14px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.dag-panel .dp-app .dp-y{color:var(--red);font:700 .8125rem/1.4 var(--font-display)}
+.dag-panel .dp-app .dp-one{margin:2px 0;color:var(--muted);font-size:.875rem;line-height:1.6}
+.dag-panel .dp-app .dp-st{margin:0;color:var(--ink-soft);font-size:.9375rem;line-height:1.7}
+.dag-panel .dp-app a{color:var(--blue);text-decoration:none}
+/* 手机端兜底: SVG 隐、CSS Grid 显(列=书、行=概念,格子放 chip) */
+.dag-grid{display:none;overflow-x:auto}
+.dag-grid table{border-collapse:collapse;min-width:100%;font-family:var(--font-display)}
+.dag-grid th,.dag-grid td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+.dag-grid thead th{background:var(--surface-strong);color:var(--ink);font:700 .8125rem/1.3 var(--font-display);white-space:nowrap}
+.dag-grid tbody th,.dag-grid tbody th{background:var(--paper-deep);color:var(--ink);font:700 .8125rem/1.4 var(--font-display);white-space:nowrap}
+.dag-grid td .g-chip{display:inline-block;padding:2px 8px;border-radius:6px;background:var(--tint-accent);color:var(--ink-soft);font:600 .75rem/1.5 var(--font-display)}
+.dag-grid td .g-st{display:block;margin-top:4px;color:var(--muted);font-size:.75rem;line-height:1.5}
+@media(max-width:640px){.dag-scroll,.dag-panel{display:none}.dag-grid{display:block}}
+
+/* ===== ⑨ 影响谱系 ===== */
+.ap-influ{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.influ-col{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:18px 20px}
+.influ-col.up{border-top:3px solid var(--blue)} .influ-col.down{border-top:3px solid var(--green)}
+.influ-col h3{margin:0 0 12px;font:800 1.0625rem/1.3 var(--font-display)}
+.influ-col.up h3{color:var(--blue)} .influ-col.down h3{color:var(--green)}
+.influ-item{margin:0 0 10px;color:var(--ink-soft);font-size:.9375rem;line-height:1.6}
+.influ-item b{color:var(--ink)}
+.influ-item .influ-via{color:var(--muted);font-size:.8125rem}
+@media(max-width:640px){.ap-influ{grid-template-columns:1fr}}
+
+/* ===== ⑩ 代表作导航 ===== */
+.ap-books{display:grid;gap:12px}
+.book-row{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:center;padding:16px 18px;border:1px solid var(--line);border-radius:6px;background:var(--surface);text-decoration:none;color:inherit;transition:border-color .18s,transform .18s}
+.book-row:hover{border-color:var(--gold);transform:translateX(3px)}
+.book-row .bk-year{color:var(--red);font:800 1.0625rem/1.2 var(--font-display)}
+.book-row .bk-main{min-width:0}
+.book-row .bk-title{font:800 1.125rem/1.35 var(--font-display);color:var(--ink)}
+.book-row .bk-type{margin-left:8px;padding:1px 9px;border-radius:999px;background:var(--line);color:var(--ink-soft-2);font:700 .6875rem/1.5 var(--font-display)}
+.book-row .bk-role{margin:4px 0 0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.6}
+.book-row .bk-go{color:var(--blue);font:800 1.25rem/1 var(--font-display)}
+
+/* ===== ⑪ 该信几分(去神话化) ===== */
+.ap-critique{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.crit-col{border:1px solid var(--line);border-radius:6px;padding:18px 20px}
+.crit-blind{background:color-mix(in srgb,var(--blue) 8%,transparent);border-left:4px solid var(--blue)}
+.crit-era{background:color-mix(in srgb,var(--green) 8%,transparent);border-left:4px solid var(--green)}
+.crit-col h3{margin:0 0 12px;font:800 1.0625rem/1.3 var(--font-display)}
+.crit-blind h3{color:var(--blue)} .crit-era h3{color:var(--green)}
+.crit-item{margin:0 0 12px;color:var(--ink-soft);font-size:.9375rem;line-height:1.7}
+.crit-item:last-child{margin-bottom:0}
+.crit-item .crit-src{display:block;margin-top:3px;color:var(--muted);font:600 .75rem/1.5 var(--font-display)}
+.crit-item .crit-yr{display:inline-block;margin-right:8px;padding:1px 8px;border-radius:999px;background:var(--green);color:var(--white);font:700 .6875rem/1.5 var(--font-display)}
+@media(max-width:640px){.ap-critique{grid-template-columns:1fr}}
+
+/* ===== ⑫ 入门路径 ===== */
+.ap-path{list-style:none;margin:0;padding:0;counter-reset:pathstep;display:grid;gap:12px}
+.path-step{display:grid;grid-template-columns:40px 1fr;gap:14px;align-items:start;padding:14px 18px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.path-step::before{counter-increment:pathstep;content:counter(pathstep);width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:var(--green);color:var(--paper);font:800 15px/1 var(--font-display)}
+.path-step .ps-why{margin:0;color:var(--ink-soft);font-size:1rem;line-height:1.7}
+.path-step .ps-why a{color:var(--blue);font-weight:700;text-decoration:none}
+.path-step .ps-why a:hover{text-decoration:underline}
+
+/* ===== footer ===== */
+.ap-footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font:14px/1.8 var(--font-display)}
+.ap-footer b{color:var(--ink-soft)}
+
+/* ===== 主题切换(warm-paper / brand-dark 双态) ===== */
+.theme-toggle{position:fixed;right:16px;bottom:20px;z-index:100;display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border:1.5px solid var(--line);border-radius:999px;background:var(--bar-bg);backdrop-filter:blur(8px);color:var(--ink-soft);cursor:pointer;font:800 13px/1 var(--font-display);box-shadow:var(--shadow);transition:border-color .2s,transform .2s}
+.theme-toggle:hover{border-color:var(--gold);color:var(--ink);transform:translateY(-2px)}
+
+/* ===== 响应式 ===== */
+@media(max-width:820px){
+  .ap-card{grid-template-columns:1fr}
+  .ap-card .cardL{border-right:0;border-bottom:1px solid var(--line)}
+  .pd-grid{grid-template-columns:1fr 1fr}
+  .pd-cell{border-right:0;border-bottom:1px solid var(--line)}
+}
+@media(max-width:560px){
+  .pd-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<main class="author-page" data-author-slug="AUTHOR_SLUG_PLACEHOLDER">
+
+  <!-- ① 页顶眉题(名片卡直接开场,无大字 hero) + ② 名片卡 + ③ 演变总结 -->
+  <header class="ap-hero">
+    <div class="ap-kicker" id="ap-kicker">思想演变 · 多书聚合</div>
+  </header>
+  <div class="ap-card" id="ap-card"></div>
+  <div class="ap-evosum" id="ap-evosum" hidden></div>
+
+  <!-- ④ 演变总览地图(时间线) -->
+  <section class="ap-sec" id="sec-timeline" hidden>
+    <p class="ap-eyebrow">演变总览地图 ⭐</p>
+    <h2 class="ap-title">一屏看清思想的走向</h2>
+    <p class="ap-lead" id="tl-lead"></p>
+    <div class="tl-scroll"><div id="tl-host"></div></div>
+    <div class="tl-legend">
+      <span><i class="lg-book"></i>代表作(点击跳该书蒸馏页)</span>
+      <span><i class="lg-turn"></i>关键转向(仅经外证确认的)</span>
+    </div>
+    <p class="tl-caption">底层色带 = 分期;圆点 = 代表作,横轴 = 出版年;红 ◆ = 有外部佐证的思想转向发生年。</p>
+  </section>
+
+  <!-- ⑤ 分期详解 -->
+  <section class="ap-sec" id="sec-periods" hidden>
+    <p class="ap-eyebrow">分期详解</p>
+    <h2 class="ap-title">每一期,变了什么</h2>
+    <div class="ap-periods" id="periods-host"></div>
+  </section>
+
+  <!-- ⑥ 关键转向 -->
+  <section class="ap-sec" id="sec-turns" hidden>
+    <p class="ap-eyebrow">关键转向</p>
+    <h2 class="ap-title">思想真正掉头的地方</h2>
+    <p class="tn-hint">只呈现有外部证据支撑的转向 -- 仅凭书内差异、无外证的推断不在此下断言。</p>
+    <div class="ap-turns" id="turns-host"></div>
+  </section>
+
+  <!-- ⑦ 母题 ribbon -->
+  <section class="ap-sec" id="sec-motifs" hidden>
+    <p class="ap-eyebrow">母题 · 不变的红线</p>
+    <h2 class="ap-title">哪些追问贯穿始终</h2>
+    <p class="ap-lead">分期讲「变」,母题讲「不变」-- 两者互为张力。带子越粗,该母题在那本书里越吃重。</p>
+    <div class="rb-scroll"><div id="rb-host"></div></div>
+    <p class="rb-caption">每条带子 = 一个母题;横轴 = 出版年,起止收尖 = 该母题的出现区间。</p>
+  </section>
+
+  <!-- ⑧ 概念演化图 -->
+  <section class="ap-sec" id="sec-concept" hidden>
+    <p class="ap-eyebrow">概念演化图</p>
+    <h2 class="ap-title">概念如何生长、漂移、退场</h2>
+    <p class="ap-lead">横轴 = 概念首次出现年;点开任一概念,看它逐书的立场变化。</p>
+    <div class="dag-wrap">
+      <div class="dag-scroll"><div id="dag-host"></div></div>
+      <div class="dag-legend">
+        <span><i class="persist"></i>持续(立场稳定)</span>
+        <span><i class="derive"></i>派生(催生新概念)</span>
+        <span><b class="drift"></b>漂移(同名跨书立场变)</span>
+        <span>虚描边 + × = 后期退场</span>
+      </div>
+      <div class="dag-panel" id="dag-panel"></div>
+      <div class="dag-grid" id="dag-grid"></div>
+    </div>
+  </section>
+
+  <!-- ⑨ 影响谱系 -->
+  <section class="ap-sec" id="sec-influ" hidden>
+    <p class="ap-eyebrow">影响谱系</p>
+    <h2 class="ap-title">上承谁,下启谁</h2>
+    <div class="ap-influ" id="influ-host"></div>
+  </section>
+
+  <!-- ⑩ 代表作导航 -->
+  <section class="ap-sec" id="sec-books" hidden>
+    <p class="ap-eyebrow">代表作导航</p>
+    <h2 class="ap-title">读哪本,能懂什么</h2>
+    <div class="ap-books" id="books-host"></div>
+  </section>
+
+  <!-- ⑪ 该信几分 -->
+  <section class="ap-sec" id="sec-critique" hidden>
+    <p class="ap-eyebrow">该信几分 · 去神话化</p>
+    <h2 class="ap-title">别把作者当先知</h2>
+    <div class="ap-critique" id="critique-host"></div>
+  </section>
+
+  <!-- ⑫ 入门路径 -->
+  <section class="ap-sec" id="sec-path" hidden>
+    <p class="ap-eyebrow">入门路径</p>
+    <h2 class="ap-title">从哪本开始读</h2>
+    <ol class="ap-path" id="path-host"></ol>
+  </section>
+
+  <footer class="ap-footer" id="ap-footer"></footer>
+</main>
+
+<button class="theme-toggle" id="theme-toggle" type="button">🌙 夜读</button>
+
+<!-- ========== 数据槽: 内嵌 author.json(生成时替换为真实 authors/{slug}/author.json)==========
+     当前为 __fixture__ 合成作者演示态(references 契约的开发靶子),仅供渲染自测,发布前替换。 -->
+<script type="application/json" id="author-data">
+{
+ "author": "测试思想家",
+ "slug": "__fixture__",
+ "aliases": [],
+ "bio": {
+  "birth_year": 1980,
+  "one_liner": "研究专注与意义的独立作者(合成测试数据)",
+  "background": [
+   { "label": "治学之路", "text": "这是 v5.2 开发用的合成夹具,非真实人物 -- background 现为 [{label,text}] 数组,每段带主题标签渲染成结构化小传:label 走 .c-seg-k(绿色小标题),text 走 .c-seg-t,把一坨密集文字拆成可扫读的段落,与右栏 label:内容 节奏呼应。" },
+   { "label": "世界影响", "text": "第二段演示成名与影响力档:真实作者可写代表作、销量、译本、公开背书、重要舞台等。标签让读者一眼定位「这段讲什么」,不必读完整段才知道主题。" },
+   { "label": "生活与底色", "text": "第三段演示思想底色与个人生活档 -- 兼容旧式:若 background 仍填含 \\n 的字符串(老 author.json),渲染器回退按行拆成无标签的 <p class=c-bg>,不改也能正常出图。真实作者填 authors/{slug}/author.manual.json 的 bio.background 即可。" }
+  ],
+  "facts": [
+   { "label": "职业", "value": "独立作者 · 研究者(合成)" },
+   { "label": "研究领域", "value": "专注 · 系统 · 意义(合成)" }
+  ]
+ },
+ "core_sentence": "人如何把注意力,长成有意义的一生。",
+ "books": [
+  { "slug": "fx-zhuanzhu-qidian", "title": "专注的起点", "book_type": "论说", "pub_year": 2015, "period_id": "p1", "role_in_evolution": "起点:提出专注是稀缺资源" },
+  { "slug": "fx-xinliu-xitong", "title": "心流与系统", "book_type": "论说", "pub_year": 2019, "period_id": "p2", "role_in_evolution": "转折:把专注从意志问题重构为系统问题" },
+  { "slug": "fx-yiyi-zhongliang", "title": "意义的重量", "book_type": "工具", "pub_year": 2023, "period_id": "p3", "role_in_evolution": "落点:在系统之上安放意义" }
+ ],
+ "periods": [
+  { "id": "p1", "name": "早期·专注的守护(2015)", "theme": "靠意志守护稀缺的专注", "year_range": [2015, 2015], "books": ["fx-zhuanzhu-qidian"], "boundary_signal": "起始", "color_idx": 0 },
+  { "id": "p2", "name": "中期·系统的转向(2019)", "theme": "从意志转向系统设计", "year_range": [2019, 2019], "books": ["fx-xinliu-xitong"], "boundary_signal": "question换题", "color_idx": 1 },
+  { "id": "p3", "name": "近期·意义的落点(2023)", "theme": "系统之上追问意义", "year_range": [2023, 2023], "books": ["fx-yiyi-zhongliang"], "boundary_signal": "question换题", "color_idx": 2 }
+ ],
+ "motifs": [
+  { "id": "m1", "label": "意义感来自能力边缘的挑战", "statement": "意义感来自能力边缘的挑战", "status": "persistent", "span": [2015, 2023], "color_idx": 0,
+    "appears_in": [
+     { "slug": "fx-zhuanzhu-qidian", "year": 2015, "prominence": 0.8, "primary": true },
+     { "slug": "fx-xinliu-xitong", "year": 2019, "prominence": 0.8, "primary": true },
+     { "slug": "fx-yiyi-zhongliang", "year": 2023, "prominence": 0.8, "primary": true }
+    ] },
+  { "id": "m2", "label": "好的系统胜过强的意志力", "statement": "好的系统胜过强的意志力", "status": "persistent", "span": [2019, 2023], "color_idx": 1,
+    "appears_in": [
+     { "slug": "fx-xinliu-xitong", "year": 2019, "prominence": 0.8, "primary": true },
+     { "slug": "fx-yiyi-zhongliang", "year": 2023, "prominence": 0.8, "primary": true }
+    ] }
+ ],
+ "turns": [
+  { "id": "t1", "year": 2019, "concept": "意志力", "motif_id": null,
+    "from": { "book": "专注的起点", "year": 2015, "stance": "意志力是专注的主要燃料", "distill_slug": "fx-zhuanzhu-qidian" },
+    "to": { "book": "心流与系统", "year": 2019, "stance": "意志力不可靠,系统才是专注的产地", "distill_slug": "fx-xinliu-xitong" },
+    "trigger_field": "concepts.stance",
+    "note": "作者从『靠意志硬撑专注』(2015)转向『靠系统设计诱发心流』(2019),再到『系统承载意义』(2023)--意志力从燃料降级为不可靠变量。",
+    "verdict": "confirmed",
+    "external": [ { "type": "self", "who": "测试思想家(合成访谈)", "say": "我早年高估了意志力,后来才明白是系统在决定专注。", "source": "https://example.com/fixture-interview" } ] },
+  { "id": "t2", "year": 2019, "concept": "专注", "motif_id": null,
+    "from": { "book": "专注的起点", "year": 2015, "stance": "专注是稀缺资源,须靠意志力守护", "distill_slug": "fx-zhuanzhu-qidian" },
+    "to": { "book": "心流与系统", "year": 2019, "stance": "专注是系统的产物,不是意志力的产物", "distill_slug": "fx-xinliu-xitong" },
+    "trigger_field": "concepts.stance", "note": null, "verdict": null, "external": [] },
+  { "id": "t3", "year": 2019, "concept": "心流", "motif_id": null,
+    "from": { "book": "专注的起点", "year": 2015, "stance": "心流是深度专注的副产品,可遇不可求", "distill_slug": "fx-zhuanzhu-qidian" },
+    "to": { "book": "心流与系统", "year": 2019, "stance": "心流不是靠等,而是可被系统结构诱发", "distill_slug": "fx-xinliu-xitong" },
+    "trigger_field": "concepts.stance", "note": null, "verdict": null, "external": [] },
+  { "id": "t4", "year": 2023, "concept": "系统思维", "motif_id": null,
+    "from": { "book": "心流与系统", "year": 2019, "stance": "用系统而非目标来驱动行为", "distill_slug": "fx-xinliu-xitong" },
+    "to": { "book": "意义的重量", "year": 2023, "stance": "系统是意义的载体,不是效率工具", "distill_slug": "fx-yiyi-zhongliang" },
+    "trigger_field": "concepts.stance", "note": null, "verdict": null, "external": [] }
+ ],
+ "concept_graph": {
+  "nodes": [
+   { "id": "c1", "concept": "心流", "concept_en": "flow", "first_year": 2015, "last_year": 2023, "lane": 0, "status": "persist",
+     "appearances": [
+      { "slug": "fx-zhuanzhu-qidian", "year": 2015, "one_liner": "专注到忘我的最优体验", "stance": "心流是深度专注的副产品,可遇不可求" },
+      { "slug": "fx-xinliu-xitong", "year": 2019, "one_liner": "专注到忘我的最优体验", "stance": "心流不是靠等,而是可被系统结构诱发" },
+      { "slug": "fx-yiyi-zhongliang", "year": 2023, "one_liner": "专注到忘我的最优体验", "stance": "心流是可设计、可复现的系统输出,而非偶然" }
+     ] },
+   { "id": "c2", "concept": "专注", "concept_en": "focus", "first_year": 2015, "last_year": 2019, "lane": 1, "status": "dropped",
+     "appearances": [
+      { "slug": "fx-zhuanzhu-qidian", "year": 2015, "one_liner": "把注意力锁定在单一目标", "stance": "专注是稀缺资源,须靠意志力守护" },
+      { "slug": "fx-xinliu-xitong", "year": 2019, "one_liner": "把注意力锁定在单一目标", "stance": "专注是系统的产物,不是意志力的产物" }
+     ] },
+   { "id": "c3", "concept": "复利", "concept_en": "compounding", "first_year": 2015, "last_year": 2015, "lane": 2, "status": "dropped",
+     "appearances": [
+      { "slug": "fx-zhuanzhu-qidian", "year": 2015, "one_liner": "微小积累的指数效应", "stance": "专注的复利决定长期差距" }
+     ] },
+   { "id": "c4", "concept": "习惯", "concept_en": "habit", "first_year": 2015, "last_year": 2023, "lane": 3, "status": "persist",
+     "appearances": [
+      { "slug": "fx-zhuanzhu-qidian", "year": 2015, "one_liner": "自动化的行为回路", "stance": "习惯是专注的地基" },
+      { "slug": "fx-xinliu-xitong", "year": 2019, "one_liner": "自动化的行为回路", "stance": "习惯是系统的最小单元" },
+      { "slug": "fx-yiyi-zhongliang", "year": 2023, "one_liner": "自动化的行为回路", "stance": "习惯是意义的复利" }
+     ] },
+   { "id": "c5", "concept": "系统思维", "concept_en": "systems thinking", "first_year": 2019, "last_year": 2023, "lane": 4, "status": "new",
+     "appearances": [
+      { "slug": "fx-xinliu-xitong", "year": 2019, "one_liner": "看关系与反馈而非孤立要素", "stance": "用系统而非目标来驱动行为" },
+      { "slug": "fx-yiyi-zhongliang", "year": 2023, "one_liner": "看关系与反馈而非孤立要素", "stance": "系统是意义的载体,不是效率工具" }
+     ] },
+   { "id": "c6", "concept": "意义", "concept_en": "meaning", "first_year": 2023, "last_year": 2023, "lane": 5, "status": "new",
+     "appearances": [
+      { "slug": "fx-yiyi-zhongliang", "year": 2023, "one_liner": "努力与长期主题的联结", "stance": "意义不是找到的,是用系统长出来的" }
+     ] }
+  ],
+  "edges": [
+   { "from": "c1", "to": "c1", "type": "drift", "label": "立场漂移", "book_pair": ["fx-zhuanzhu-qidian", "fx-xinliu-xitong"] },
+   { "from": "c1", "to": "c1", "type": "drift", "label": "立场漂移", "book_pair": ["fx-xinliu-xitong", "fx-yiyi-zhongliang"] },
+   { "from": "c2", "to": "c2", "type": "drift", "label": "立场漂移", "book_pair": ["fx-zhuanzhu-qidian", "fx-xinliu-xitong"] },
+   { "from": "c4", "to": "c4", "type": "drift", "label": "立场漂移", "book_pair": ["fx-zhuanzhu-qidian", "fx-xinliu-xitong"] },
+   { "from": "c4", "to": "c4", "type": "drift", "label": "立场漂移", "book_pair": ["fx-xinliu-xitong", "fx-yiyi-zhongliang"] },
+   { "from": "c5", "to": "c5", "type": "drift", "label": "立场漂移", "book_pair": ["fx-xinliu-xitong", "fx-yiyi-zhongliang"] },
+   { "from": "c2", "to": "c5", "type": "derive", "label": "重构为", "book_pair": null },
+   { "from": "c5", "to": "c6", "type": "derive", "label": "升维为", "book_pair": null }
+  ]
+ },
+ "persistent_tensions": [],
+ "recurring_critique": {
+  "blind_spots": [ { "text": "忽视结构性运气对专注成果的影响", "books": ["fx-xinliu-xitong", "fx-zhuanzhu-qidian"] } ],
+  "era_limits": [
+   { "text": "2015 移动互联网早期语境,未预见 AI 干扰", "year": 2015, "slug": "fx-zhuanzhu-qidian" },
+   { "text": "2019 语境", "year": 2019, "slug": "fx-xinliu-xitong" },
+   { "text": "2023 语境", "year": 2023, "slug": "fx-yiyi-zhongliang" }
+  ]
+ },
+ "influences": { "upstream": [], "downstream": [] },
+ "signature_lines": [
+  { "text": "专注不是天赋,是你为自己设计的默认状态。", "slug": "fx-zhuanzhu-qidian", "year": 2015 },
+  { "text": "你不会升到目标的高度,你只会跌到系统的水平。", "slug": "fx-xinliu-xitong", "year": 2019 },
+  { "text": "意义不是你找到的宝藏,是你用系统一天天长出来的森林。", "slug": "fx-yiyi-zhongliang", "year": 2023 }
+ ],
+ "genre_arc": [
+  { "year": 2015, "book_type": "论说", "slug": "fx-zhuanzhu-qidian" },
+  { "year": 2019, "book_type": "论说", "slug": "fx-xinliu-xitong" },
+  { "year": 2023, "book_type": "工具", "slug": "fx-yiyi-zhongliang" }
+ ],
+ "reading_path": [
+  { "slug": "fx-xinliu-xitong", "why": "入门先读《心流与系统》--核心方法最完整" },
+  { "slug": "fx-yiyi-zhongliang", "why": "进阶读《意义的重量》--看方法如何升维到意义" },
+  { "slug": "fx-zhuanzhu-qidian", "why": "回溯读《专注的起点》--理解思想的原点" }
+ ],
+ "evolution_summary": "这是一条连续的 project:『能力边缘的意义感』母题贯穿三书未变(连续);变的是实现路径--从意志(2015)到系统(2019)到意义(2023),每一步都在回答上一本没答完的问题(断裂的表象下是同一追问的深化)。",
+ "evolution_verdict": { "stance": "continuous", "headline": "同一母题贯穿三书,变的是实现路径而非核心追问(合成测试数据)。" },
+ "consistency_note": null,
+ "_provenance": { "generated_from": ["fx-zhuanzhu-qidian", "fx-xinliu-xitong", "fx-yiyi-zhongliang"], "pub_years": [2015, 2019, 2023], "aggregator_version": "1", "warnings": [] }
+}
+</script>
+
+<script>
+/* ===== 作者演变页渲染器: 读 #author-data 的 author.json 通用出图。JS 只设几何/内容,颜色全走 var(--*)/class ===== */
+(() => {
+  'use strict';
+  const dataEl = document.getElementById('author-data');
+  let A; try { A = JSON.parse(dataEl.textContent); } catch (e) { console.error('author-data parse fail', e); return; }
+  const SVGNS = 'http://www.w3.org/2000/svg';
+
+  // --- helpers ---
+  const bySlug = {};
+  (A.books || []).forEach(b => { bySlug[b.slug] = b; });
+  const bookHref = slug => '../' + slug + '/' + slug + '.html';
+  const bookTitle = slug => (bySlug[slug] && bySlug[slug].title) || slug;
+  const el = (tag, attrs, txt) => { const n = document.createElement(tag); if (attrs) for (const k in attrs) { if (k === 'class') n.className = attrs[k]; else if (k === 'html') n.innerHTML = attrs[k]; else n.setAttribute(k, attrs[k]); } if (txt != null) n.textContent = txt; return n; };
+  const S = (tag, attrs) => { const n = document.createElementNS(SVGNS, tag); if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+  const Stext = (attrs, txt) => { const n = S('text', attrs); n.textContent = txt == null ? '' : String(txt); return n; };
+  const mctx = document.createElement('canvas').getContext('2d');
+  const measure = (t, f) => { mctx.font = f; return mctx.measureText(String(t || '')).width; };
+  const show = id => { const n = document.getElementById(id); if (n) n.hidden = false; };
+  const EVOLUTION_STANCES = ['continuous', 'segmented', 'mixed'];
+
+  // 全局年份坐标(min/max 取 books.pub_year 极值)
+  const YEARS = (A.books || []).map(b => b.pub_year).filter(y => typeof y === 'number');
+  const MINY = YEARS.length ? Math.min(...YEARS) : 0;
+  const MAXY = YEARS.length ? Math.max(...YEARS) : 1;
+  const SPAN = MAXY - MINY;
+  const mkX = (padL, innerW) => (y => padL + (SPAN ? (y - MINY) / SPAN : 0.5) * innerW);
+  const cidx = i => 'c' + (((i | 0) % 4 + 4) % 4);
+
+  /* ===== ① 页顶眉题(大字 hero 已去掉,core_sentence 移入 ③) ===== */
+  function renderHero() {
+    const k = document.getElementById('ap-kicker');
+    if (A.author) k.textContent = A.author + ' · 思想演变';
+  }
+
+  /* ===== ② 定位名片卡(左栏结构化小传 lead+标签分段 / 右栏结构化字段,不成一坨) ===== */
+  function renderCard() {
+    const host = document.getElementById('ap-card');
+    const bio = A.bio || {};
+    const STATUS_TXT = { persist: '持续贯穿', new: '中途新增', dropped: '后期退场', drift: '立场漂移' };
+    // 核心关切 = 全部母题(通常 2-4 个,不只挑 1-2 条充数),hover 显 statement 全文
+    const motifs = (A.motifs || []).slice(0, 6);
+    // 代表概念 = concept_graph 里按出现次数取 top3(而非只取最高 1 个)
+    const nodes = ((A.concept_graph && A.concept_graph.nodes) || []).slice()
+      .sort((a, b) => (b.appearances || []).length - (a.appearances || []).length);
+    const topNodes = nodes.slice(0, 3);
+    // 生卒
+    const life = bio.birth_year ? (bio.birth_year + ' --') : '待补';
+
+    const L = el('div', { class: 'cardL' });
+    L.appendChild(el('h1', { class: 'c-name' }, A.author || ''));   // 页面唯一 H1 = 作者名(原页顶大字 h1 已去掉)
+    if ((A.aliases || []).length) L.appendChild(el('p', { class: 'c-alias' }, '亦作 ' + A.aliases.join(' · ')));
+    if (bio.one_liner) L.appendChild(el('p', { class: 'c-lead' }, bio.one_liner));   // 一句话定位 = 小传 lead
+    // background 结构化小传:
+    //   · 新式(推荐)= [{label,text}] 数组 -> 每段带主题标签(治学之路/世界影响/…),把文字墙拆成可扫读结构;
+    //   · 旧式 = 含 \n 的字符串 -> 拆多段无标签(向后兼容,老 author.json 不改也能渲染)。
+    const bg = bio.background;
+    if (Array.isArray(bg)) {
+      bg.forEach(seg => {
+        if (!seg) return;
+        const label = (typeof seg === 'object') ? seg.label : null;
+        const text = (typeof seg === 'object') ? seg.text : String(seg);
+        if (!text || !String(text).trim()) return;
+        const s = el('div', { class: 'c-seg' });
+        if (label && String(label).trim()) s.appendChild(el('p', { class: 'c-seg-k' }, String(label).trim()));
+        s.appendChild(el('p', { class: 'c-seg-t' }, String(text).trim()));
+        L.appendChild(s);
+      });
+    } else if (bg) {
+      String(bg).split('\n').map(s => s.trim()).filter(Boolean)
+        .forEach(para => L.appendChild(el('p', { class: 'c-bg' }, para)));
+    }
+
+    const R = el('div', { class: 'cardR' });
+    const field = (k, valNode) => { const d = el('dl', { class: 'c-field' }); d.appendChild(el('dt', null, k)); const dd = el('dd'); dd.appendChild(valNode); d.appendChild(dd); return d; };
+    R.appendChild(field('生卒', document.createTextNode(life)));
+    // bio.facts:可选的信息框身份字段(维基/百度惯例:职业/毕业院校/研究领域/国籍…),渲染在生卒下方、代表作之前。
+    //   纯文本值(多值用「 · 」分隔),不成 chip -- 与「生卒」同为身份速览字段。缺则不渲染,右栏退化回原 4 字段。
+    (Array.isArray(bio.facts) ? bio.facts : []).forEach(f => {
+      if (!f) return;
+      const label = (typeof f === 'object') ? f.label : null;
+      const val = (typeof f === 'object') ? f.value : String(f);
+      if (!label || !String(label).trim() || val == null || !String(val).trim()) return;
+      R.appendChild(field(String(label).trim(), document.createTextNode(String(val).trim())));
+    });
+
+    const books = (A.books || []).slice().sort((a, b) => (a.pub_year || 0) - (b.pub_year || 0));
+    if (books.length) {
+      const w = el('div');
+      books.forEach(b => {
+        const a = el('a', { class: 'ap-chip chip-book', href: bookHref(b.slug) }, '《' + (b.title || b.slug) + '》' + (b.pub_year ? ' ' + b.pub_year : ''));
+        w.appendChild(a);
+      });
+      R.appendChild(field('代表作', w));
+    }
+
+    if (motifs.length) {
+      const w = el('div');
+      motifs.forEach(m => {
+        const c = el('span', { class: 'ap-chip chip-motif' }, m.label || m.statement || '');
+        if (m.statement) c.title = m.statement;
+        w.appendChild(c);
+      });
+      R.appendChild(field('核心关切', w));
+    }
+
+    if (topNodes.length) {
+      const w = el('div');
+      topNodes.forEach(n => {
+        const c = el('span', { class: 'ap-chip chip-concept' }, n.concept + (n.concept_en ? ' · ' + n.concept_en : ''));
+        const cnt = (n.appearances || []).length;
+        c.title = cnt + ' 部作品出现' + (n.status && STATUS_TXT[n.status] ? ' · ' + STATUS_TXT[n.status] : '');
+        w.appendChild(c);
+      });
+      R.appendChild(field('代表概念', w));
+    }
+
+    host.appendChild(L); host.appendChild(R);
+  }
+
+  /* ===== ③ 演变总结(连续 vs 断裂) ===== */
+  function renderEvoSum() {
+    if (!A.evolution_summary) return;
+    const host = document.getElementById('ap-evosum');
+    host.appendChild(el('p', { class: 'es-tag' }, '连续,还是断裂?'));
+
+    // core_sentence:我们对该作者全弧的一句话思想内核概括(编辑论点,非作者原话)。
+    // v5.1 起从页顶大字移到此处 -- 在「连续/断裂」的编辑分析语境里,它作为思想内核论点,provenance 清晰、不再像伪引文。
+    if (A.core_sentence) host.appendChild(el('p', { class: 'es-thesis' }, A.core_sentence));
+
+    // 结论徽章行(可选字段 evolution_verdict;缺失则跳过,不影响其余渲染)
+    const verdict = A.evolution_verdict;
+    if (verdict && verdict.headline) {
+      const stance = EVOLUTION_STANCES.indexOf(verdict.stance) >= 0 ? verdict.stance : 'mixed';
+      const BADGE_TXT = { continuous: '总体连续', segmented: '断裂演变', mixed: '连续中有转向' };
+      const row = el('div', { class: 'es-verdict' });
+      row.appendChild(el('span', { class: 'ev-badge ev-' + stance }, BADGE_TXT[stance]));
+      row.appendChild(el('span', { class: 'ev-headline' }, verdict.headline));
+      host.appendChild(row);
+    }
+
+    // 分期速览 strip(复用 periods,给「一眼看清几个阶段」的可视锚点,零额外数据成本)
+    const periods = (A.periods || []).slice().sort((a, b) => (a.year_range ? a.year_range[0] : 0) - (b.year_range ? b.year_range[0] : 0));
+    if (periods.length > 1) {
+      const strip = el('div', { class: 'es-strip' });
+      periods.forEach((p, i) => {
+        if (i > 0) strip.appendChild(el('span', { class: 'es-arrow' }, '→'));
+        const nm = (p.name || '').split('·')[0].trim() || p.name || ('第' + (i + 1) + '期');
+        strip.appendChild(el('span', { class: 'es-chip es-c' + (((p.color_idx != null ? p.color_idx : i) % 4 + 4) % 4) }, nm));
+      });
+      host.appendChild(strip);
+    }
+
+    host.appendChild(el('p', { class: 'es-body' }, A.evolution_summary));
+
+    // consistency_note 是 {text,source} 对象,禁止直接字符串拼接(会拼出 [object Object])
+    if (A.consistency_note && A.consistency_note.text) {
+      const box = el('div', { class: 'es-consistency' });
+      box.appendChild(el('p', { class: 'ec-label' }, '作者自认一贯'));
+      box.appendChild(el('blockquote', null, A.consistency_note.text));
+      if (A.consistency_note.source) box.appendChild(el('a', { class: 'ec-src', href: A.consistency_note.source, target: '_blank', rel: 'noopener' }, '查看来源 ↗'));
+      host.appendChild(box);
+    }
+    host.hidden = false;
+  }
+
+  /* ===== ④ 时间线·泳道(SVG ①) ===== */
+  function renderTimeline() {
+    const books = (A.books || []).filter(b => typeof b.pub_year === 'number');
+    if (books.length < 1) return;
+    show('sec-timeline');
+    const lead = document.getElementById('tl-lead');
+    lead.textContent = MINY + ' -- ' + MAXY + ' 年,共 ' + books.length + ' 部作品,分 ' + ((A.periods || []).length) + ' 个阶段。';
+
+    const padL = 70, padR = 46, padT = 56, baseFromTop = 118, labelBand = 60;
+    const innerW = Math.max(SPAN * 150, 520);
+    const totalW = padL + innerW + padR;
+    const baselineY = padT + baseFromTop;
+    const totalH = baselineY + labelBand;
+    const X = mkX(padL, innerW);
+
+    const svg = S('svg', { class: 'tl-svg', viewBox: '0 0 ' + Math.round(totalW) + ' ' + Math.round(totalH), width: Math.round(totalW), height: Math.round(totalH), role: 'img', 'aria-label': '思想演变时间线' });
+
+    // 分期底层色带(相邻期以中点分界,首尾外扩)
+    const periods = (A.periods || []).slice().sort((a, b) => pyr(a)[0] - pyr(b)[0]);
+    function pyr(p) { const ys = (p.books || []).map(s => bySlug[s] && bySlug[s].pub_year).filter(y => typeof y === 'number'); if (ys.length) return [Math.min(...ys), Math.max(...ys)]; return p.year_range || [MINY, MAXY]; }
+    const bandTop = padT - 8, bandH = (baselineY + 20) - bandTop;
+    periods.forEach((p, i) => {
+      const r = pyr(p);
+      const xL = (i === 0) ? (X(r[0]) - 34) : ((X(pyr(periods[i - 1])[1]) + X(r[0])) / 2);
+      const xR = (i === periods.length - 1) ? (X(r[1]) + 34) : ((X(r[1]) + X(pyr(periods[i + 1])[0])) / 2);
+      svg.appendChild(S('rect', { class: 'tl-band tl-' + cidx(p.color_idx != null ? p.color_idx : i), x: xL.toFixed(1), y: bandTop.toFixed(1), width: Math.max(2, xR - xL).toFixed(1), height: bandH.toFixed(1), rx: 6 }));
+      if (i > 0) svg.appendChild(S('line', { class: 'tl-band-sep', x1: xL.toFixed(1), y1: bandTop.toFixed(1), x2: xL.toFixed(1), y2: (bandTop + bandH).toFixed(1) }));
+      const nm = (p.name || '').split('·');
+      svg.appendChild(Stext({ class: 'tl-band-label', x: ((xL + xR) / 2).toFixed(1), y: (bandTop + 18).toFixed(1) }, nm[0] ? nm[0].trim() : (p.name || '')));
+      if (nm[1]) svg.appendChild(Stext({ class: 'tl-band-label', x: ((xL + xR) / 2).toFixed(1), y: (bandTop + 34).toFixed(1), style: 'font-weight:600;font-size:11px' }, nm.slice(1).join('·').replace(/[()（）]/g, '').trim()));
+    });
+
+    // 轴 + 年份刻度
+    svg.appendChild(S('line', { class: 'tl-axis', x1: (X(MINY) - 26).toFixed(1), y1: baselineY, x2: (X(MAXY) + 26).toFixed(1), y2: baselineY }));
+    const yset = Array.from(new Set(books.map(b => b.pub_year))).sort((a, b) => a - b);
+    yset.forEach(y => {
+      svg.appendChild(S('line', { class: 'tl-tick', x1: X(y).toFixed(1), y1: (baselineY - 5).toFixed(1), x2: X(y).toFixed(1), y2: (baselineY + 5).toFixed(1) }));
+      svg.appendChild(Stext({ class: 'tl-tick-label', x: X(y).toFixed(1), y: (baselineY + 20).toFixed(1) }, y));
+    });
+
+    // 转向红 ◆(仅 verdict 非 null)
+    (A.turns || []).forEach(t => {
+      if (!t.verdict) return;
+      const x = X(t.year), y = baselineY - 40;
+      const g = S('g', {});
+      const dm = S('path', { class: 'tl-turn', d: 'M ' + x + ' ' + (y - 7) + ' L ' + (x + 7) + ' ' + y + ' L ' + x + ' ' + (y + 7) + ' L ' + (x - 7) + ' ' + y + ' Z' });
+      const ti = S('title'); ti.textContent = '转向:' + (t.concept || '') + (t.note ? ' -- ' + t.note : '');
+      dm.appendChild(ti); g.appendChild(dm);
+      g.appendChild(Stext({ class: 'tl-turn-label', x: x.toFixed(1), y: (y - 12).toFixed(1) }, '转向'));
+      g.appendChild(S('line', { class: 'tl-tick', x1: x, y1: (y + 8).toFixed(1), x2: x, y2: (baselineY - 12).toFixed(1), 'stroke-dasharray': '2 3' }));
+      svg.appendChild(g);
+    });
+
+    // 代表作圆点(同年堆叠),深链跳该书蒸馏页
+    const stackAt = {};
+    books.slice().sort((a, b) => a.pub_year - b.pub_year).forEach(b => {
+      const x = X(b.pub_year);
+      const k = Math.round(x); const n = stackAt[k] || 0; stackAt[k] = n + 1;
+      const cy = baselineY - n * 26;
+      const a = S('a', { class: 'tl-book-link', href: bookHref(b.slug), target: '_top' });
+      const c = S('circle', { class: 'tl-book', cx: x.toFixed(1), cy: cy.toFixed(1), r: 8 });
+      const ti = S('title'); ti.textContent = b.title + ' · ' + (b.role_in_evolution || ''); c.appendChild(ti);
+      a.appendChild(c);
+      a.appendChild(Stext({ class: 'tl-book-label', x: x.toFixed(1), y: (cy - 14).toFixed(1) }, b.title));
+      svg.appendChild(a);
+    });
+
+    document.getElementById('tl-host').appendChild(svg);
+  }
+
+  /* ===== ⑤ 分期详解(每期五栏卡) ===== */
+  function renderPeriods() {
+    const periods = A.periods || [];
+    if (!periods.length) return;
+    show('sec-periods');
+    const host = document.getElementById('periods-host');
+    const SIGMAP = { '起始': '思想起点,一切从这里开始', 'question换题': '换了核心追问 -- 上一阶段的问题被新问题取代', 'genre变': '写作体裁转变', '概念换手>0.6': '概念大幅换手 -- 六成以上核心概念被替换', '年份断档': '创作断档后重启' };
+    const humanSig = (sig, isFirst) => { if (isFirst) return '思想起点,一切从这里开始'; if (!sig) return '延续上一阶段'; return sig.split('|').map(s => SIGMAP[s.trim()] || s.trim()).join(' · '); };
+    const sorted = periods.slice().sort((a, b) => (a.year_range ? a.year_range[0] : 0) - (b.year_range ? b.year_range[0] : 0));
+    sorted.forEach((p, i) => {
+      const card = el('div', { class: 'pd-card' });
+      const g = el('div', { class: 'pd-grid' });
+      const cell = (k, node, cls) => { const c = el('div', { class: 'pd-cell' }); c.appendChild(el('p', { class: 'pd-k' }, k)); const v = el('div', { class: cls || '' }); if (typeof node === 'string') v.textContent = node; else v.appendChild(node); c.appendChild(v); return c; };
+      g.appendChild(cell('阶段', (p.name || '').replace(/[（(].*?[)）]/g, '').trim() || p.name || '', 'pd-name'));
+      const yr = p.year_range ? (p.year_range[0] === p.year_range[1] ? String(p.year_range[0]) : p.year_range.join('-')) : '';
+      g.appendChild(cell('年份', yr, 'pd-year'));
+      g.appendChild(cell('主题', p.theme || '', 'pd-theme'));
+      const bw = el('div', { class: 'pd-books' });
+      (p.books || []).forEach(s => { const a = el('a', { href: bookHref(s) }, '《' + bookTitle(s) + '》'); bw.appendChild(a); });
+      g.appendChild(cell('该期作品', bw));
+      g.appendChild(cell('相较上期', humanSig(p.boundary_signal, i === 0), 'pd-change' + (i === 0 ? ' first' : '')));
+      card.appendChild(g);
+      host.appendChild(card);
+    });
+  }
+
+  /* ===== ⑥ 关键转向(verdict 控样式;null 不渲染) ===== */
+  function renderTurns() {
+    const turns = (A.turns || []).filter(t => t.verdict);   // null / '' 整条不渲染
+    if (!turns.length) return;   // 全 null → 整段隐藏
+    show('sec-turns');
+    const host = document.getElementById('turns-host');
+    const VLABEL = { confirmed: '已证实', apparent: '侧重转移', refuted: '看似不同实则一致' };
+    turns.forEach(t => {
+      const card = el('div', { class: 'turn-card v-' + t.verdict });
+      const head = el('div', { class: 'turn-head' });
+      head.appendChild(el('span', { class: 'turn-concept' }, t.concept || ''));
+      head.appendChild(el('span', { class: 'turn-year' }, (t.from && t.from.year) + ' → ' + (t.to && t.to.year)));
+      head.appendChild(el('span', { class: 'turn-badge' }, VLABEL[t.verdict] || t.verdict));
+      card.appendChild(head);
+
+      if (t.verdict === 'refuted') {
+        const n = el('p', { class: 'turn-refuted-note' });
+        n.appendChild(el('b', null, '看似不同,实则一致 -- '));
+        n.appendChild(document.createTextNode(t.note || '外部证据显示作者对此始终一以贯之,书间差异更多是主题侧重而非立场转变。'));
+        card.appendChild(n);
+      } else {
+        const cols = el('div', { class: 'turn-cols' });
+        const mkCol = (side, obj, cls) => {
+          const c = el('div', { class: 'turn-col ' + cls });
+          c.appendChild(el('p', { class: 'tc-k' }, side));
+          const bk = el('p', { class: 'tc-book' });
+          if (obj.distill_slug) { const a = el('a', { href: bookHref(obj.distill_slug) }, '《' + (obj.book || bookTitle(obj.distill_slug)) + '》'); bk.appendChild(a); }
+          else bk.textContent = '《' + (obj.book || '') + '》';
+          bk.appendChild(document.createTextNode(' · ' + (obj.year || '')));
+          c.appendChild(bk);
+          c.appendChild(el('p', { class: 'tc-stance' }, obj.stance || ''));
+          return c;
+        };
+        cols.appendChild(mkCol('转向前', t.from || {}, 'tc-from'));
+        cols.appendChild(el('div', { class: 'turn-arrow' }, '→'));
+        cols.appendChild(mkCol('转向后', t.to || {}, 'tc-to'));
+        card.appendChild(cols);
+        if (t.note) card.appendChild(el('div', { class: 'turn-note' }, t.note));
+      }
+
+      // 外证徽章(confirmed 带引文;apparent 弱佐证也展示)
+      (t.external || []).forEach(ex => {
+        const box = el('div', { class: 'turn-ext' });
+        const typeMap = { self: '作者自述', scholar: '学界/传记', media: '媒体' };
+        box.appendChild(el('span', { class: 'ext-badge' }, '外部佐证 · ' + (typeMap[ex.type] || ex.type || '')));
+        if (ex.who) box.appendChild(el('span', { class: 'ext-who' }, '  ' + ex.who));
+        box.appendChild(el('blockquote', null, ex.say || ''));
+        if (ex.source) { const a = el('a', { class: 'ext-src', href: ex.source, target: '_blank', rel: 'noopener' }, '查看来源 ↗'); box.appendChild(a); }
+        card.appendChild(box);
+      });
+      host.appendChild(card);
+    });
+  }
+
+  /* ===== ⑦ 母题·Story Ribbons(SVG ②) ===== */
+  function renderRibbons() {
+    const motifs = (A.motifs || []).filter(m => (m.appears_in || []).length);
+    if (!motifs.length) return;
+    show('sec-motifs');
+    const padL = 210, padR = 46, padT = 26, laneH = 52, maxW = 30;
+    const innerW = Math.max(SPAN * 150, 480);
+    const totalW = padL + innerW + padR;
+    const totalH = padT + motifs.length * laneH + 24;
+    const X = mkX(padL, innerW);
+    const svg = S('svg', { class: 'rb-svg', viewBox: '0 0 ' + Math.round(totalW) + ' ' + Math.round(totalH), width: Math.round(totalW), height: Math.round(totalH), role: 'img', 'aria-label': '母题延续 ribbon 图' });
+
+    // 顶部年份轴
+    Array.from(new Set((A.books || []).map(b => b.pub_year).filter(y => typeof y === 'number'))).sort((a, b) => a - b).forEach(y => {
+      svg.appendChild(Stext({ class: 'rb-axis-label', x: X(y).toFixed(1), y: (padT - 8).toFixed(1) }, y));
+      svg.appendChild(S('line', { x1: X(y).toFixed(1), y1: padT.toFixed(1), x2: X(y).toFixed(1), y2: (totalH - 16).toFixed(1), stroke: 'var(--line)', 'stroke-width': '1', 'stroke-dasharray': '2 5', opacity: '.5' }));
+    });
+
+    motifs.forEach((m, li) => {
+      const cy = padT + li * laneH + laneH / 2;
+      const app = (m.appears_in || []).slice().sort((a, b) => a.year - b.year);
+      const pts = app.map(a => ({ x: X(a.year), w: Math.max(4, (a.prominence || 0.5) * maxW) }));
+      const firstX = pts[0].x, lastX = pts[pts.length - 1].x;
+      const all = [{ x: firstX - 20, w: 0 }].concat(pts, [{ x: lastX + 20, w: 0 }]);
+      let d = 'M ' + all[0].x.toFixed(1) + ' ' + cy.toFixed(1);
+      all.forEach(p => { d += ' L ' + p.x.toFixed(1) + ' ' + (cy - p.w / 2).toFixed(1); });
+      for (let i = all.length - 1; i >= 0; i--) { d += ' L ' + all[i].x.toFixed(1) + ' ' + (cy + all[i].w / 2).toFixed(1); }
+      d += ' Z';
+      svg.appendChild(S('path', { class: 'rb-shape rb-' + cidx(m.color_idx != null ? m.color_idx : li), d: d }));
+      // 采样点小圆(出现处)
+      pts.forEach(p => svg.appendChild(S('circle', { cx: p.x.toFixed(1), cy: cy.toFixed(1), r: 3, fill: 'var(--paper)', stroke: 'var(--ink)', 'stroke-width': '1', opacity: '.55' })));
+      // 左端标签 + 状态
+      svg.appendChild(Stext({ class: 'rb-label', x: (padL - 16).toFixed(1), y: (cy - 6).toFixed(1) }, m.label || m.statement || ''));
+      svg.appendChild(Stext({ class: 'rb-status', x: (padL - 16).toFixed(1), y: (cy + 11).toFixed(1) }, (m.status === 'refined' ? '精炼演进' : '持续贯穿') + ' · ' + (m.span ? m.span.join('-') : '')));
+    });
+    document.getElementById('rb-host').appendChild(svg);
+  }
+
+  /* ===== ⑧ 概念演化·DAG(SVG ④ + 手机端 CSS Grid 兜底) ===== */
+  function renderDAG() {
+    const cg = A.concept_graph || {};
+    const nodes = cg.nodes || [];
+    if (!nodes.length) return;
+    show('sec-concept');
+    const edges = (cg.edges || []);
+    const byId = {}; nodes.forEach(n => { byId[n.id] = n; });
+
+    const padL = 46, padR = 60, padT = 34, rowH = 66, nodeH = 44;
+    const innerW = Math.max(SPAN * 155, 520);
+    const maxLane = nodes.reduce((m, n) => Math.max(m, n.lane || 0), 0);
+    const X = mkX(padL, innerW);
+    // 节点几何
+    const CFONT = '700 13px ' + getComputedStyle(document.body).getPropertyValue('--font-display');
+    nodes.forEach(n => {
+      const w = Math.max(78, measure(n.concept, CFONT) + 26, measure(n.concept_en || '', 'italic 600 10px sans-serif') + 20);
+      n._w = w; n._x = X(n.first_year); n._cy = padT + (n.lane || 0) * rowH + nodeH / 2; n._top = n._cy - nodeH / 2;
+    });
+    const totalW = padL + innerW + padR + 40;
+    const totalH = padT + (maxLane + 1) * rowH + 10;
+    const svg = S('svg', { class: 'dag-svg', viewBox: '0 0 ' + Math.round(totalW) + ' ' + Math.round(totalH), width: Math.round(totalW), height: Math.round(totalH), role: 'img', 'aria-label': '概念演化 DAG' });
+
+    // 顶部年份轴
+    Array.from(new Set(nodes.map(n => n.first_year))).sort((a, b) => a - b).forEach(y => {
+      svg.appendChild(Stext({ class: 'rb-axis-label', x: X(y).toFixed(1), y: (padT - 14).toFixed(1) }, y + ' 首现'));
+    });
+
+    // 边(from≠to → 贝塞尔;from==to drift → 不画线,记该 node 挂漂移徽标)
+    const driftSet = {};
+    const adj = {}; nodes.forEach(n => adj[n.id] = new Set());
+    edges.forEach((e, ei) => {
+      if (e.from === e.to) { driftSet[e.from] = (driftSet[e.from] || 0) + 1; return; }
+      const a = byId[e.from], b = byId[e.to]; if (!a || !b) return;
+      adj[e.from].add(e.to); adj[e.to].add(e.from);
+      const x1 = a._x + a._w, y1 = a._cy, x2 = b._x, y2 = b._cy;
+      const dx = Math.max(34, Math.abs(x2 - x1) / 2);
+      const type = e.type === 'persist' ? 'persist' : 'derive';
+      const path = S('path', { class: 'dag-edge ' + type, d: 'M ' + x1.toFixed(1) + ' ' + y1.toFixed(1) + ' C ' + (x1 + dx).toFixed(1) + ' ' + y1.toFixed(1) + ', ' + (x2 - dx).toFixed(1) + ' ' + y2.toFixed(1) + ', ' + x2.toFixed(1) + ' ' + y2.toFixed(1) });
+      path.dataset.from = e.from; path.dataset.to = e.to; svg.appendChild(path);
+      // 箭头
+      const ang = Math.atan2(0, dx); // 近水平
+      svg.appendChild(S('path', { class: 'dag-edge-arrow ' + type, d: 'M ' + x2.toFixed(1) + ' ' + y2.toFixed(1) + ' L ' + (x2 - 8).toFixed(1) + ' ' + (y2 - 4).toFixed(1) + ' L ' + (x2 - 8).toFixed(1) + ' ' + (y2 + 4).toFixed(1) + ' Z', 'data-from': e.from, 'data-to': e.to }));
+      if (e.label) svg.appendChild(Stext({ class: 'dag-edge-label', x: ((x1 + x2) / 2).toFixed(1), y: ((y1 + y2) / 2 - 5).toFixed(1), 'data-from': e.from, 'data-to': e.to }, e.label));
+    });
+    // 标记箭头/标签 adjacency（供 hover dim 用 class 'adj' 不预设,mouseover 时按 dataset 匹配)
+
+    // 节点
+    nodes.forEach(n => {
+      const g = S('g', { class: 'dag-node ' + (n.status || 'persist'), tabindex: '0' }); g.dataset.nodeId = n.id;
+      g.appendChild(S('rect', { class: 'dn-box', x: n._x.toFixed(1), y: n._top.toFixed(1), width: n._w.toFixed(1), height: nodeH, rx: 9 }));
+      g.appendChild(Stext({ class: 'dn-concept', x: (n._x + n._w / 2).toFixed(1), y: (n._top + 18).toFixed(1) }, n.concept));
+      if (n.concept_en) g.appendChild(Stext({ class: 'dn-en', x: (n._x + n._w / 2).toFixed(1), y: (n._top + 33).toFixed(1) }, n.concept_en));
+      // dropped: 描边淡 + ×
+      if (n.status === 'dropped') {
+        const xx = n._x + n._w - 9, yy = n._top + 9;
+        g.appendChild(S('path', { class: 'dag-dropx', d: 'M ' + (xx - 4) + ' ' + (yy - 4) + ' L ' + (xx + 4) + ' ' + (yy + 4) + ' M ' + (xx + 4) + ' ' + (yy - 4) + ' L ' + (xx - 4) + ' ' + (yy + 4) }));
+      }
+      // drift 徽标(from==to 的自环边 → 立场漂移)
+      if (driftSet[n.id]) {
+        const bx = n._x + n._w - 30, by = n._top - 9;
+        const bg = S('g', { class: 'dag-drift' });
+        bg.appendChild(S('rect', { x: bx, y: by, width: 30, height: 15, rx: 7 }));
+        bg.appendChild(Stext({ x: (bx + 15).toFixed(1), y: (by + 11).toFixed(1) }, '漂移'));
+        g.appendChild(bg);
+      }
+      svg.appendChild(g);
+    });
+
+    document.getElementById('dag-host').appendChild(svg);
+
+    // ---- 交互: hover dim + 点击展开 appearances ----
+    const panel = document.getElementById('dag-panel');
+    const resetPanel = () => { panel.innerHTML = ''; panel.appendChild(el('p', { class: 'dp-hint' }, '点击上方任一概念节点,查看它在各本书里的一句话定义与立场变化。')); };
+    resetPanel();
+
+    const markAdj = (id, on) => {
+      svg.querySelectorAll('.dag-edge,.dag-edge-arrow,.dag-edge-label').forEach(p => {
+        const hit = on && (p.dataset.from === id || p.dataset.to === id);
+        p.classList.toggle('adj', hit);
+      });
+      svg.querySelectorAll('.dag-node').forEach(nd => {
+        const nid = nd.dataset.nodeId;
+        nd.classList.toggle('hl', on && nid === id);
+        nd.classList.toggle('adj', on && adj[id] && adj[id].has(nid));
+      });
+      svg.classList.toggle('dag-hovering', on);
+    };
+    svg.querySelectorAll('.dag-node').forEach(nd => {
+      const id = nd.dataset.nodeId;
+      nd.addEventListener('mouseenter', () => markAdj(id, true));
+      nd.addEventListener('mouseleave', () => markAdj(id, false));
+      const openPanel = () => {
+        svg.querySelectorAll('.dag-node').forEach(x => x.classList.remove('sel'));
+        nd.classList.add('sel');
+        const n = byId[id];
+        panel.innerHTML = '';
+        const h = el('p', { class: 'dp-concept' }, n.concept);
+        if (n.concept_en) h.appendChild(el('span', { class: 'dp-en' }, n.concept_en));
+        const statusTxt = { persist: '持续贯穿', new: '中途新增', dropped: '后期退场', drift: '立场漂移' }[n.status] || n.status;
+        h.appendChild(el('span', { class: 'dp-en', style: 'color:var(--muted)' }, ' · ' + statusTxt + ' · ' + n.first_year + '-' + n.last_year));
+        panel.appendChild(h);
+        (n.appearances || []).forEach(ap => {
+          const box = el('div', { class: 'dp-app' });
+          const y = el('p', { class: 'dp-y' });
+          const a = el('a', { href: bookHref(ap.slug) }, '《' + bookTitle(ap.slug) + '》 · ' + ap.year);
+          y.appendChild(a); box.appendChild(y);
+          if (ap.one_liner) box.appendChild(el('p', { class: 'dp-one' }, ap.one_liner));
+          box.appendChild(el('p', { class: 'dp-st' }, ap.stance || ''));
+          panel.appendChild(box);
+        });
+      };
+      nd.addEventListener('click', openPanel);
+      nd.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPanel(); } });
+    });
+
+    // ---- 手机端 CSS Grid 兜底(列=书、行=概念,格子放 chip) ----
+    renderDagGrid(nodes);
+  }
+
+  function renderDagGrid(nodes) {
+    const grid = document.getElementById('dag-grid');
+    const books = (A.books || []).slice().filter(b => typeof b.pub_year === 'number').sort((a, b) => a.pub_year - b.pub_year);
+    const table = el('table');
+    const thead = el('thead'); const hr = el('tr'); hr.appendChild(el('th', null, '概念 \\ 书'));
+    books.forEach(b => hr.appendChild(el('th', null, b.title + ' · ' + b.pub_year))); thead.appendChild(hr); table.appendChild(thead);
+    const tb = el('tbody');
+    nodes.forEach(n => {
+      const tr = el('tr');
+      const th = el('th'); th.appendChild(document.createTextNode(n.concept)); if (n.concept_en) { const s = el('span'); s.style.cssText = 'display:block;color:var(--muted);font-weight:600;font-size:.7rem'; s.textContent = n.concept_en; th.appendChild(s); } tr.appendChild(th);
+      const appBy = {}; (n.appearances || []).forEach(ap => { appBy[ap.slug] = ap; });
+      books.forEach(b => {
+        const td = el('td');
+        const ap = appBy[b.slug];
+        if (ap) { td.appendChild(el('span', { class: 'g-chip' }, '✓')); td.appendChild(el('span', { class: 'g-st' }, ap.stance || ap.one_liner || '')); }
+        else td.appendChild(el('span', { class: 'g-st', style: 'color:var(--line)' }, '·'));
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb); grid.appendChild(table);
+  }
+
+  /* ===== ⑨ 影响谱系(空则整块隐藏) ===== */
+  function renderInfluences() {
+    const inf = A.influences || {};
+    const up = inf.upstream || [], down = inf.downstream || [];
+    if (!up.length && !down.length) return;   // 空 → 整块隐藏
+    show('sec-influ');
+    const host = document.getElementById('influ-host');
+    const col = (cls, title, arr, verb) => {
+      if (!arr.length) return null;
+      const c = el('div', { class: 'influ-col ' + cls });
+      c.appendChild(el('h3', null, title));
+      arr.forEach(it => { const p = el('p', { class: 'influ-item' }); p.appendChild(el('b', null, it.name || '')); if (it.via) p.appendChild(el('span', { class: 'influ-via' }, ' -- ' + it.via)); c.appendChild(p); });
+      return c;
+    };
+    const cu = col('up', '上承(思想源头)', up); if (cu) host.appendChild(cu);
+    const cd = col('down', '下启(受其影响)', down); if (cd) host.appendChild(cd);
+    if (host.children.length === 1) host.style.gridTemplateColumns = '1fr';
+  }
+
+  /* ===== ⑩ 代表作导航(深链) ===== */
+  function renderBooks() {
+    const books = (A.books || []).slice();
+    if (!books.length) return;
+    show('sec-books');
+    const host = document.getElementById('books-host');
+    books.sort((a, b) => (a.pub_year || 0) - (b.pub_year || 0));
+    books.forEach(b => {
+      const a = el('a', { class: 'book-row', href: bookHref(b.slug) });
+      a.appendChild(el('div', { class: 'bk-year' }, b.pub_year || ''));
+      const m = el('div', { class: 'bk-main' });
+      const t = el('div', { class: 'bk-title' }); t.appendChild(document.createTextNode(b.title || ''));
+      if (b.book_type) t.appendChild(el('span', { class: 'bk-type' }, b.book_type));
+      m.appendChild(t);
+      if (b.role_in_evolution) m.appendChild(el('p', { class: 'bk-role' }, b.role_in_evolution));
+      a.appendChild(m);
+      a.appendChild(el('div', { class: 'bk-go' }, '→'));
+      host.appendChild(a);
+    });
+  }
+
+  /* ===== ⑪ 该信几分(去神话化) ===== */
+  function renderCritique() {
+    const rc = A.recurring_critique || {};
+    const blind = rc.blind_spots || [], era = rc.era_limits || [];
+    if (!blind.length && !era.length) return;
+    show('sec-critique');
+    const host = document.getElementById('critique-host');
+    if (blind.length) {
+      const c = el('div', { class: 'crit-col crit-blind' });
+      c.appendChild(el('h3', null, '反复出现的盲点'));
+      blind.forEach(b => { const p = el('p', { class: 'crit-item' }); p.appendChild(document.createTextNode(b.text || '')); const books = (b.books || []).map(bookTitle); if (books.length) p.appendChild(el('span', { class: 'crit-src' }, '见于《' + books.join('》《') + '》')); c.appendChild(p); });
+      host.appendChild(c);
+    }
+    if (era.length) {
+      const c = el('div', { class: 'crit-col crit-era' });
+      c.appendChild(el('h3', null, '时代局限(挂出版年)'));
+      era.forEach(e => { const p = el('p', { class: 'crit-item' }); if (e.year) p.appendChild(el('span', { class: 'crit-yr' }, e.year)); p.appendChild(document.createTextNode(e.text || '')); if (e.slug) p.appendChild(el('span', { class: 'crit-src' }, '《' + bookTitle(e.slug) + '》')); c.appendChild(p); });
+      host.appendChild(c);
+    }
+    if (host.children.length === 1) host.style.gridTemplateColumns = '1fr';
+  }
+
+  /* ===== ⑫ 入门路径 ===== */
+  function renderPath() {
+    const path = A.reading_path || [];
+    if (!path.length) return;
+    show('sec-path');
+    const host = document.getElementById('path-host');
+    path.forEach(step => {
+      const li = el('li', { class: 'path-step' });
+      const p = el('p', { class: 'ps-why' });
+      // 把 why 里的《书名》替换为深链
+      const why = step.why || '';
+      const t = bookTitle(step.slug);
+      const idx = why.indexOf('《' + t + '》');
+      if (idx >= 0) {
+        p.appendChild(document.createTextNode(why.slice(0, idx)));
+        p.appendChild(el('a', { href: bookHref(step.slug) }, '《' + t + '》'));
+        p.appendChild(document.createTextNode(why.slice(idx + t.length + 2)));
+      } else {
+        p.appendChild(el('a', { href: bookHref(step.slug) }, '《' + t + '》'));
+        p.appendChild(document.createTextNode('  ' + why));
+      }
+      li.appendChild(p);
+      host.appendChild(li);
+    });
+  }
+
+  /* ===== footer ===== */
+  function renderFooter() {
+    const f = document.getElementById('ap-footer');
+    f.appendChild(el('b', null, 'AI 拆解是地图,不是目的地。'));
+    f.appendChild(document.createTextNode(' 本页由 sansheng-distill 聚合 ' + (A.author || '') + ' 的 ' + ((A.books || []).length) + ' 部已蒸馏作品自动重组而成 -- 时间线/母题/概念图是书内派生的事实,思想转向仅呈现有外部佐证的判断。想真正读懂,请回到原书。'));
+    if (A._provenance && (A._provenance.warnings || []).length) {
+      f.appendChild(el('p', { style: 'margin-top:10px;font-size:12px', class: '' }, '⚠ 聚合提示: ' + A._provenance.warnings.join('; ')));
+    }
+  }
+
+  /* ===== 主题切换 ===== */
+  function initTheme() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    let saved = null; try { saved = localStorage.getItem('author:theme'); } catch (e) {}
+    if (saved) document.body.dataset.theme = saved;
+    const sync = () => { const dark = document.body.dataset.theme === 'brand-dark'; btn.textContent = dark ? '☀ 暖纸' : '🌙 夜读'; };
+    btn.addEventListener('click', () => {
+      const dark = document.body.dataset.theme === 'brand-dark';
+      document.body.dataset.theme = dark ? 'warm-paper' : 'brand-dark';
+      try { localStorage.setItem('author:theme', document.body.dataset.theme); } catch (e) {}
+      sync();
+    });
+    sync();
+  }
+
+  function run() {
+    renderHero(); renderCard(); renderEvoSum();
+    renderTimeline(); renderPeriods(); renderTurns();
+    renderRibbons(); renderDAG(); renderInfluences();
+    renderBooks(); renderCritique(); renderPath();
+    renderFooter(); initTheme();
+    window.__authorReady = true;
+  }
+  if (document.readyState !== 'loading') run();
+  else document.addEventListener('DOMContentLoaded', run);
+})();
+</script>
+</body></html>

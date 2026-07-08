@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# redact-guard -- block commits that look like they contain secrets or personal paths.
+#
+# GENERIC patterns only. Never hard-code a real secret VALUE in this file --
+# that would publish the very secret it is meant to guard. Machine-specific
+# values (a particular server IP, a specific password) belong in a private,
+# git-ignored local hook, not here.
+#
+# Activate once per clone:  git config core.hooksPath .githooks
+set -u
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+patterns='(AIza[0-9A-Za-z_-]{20,})|(AQ\.[A-Za-z0-9_-]{20,})|(sk-[A-Za-z0-9]{20,})|(ghp_[A-Za-z0-9]{30,})|(fc-[0-9a-f]{32})|(-----BEGIN [A-Z ]*PRIVATE KEY-----)|([Cc]:\\Users\\)'
+
+hits=$(git diff --cached -U0 -- $staged | grep -nE "$patterns" || true)
+if [ -n "$hits" ]; then
+  echo "redact-guard: possible secret or personal path in staged changes -- commit blocked."
+  echo "----"
+  echo "$hits" | head -20
+  echo "----"
+  echo "Fix: move the value to an env var and ship only a name in .env.example."
+  echo "If this is a genuine false positive, re-run with: git commit --no-verify"
+  exit 1
+fi
+exit 0

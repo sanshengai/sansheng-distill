@@ -1,0 +1,2345 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{书名} · 读书蒸馏</title>
+<!--
+  sansheng-distill 页面骨架(静态层 · v3 浏览型:5 板块 · 读者逻辑链)
+  用法: 复制本文件 -> 替换 SLUG_PLACEHOLDER / {书名} / {作者} -> 逐槽位(SLOT:*)填真实内容 -> 删 dummy/占位
+  五 tab(顺序固定): 全书速览 panel-glance / 逐章精读 panel-full / 批判与评价 panel-judge / 行动清单 panel-action / 延伸阅读 panel-extend
+  头部两层: header.cb-banner(纸底+森林绿粗色带 + .cb-intro 封面简介 + .cb-author-link 醒目作者入口胶囊) + section.hero(标语 .hero>h1 字阶 T0<=48px);导读条 .reading-guide 已废,导航唯一入口 = sticky nav.tabs
+    (1) glance: .bd-napkin 餐巾纸四件套(.formula + .formula-read 读法 + one_liner) -> .napkin-sketch 因果骨架草图(内联 SVG,可降级) -> .bd-mindmap-wrap 脑图 -> .bd-coreideas 核心观点卡(展开态必渲 .ci-explain/.ci-evidence/.ci-evlevel) -> .soul-block 两种养法对照 -> .next-cta
+    (2) full:   .concept-chips 概念筹码条 -> .chapter-toc 目录态(默认收起!) -> .bd-chapters>.bd-chapter#ch-N 手风琴多开 -> .quote-wall 金句墙(全书金句唯一归宿) -> .next-cta
+    (3) judge:  .verdict-bar 裁决条 -> .arg-restate 立论复述 -> .tensions 内在张力 -> .crit-quad 批判四区 -> .reviews 书评 -> .views-entry 观点对照入口 -> .next-cta
+    (4) action: .chain 五环路线图(.chain-detail 全可见 + .chain-loop 回环) -> .rules 情境决策卡(.rule-chips 筛选 + .rule-card) -> .models 模型抽屉卡(.model-drawer 含 boundary) -> .questions 自检 -> .next-cta
+    (5) extend: .similar 同类书 -> .reading-path 阅读路径 -> .author-shelf 作者书架 -> .cross-domain 跨域命名(v4) -> .crossbook 跨书回声 -> .takeaway-strip 离开前带走(v4,出口骨架复现) -> .extend-pointer 末行指路(⑤ 无 next-cta)
+  页内子视图(2 张,</main> 前 · panel 外 · hidden 默认): #sub-author(au-* infobox 归一栏 + 五栏)/ #sub-views(观点对照 + .vt-focus 争议焦点);返回件墨色胶囊 .sub-back + .subpage-from 归属语境
+  契约: token 名与 7 主题取值见 references/brand-tokens.md;区块/签名 class 规范见 references/html-spec.md(CSS/HTML/JS 三处同名,勿漂移)
+  注意: 脑图为自绘 SVG 深色版(v4.1,无 vendor 依赖):</main> 后交互 <script> 内 initMindmap() 读内嵌 #bd-mindmap-data 的 nodeData -> tidy-tree 布局 + SVG 挂线 + viewBox viewer,勿删勿改
+  v3 铁律: 目录态默认收起(非 v2 全展开)/ 金句只在 .quote-wall 出现一次 / 核心观点展开态必渲三件 / Zero Hex(组件只用 var(--*))
+-->
+<style>
+/* ===== TOKENS:7 主题(:root=warm-paper 默认 + 6 个 body[data-theme] 覆盖块) =====
+   规则: hex 只许出现在下面这 7 个 token 块内;组件样式一律 var(--*)(Zero Hex Colors, verify_page.py 强拦)
+   token 块内只放声明,不得嵌套 {},注释里不得出现右花括号 */
+:root{
+  --ink:#171411;
+  --muted:#6d6258;
+  --paper:#f8f2e7;
+  --paper-deep:#ece1cf;
+  --line:#d8c8af;
+  --red:#b9422f;
+  --blue:#245f73;
+  --green:#177A5C;   /* 品牌对齐: 原 #4d6f48, 见 brand-tokens.md §3 */
+  --gold:#B8892F;    /* 品牌对齐: 原 #c2872d */
+  --white:#fffaf0;
+  --surface:rgba(255,250,240,.62);
+  --surface-strong:rgba(255,250,240,.72);
+  --bar-bg:rgba(248,242,231,.95);
+  --font-body:"Songti SC","Noto Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --font-display:"PingFang SC","Microsoft YaHei",sans-serif;
+  --bg:radial-gradient(circle at 22% 12%, rgba(184,137,47,.18), transparent 28rem),
+       linear-gradient(135deg,#fbf6ec 0%,#efe1ca 100%);
+  --shadow:0 18px 50px rgba(55,38,19,.14);
+  --tint-accent:rgba(184,137,47,.12);
+  --tint-accent-strong:rgba(184,137,47,.15);
+  --ink-soft:#3d332b;
+  --ink-soft-2:#44392f;
+  /* 脑图深色画布 dark token(自绘 SVG 脑图专用,主题无关恒深墨绿;SVG 生成器经 getComputedStyle 读同一套 -> 零 hex 单一来源,勿散写进组件) */
+  --mm-bg:#14332e; --mm-bg2:#1a423b; --mm-panel:#173a34;
+  --mm-root-fill:#235c4f; --mm-root-bd:#3c8272; --mm-root-tx:#f4efe4;
+  --mm-ink:#f2ede1; --mm-ink2:#dfe8e0; --mm-ink3:#bccfc4;
+  --mm-sec:#d7c48c; --mm-judge:#a9c2b7; --mm-muted:#8fa89d; --mm-line:#5f8579;
+  --mm-chip-bg:rgba(143,208,191,.15); --mm-chip-bd:rgba(143,208,191,.32); --mm-chip-tx:#bfe0d3;
+  --mm-accent:#2f6b57; --mm-accent-tx:#f4efe4;
+  --mm-border:rgba(160,190,180,.18); --mm-hair:rgba(207,224,216,.045);
+}
+body[data-theme="minimal"]{
+  --ink:#111111; --muted:#6b6b6b; --paper:#ffffff; --paper-deep:#f6f6f4; --line:#e4e4e0;
+  --red:#111111; --blue:#2f4858; --green:#2f4858; --gold:#2f4858; --white:#ffffff;
+  --surface:#fafaf8; --surface-strong:#f2f2ef; --bar-bg:rgba(248,248,246,.95);
+  --font-body:-apple-system,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  --font-display:"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  --bg:#ffffff; --shadow:0 12px 40px rgba(17,17,17,.06);
+  --tint-accent:rgba(47,72,88,.10); --tint-accent-strong:rgba(47,72,88,.14);
+  --ink-soft:#2a2a2a; --ink-soft-2:#333333;
+}
+body[data-theme="dark"]{
+  --ink:#ece1cf; --muted:#a89a86; --paper:#221d18; --paper-deep:#2a241e; --line:#3a3128;
+  --red:#e07a66; --blue:#7fb0c4; --green:#9bbf8e; --gold:#d9a441; --white:#fffaf0;
+  --surface:rgba(58,49,40,.45); --surface-strong:rgba(58,49,40,.6); --bar-bg:rgba(34,29,24,.95);
+  --font-body:"Songti SC","Noto Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --font-display:"PingFang SC","Microsoft YaHei",sans-serif;
+  --bg:radial-gradient(circle at 22% 12%, rgba(194,135,45,.08), transparent 28rem),
+       linear-gradient(135deg,#1a1714 0%,#221d18 100%);
+  --shadow:0 18px 50px rgba(0,0,0,.4);
+  --tint-accent:rgba(217,164,65,.14); --tint-accent-strong:rgba(217,164,65,.18);
+  --ink-soft:#d8ccb8; --ink-soft-2:#c9bca6;
+}
+body[data-theme="ink-wash"]{
+  --ink:#1a1a1a; --muted:#7a7468; --paper:#f4f0e6; --paper-deep:#eae3d2; --line:#cfc6b0;
+  --red:#9c2b1f; --blue:#3a352d; --green:#6b6354; --gold:#9c2b1f; --white:#fbf8ef;
+  --surface:rgba(255,253,247,.5); --surface-strong:rgba(255,253,247,.7); --bar-bg:rgba(244,240,230,.95);
+  --font-body:"Songti SC","STKaiti","KaiTi","Noto Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --font-display:"Songti SC","STSong","Noto Serif SC",serif;
+  --bg:#f4f0e6; --shadow:0 14px 44px rgba(60,50,35,.10);
+  --tint-accent:rgba(156,43,31,.08); --tint-accent-strong:rgba(156,43,31,.12);
+  --ink-soft:#3a352d; --ink-soft-2:#2e2a23;
+}
+body[data-theme="vintage-editorial"]{
+  --ink:#1f1a15; --muted:#8c8176; --paper:#f5f3ee; --paper-deep:#ebe6dc; --line:#d9d1c4;
+  --red:#c05a4a; --blue:#4a5568; --green:#6b7064; --gold:#b8893e; --white:#faf8f2;
+  --surface:rgba(250,248,242,.55); --surface-strong:rgba(250,248,242,.72); --bar-bg:rgba(245,243,238,.95);
+  --font-body:"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif;
+  --font-display:"Songti SC","STSong","Noto Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --bg:#f5f3ee; --shadow:0 14px 44px rgba(50,38,28,.08);
+  --tint-accent:rgba(192,90,74,.08); --tint-accent-strong:rgba(192,90,74,.12);
+  --ink-soft:#3d3530; --ink-soft-2:#4a403b;
+}
+body[data-theme="paper-ink"]{
+  --ink:#1a1a1a; --muted:#7a7268; --paper:#faf9f7; --paper-deep:#f0ece6; --line:#d4cdc2;
+  --red:#b53a3a; --blue:#3d4f5f; --green:#5a6b56; --gold:#b53a3a; --white:#fdfbf7;
+  --surface:rgba(253,251,247,.5); --surface-strong:rgba(253,251,247,.7); --bar-bg:rgba(250,249,247,.95);
+  --font-body:"STKaiti","KaiTi","Songti SC","Noto Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --font-display:"Songti SC","STSong","Noto Serif SC","Noto Serif CJK SC",Georgia,serif;
+  --bg:#faf9f7; --shadow:0 12px 38px rgba(30,25,20,.06);
+  --tint-accent:rgba(181,58,58,.07); --tint-accent-strong:rgba(181,58,58,.10);
+  --ink-soft:#2d2a26; --ink-soft-2:#36322d;
+}
+body[data-theme="brand-dark"]{
+  --ink:#CBD4E0; --muted:#8A94A6; --ink-soft:#8A94A6; --ink-soft-2:rgba(138,148,166,.7);
+  --paper:#0B111A; --paper-deep:#05080D; --line:rgba(232,238,245,.10);
+  --red:#E2654E; --blue:#5FA8C9; --green:#34D399; --gold:#E8B84B; --white:#0B111A;
+  --surface:rgba(255,255,255,.04); --surface-strong:rgba(13,18,26,.72);
+  --bar-bg:rgba(5,8,13,.95); --shadow:0 18px 50px rgba(0,0,0,.5);
+  --tint-accent:rgba(52,211,153,.10); --tint-accent-strong:rgba(52,211,153,.20);
+  --bg:radial-gradient(1200px 800px at 20% -10%, rgba(14,159,110,.12), transparent 60%), #05080D;
+}
+
+/* ===== 主题专属组件微调(零 hex,只许 var 与 content) ===== */
+body[data-theme="minimal"] .verdict-bar{border-left-color:var(--ink)}
+body[data-theme="minimal"] .arg-restate{border-left-color:var(--ink)}
+body[data-theme="ink-wash"] .qw-card{border-left-color:var(--red)}
+body[data-theme="vintage-editorial"] .qw-card{border-left-color:var(--red)}
+
+/* ===== 基础 ===== */
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);background:var(--bg);font-family:var(--font-body);font-size:17px;line-height:1.75}
+button{font:inherit;color:inherit}
+a{color:var(--blue)}
+[hidden]{display:none!important}
+main{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:0 0 60px;isolation:isolate}
+
+/* ===== 6 级字阶(T0-T5,section 2.3.2;组件标题只取梯内值) =====
+   T0 hero<=48 / T1 书名36 / T2 板块题26 / T3 章题·子页题22 / T4 卡片题18 / T5 标签13 */
+.section-title,.zone-title{margin:0 0 16px;font:900 1.625rem/1.25 var(--font-display);color:var(--ink)}   /* T2 26px */
+.section-lead{margin:0 0 22px;color:var(--ink-soft);font-size:1.0625rem;line-height:1.8}
+.block-lead{margin:26px 0 12px;color:var(--ink-soft);font-size:1.0625rem;line-height:1.75}
+.eyebrow{margin:0 0 12px;color:var(--red);font:700 .8125rem/1.3 var(--font-display);letter-spacing:.1em}   /* T5 */
+
+/* ===== 头部层1: .cb-banner 纸底 + 森林绿粗色带刊头(section 2.3.1) ===== */
+.cb-banner{display:grid;grid-template-columns:300px 1fr;margin:18px 0 8px;border:0;border-left:6px solid var(--green);border-radius:6px;background:linear-gradient(135deg,var(--paper),var(--paper-deep));box-shadow:var(--shadow);position:relative;overflow:hidden}
+.cb-banner::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--gold),transparent 72%)}
+.cb-banner img.cb-cover{width:100%;height:100%;max-height:420px;object-fit:contain;padding:32px 8px 32px 32px;filter:drop-shadow(0 14px 26px rgba(0,0,0,.20)) drop-shadow(0 1px 1px rgba(0,0,0,.26))}   /* 双投影=书封落纸阴影 + 轻边定义 */
+.cb-banner .cb-meta{padding:44px 48px 40px 24px}
+.cb-banner .cb-kicker{display:inline-flex;align-items:center;gap:9px;margin:0 0 14px;padding:5px 13px 5px 11px;border:1.5px solid var(--gold);border-radius:999px;background:var(--tint-accent);color:var(--ink-soft);font:700 .8125rem/1.3 var(--font-display);letter-spacing:.13em}   /* T5 金章 */
+.cb-banner .cb-kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold)}
+.cb-banner .cb-title{margin:0 0 10px;color:var(--ink);font:900 2.25rem/1.22 var(--font-display);letter-spacing:.01em}   /* T1 36px 深字 */
+.cb-banner .cb-author{margin:0 0 16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;color:var(--ink-soft);font-size:.9375rem}
+.cb-banner .cb-author-lead{color:var(--muted)}
+.cb-banner .cb-author-link{display:inline-flex;align-items:center;padding:4px 14px;border:1.5px solid var(--gold);border-radius:999px;background:var(--tint-accent-strong);color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--gold);transition:transform .18s ease,background .18s ease}
+.cb-banner .cb-author-link:hover{transform:translateX(3px);background:color-mix(in srgb,var(--gold) 30%,transparent)}
+.cb-banner .cb-author-hint{color:var(--muted);font:700 .8125rem/1 var(--font-display);letter-spacing:.02em}
+.cb-banner .cb-intro{margin:0;max-width:40em;color:var(--ink-soft);font-size:1.0625rem;line-height:1.9}
+.cb-banner .cb-intro strong{color:var(--ink);font-weight:700;border-bottom:2px solid var(--gold)}
+
+/* ===== 头部层间: .author-entry 演变入口卡(banner→hero 之间;作者 ≥2 部已蒸才渲染,否则整卡删) ===== */
+.author-entry{display:flex;align-items:center;flex-wrap:wrap;gap:9px 14px;margin:14px 0 4px;padding:12px 18px;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:8px;background:var(--surface-strong);color:var(--ink-soft);text-decoration:none;transition:border-color .18s ease,transform .18s ease}
+.author-entry:hover{border-color:var(--gold);transform:translateX(3px)}
+.author-entry .ae-badge{flex:0 0 auto;padding:3px 11px;border:1.5px solid var(--gold);border-radius:999px;background:var(--tint-accent);color:var(--ink-soft);font:700 .75rem/1.3 var(--font-display);letter-spacing:.08em}
+.author-entry .ae-text{flex:1 1 auto;min-width:12ch;color:var(--ink-soft);font-size:.9375rem;line-height:1.6}
+.author-entry .ae-text b{color:var(--ink);font-weight:800}
+.author-entry .ae-go{flex:0 0 auto;color:var(--blue);font:800 .875rem/1.3 var(--font-display);white-space:nowrap}
+
+/* ===== 头部层3: .hero 标语(降级 T0) ===== */
+.hero{padding:30px 0 18px}
+.hero h1{margin:0;max-width:920px;font:900 clamp(2.25rem,4vw,3rem)/1.15 var(--font-display);letter-spacing:.005em}   /* T0 36-48px */
+
+/* ===== Tabs / Panels(激活态类名 = on) ===== */
+.tabs{position:sticky;top:0;z-index:50;display:grid;gap:8px;padding:10px;margin:20px 0 28px;border:1px solid var(--line);background:var(--bar-bg);grid-template-columns:repeat(5,1fr)}
+.tab{min-height:56px;border:0;border-radius:4px;background:transparent;cursor:pointer;font:800 1rem/1.2 var(--font-display);padding:6px 6px}
+.tab .tab-sub{display:block;margin-top:3px;font:600 .75rem/1.2 var(--font-display);color:var(--muted)}
+.tab.on{color:var(--paper);background:var(--green)}
+.tab.on .tab-sub{color:var(--paper);opacity:.72}
+.panel{display:none;animation:rise .36s ease both}
+.panel.on{display:block}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== 板尾 .next-cta(每板底一枚,指向下一板) ===== */
+.next-cta{display:flex;align-items:center;justify-content:center;gap:8px;margin:34px 0 6px;padding:18px 22px;border:0;border-radius:6px;background:var(--green);color:var(--paper);cursor:pointer;font:800 1.0625rem/1.3 var(--font-display);text-decoration:none;width:100%;transition:transform .2s}
+.next-cta:hover{transform:translateY(-2px)}
+
+/* ===== (1) 餐巾纸 .bd-napkin ===== */
+.note{padding:22px;border:1px solid var(--line);background:var(--surface)}
+.bd-napkin{border-top:3px solid var(--gold)}
+.bd-napkin h3{margin:0 0 10px;font:800 1.125rem/1.3 var(--font-display)}   /* T4 */
+.bd-napkin .formula{margin:6px 0 8px;color:var(--green);font:900 1.625rem/1.4 var(--font-display)}
+/* 公式读法 .formula-read(v4,Q4-1:.formula 正下方,小一号,前缀「怎么读:」,点明运算符语义) */
+.bd-napkin .formula-read{margin:0 0 14px;color:var(--ink-soft);font-size:.9375rem;line-height:1.7}
+.bd-napkin .formula-read::before{content:"怎么读:";margin-right:2px;color:var(--green);font-weight:700}
+.bd-napkin p:not(.formula):not(.formula-read){margin:0;color:var(--ink-soft-2);font-size:1.0625rem;line-height:1.75}
+
+/* ===== (1) 因果骨架草图 .napkin-sketch(v4,Q4-2:内联 SVG 纵向因果流,直角经典/浅色/静态一屏;
+   餐巾纸后、脑图前;色只走 token -- --paper 底 / --green 引线与描边 / --ink 文字 / 中间产物 --gold 描边) ===== */
+.napkin-sketch{margin:6px 0 22px;padding:14px 12px 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+.napkin-sketch .sk-caption{margin:0 0 8px;color:var(--ink-soft);font:700 .8125rem/1.5 var(--font-display);letter-spacing:.02em;text-align:center}
+.napkin-sketch .sk-caption b{color:var(--green)}
+.napkin-sketch svg{display:block;width:100%;height:auto;max-height:70vh;margin:0 auto}
+/* 二阶实底(作者:中间产物 + 终点统一绿实底白字 / 支柱·过程=浅底描边) */
+.napkin-sketch .sk-node{fill:var(--surface-strong);stroke:var(--green);stroke-width:1.4}
+.napkin-sketch .sk-node.sk-mid{fill:var(--green);stroke:none}
+.napkin-sketch .sk-node.sk-end{fill:var(--green);stroke:none}
+.napkin-sketch .sk-label{fill:var(--ink);font-family:var(--font-display);font-weight:700;font-size:11px}
+.napkin-sketch .sk-label.sk-tmid,.napkin-sketch .sk-label.sk-tend{fill:var(--white)}
+.napkin-sketch .sk-line{fill:none;stroke:var(--green);stroke-width:1.4;stroke-opacity:.45;shape-rendering:crispEdges}
+.napkin-sketch .sk-arrow{fill:var(--green)}
+/* 转换标签:纯文字挪到引线上方(不套框、不压箭头) */
+.napkin-sketch .sk-elabel{fill:var(--green);font-family:var(--font-display);font-weight:700;font-size:11px}
+
+/* ===== (1) 脑图 .bd-mindmap-wrap(v4.1 自绘 SVG 深色版:tidy-tree 确定性布局 + viewBox 缩放 viewer;
+   深墨绿圆角画布嵌浅色纸页,上下留白过渡不生硬贴边;配色全走 --mm-* dark token(零 hex);
+   SVG 生成器读内嵌 nodeData 通用出图,只画父子直角引线、不画任何关联箭头/收纳虚线) ===== */
+.bd-mindmap-wrap{position:relative;margin:26px 0 22px}
+/* 深色画布 = viewBox viewer 视口:点阵磨砂纹 + 极缓径向渐变,圆角、软投影(留白过渡),拖动手势、不选中 */
+.bd-mindmap-wrap #bd-mindmap{position:relative;display:block;width:100%;height:clamp(460px,64vh,680px);
+  border-radius:16px;overflow:hidden;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;
+  box-shadow:0 16px 44px rgba(9,26,22,.30),0 0 0 1px rgba(120,150,140,.16);
+  background:
+    radial-gradient(circle at 26px 26px, var(--mm-hair) 1px, transparent 1.4px) 0 0/26px 26px,
+    radial-gradient(120% 120% at 26% 32%, var(--mm-bg2) 0%, var(--mm-bg) 66%)}
+.bd-mindmap-wrap #bd-mindmap.grabbing{cursor:grabbing}
+.bd-mindmap-wrap #bd-mindmap .mm-stage{position:absolute;top:0;left:0}
+.bd-mindmap-wrap #bd-mindmap .mm-stage svg{display:block}
+.bd-mindmap-wrap #bd-mindmap a.jump{cursor:pointer}
+.bd-mindmap-wrap #bd-mindmap a{-webkit-user-drag:none;user-drag:none}
+/* 工具栏(缩小/放大/复位/全屏),浮在深色画布右上 */
+.bd-mindmap-wrap .mm-toolbar{position:absolute;top:16px;right:16px;z-index:6;display:flex;gap:8px}
+.bd-mindmap-wrap .mm-toolbar button{font:inherit;font-size:13px;line-height:1;cursor:pointer;
+  background:rgba(255,255,255,.05);color:var(--mm-ink);border:1px solid var(--mm-border);border-radius:6px;
+  padding:7px 11px;transition:background .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
+.bd-mindmap-wrap .mm-toolbar button:hover{background:rgba(255,255,255,.12);border-color:rgba(160,190,180,.42)}
+.bd-mindmap-wrap .mm-toolbar button.mm-fs{background:var(--mm-accent);color:var(--mm-accent-tx);border-color:var(--mm-root-bd)}
+.bd-mindmap-wrap .mm-toolbar button.mm-fs:hover{background:var(--mm-root-fill)}
+/* 交互提示 / 跳章 toast / 缩放徽标(全浮在深色画布内) */
+.bd-mindmap-wrap .mm-hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:7;
+  background:rgba(9,26,22,.9);color:var(--mm-ink);font:12.5px/1.4 var(--font-display);padding:9px 15px;
+  border-radius:20px;pointer-events:none;border:1px solid var(--mm-border);box-shadow:0 4px 18px rgba(0,0,0,.4);
+  opacity:0;transition:opacity .4s;white-space:nowrap;max-width:92%}
+.bd-mindmap-wrap .mm-hint.show{opacity:1}
+.bd-mindmap-wrap .mm-toast{position:absolute;left:50%;top:16px;transform:translateX(-50%) translateY(-8px);z-index:8;
+  background:var(--mm-accent);color:var(--mm-accent-tx);font:13px/1.4 var(--font-display);padding:9px 16px;border-radius:8px;
+  opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;border:1px solid var(--mm-chip-bd);box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.bd-mindmap-wrap .mm-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.bd-mindmap-wrap .mm-zoom{position:absolute;right:16px;bottom:16px;z-index:6;background:rgba(9,26,22,.72);
+  border:1px solid var(--mm-border);color:var(--mm-ink2);font:12px/1 var(--font-display);padding:5px 10px;border-radius:6px;
+  font-variant-numeric:tabular-nums;pointer-events:none}
+/* 画布下方一行引导(留在纸底浅色页,故用页面 token) */
+.bd-mindmap-wrap .mm-caption{margin:12px 4px 2px;color:var(--muted);font:12px/1.6 var(--font-display)}
+/* 全屏聚焦态:纯深色铺满视口(JS 会把 wrap 临时移到 <body> 顶层,逃离 main/panel 祖先 stacking context;z 高于 nav/主题浮层) */
+.bd-mindmap-wrap.mm-fullscreen{position:fixed;inset:0;z-index:9999;margin:0;padding:0;background:var(--mm-bg)}
+.bd-mindmap-wrap.mm-fullscreen #bd-mindmap{height:100%;border-radius:0;box-shadow:none}
+.bd-mindmap-wrap.mm-fullscreen .mm-caption{display:none}
+@media(max-width:880px){
+  .bd-mindmap-wrap .mm-toolbar{top:12px;right:12px;gap:6px}
+  .bd-mindmap-wrap .mm-toolbar button{padding:8px 10px}
+}
+
+/* ===== (1) 核心观点卡 .bd-coreideas(展开态必渲三件:explain/evidence/evlevel,T8) ===== */
+.bd-coreideas{margin-top:30px}
+.ci-list{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:8px}
+.ci{padding:18px 20px;border:1px solid var(--line);background:var(--surface);cursor:pointer;transition:border-color .2s}
+.ci:hover{border-color:var(--gold)}
+.ci .ci-idea{margin:0;font:800 1.125rem/1.5 var(--font-display);color:var(--ink)}   /* T4 18px */
+.ci .ci-analogy{margin:8px 0 0;color:var(--ink-soft-2);font-size:1rem;line-height:1.7}
+.ci-primary{grid-column:1/-1;border-left:4px solid var(--red);background:var(--surface-strong);padding:24px 26px}
+.ci-primary .ci-idea{font-size:1.375rem;line-height:1.4}
+.ci-primary .ci-analogy{font-size:1.0625rem}
+.ci-more{margin:12px 0 0;color:var(--blue);font:700 .8125rem/1.3 var(--font-display)}
+.ci.on .ci-more{color:var(--muted)}
+.ci-detail{display:none;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+.ci.on .ci-detail{display:block;animation:rise .3s ease both}
+.ci-explain{margin:0 0 10px;color:var(--ink-soft);font-size:1rem;line-height:1.8}
+.ci-evidence{margin:0 0 10px;padding-left:12px;border-left:2px solid var(--line);color:var(--ink-soft-2);font-size:.9375rem;line-height:1.75}
+.ci-evlevel{display:inline-flex;align-items:center;gap:6px;font:700 .8125rem/1.3 var(--font-display);color:var(--ink-soft-2)}
+.ci-evlevel::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.ci-evlevel[data-level="confirmed"]::before{background:var(--green)}   /* 原文确认 */
+.ci-evlevel[data-level="inferred"]::before{background:var(--gold)}     /* 结构推断 */
+.ci-evlevel[data-level="review"]::before{background:var(--red)}        /* 需复核 */
+.ci-teleport{display:inline-block;margin-top:10px;color:var(--blue);font:700 .875rem/1.3 var(--font-display);text-decoration:none}
+/* pillar 分组(v4,Q1-3):观点卡按脑图一级分支归组,组头=分支名 */
+.ci-group{margin-top:18px}
+.ci-group-head{display:flex;align-items:center;gap:10px;margin:0 0 4px;color:var(--red);font:800 1rem/1.4 var(--font-display);letter-spacing:.02em}
+.ci-group-head::before{content:"";flex:0 0 auto;width:8px;height:8px;border-radius:2px;background:var(--red);transform:rotate(45deg)}
+.ci-portal{display:inline-block;margin-top:10px;color:var(--gold);font:700 .8125rem/1.3 var(--font-display);text-decoration:none}
+.ci-portal:hover{text-decoration:underline}
+
+/* ===== (1) 两种养法对照 .soul-block(soul_module 三型择一) ===== */
+.soul-block{margin:30px 0 0;padding:22px 24px;border:1px solid var(--line);background:var(--surface)}
+.soul-title{margin:0 0 6px;font:900 1.375rem/1.35 var(--font-display);color:var(--ink)}   /* T3 */
+.soul-subtitle{margin:0 0 8px;color:var(--red);font:700 .9375rem/1.5 var(--font-display)}
+.soul-intro{margin:0 0 16px;color:var(--ink-soft-2);font-size:1rem;line-height:1.8}
+.soul-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.soul-state{padding:16px 18px;border:1px solid var(--line);background:var(--surface-strong)}
+.soul-state h4{margin:0 0 8px;font:800 1.0625rem/1.3 var(--font-display);color:var(--ink)}
+.soul-state p{margin:0 0 10px;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.7}
+.soul-state ul{margin:0;padding-left:18px;color:var(--muted);font-size:.875rem;line-height:1.7}
+.soul-chain{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+.soul-link{flex:1 1 160px;display:flex;gap:10px;padding:14px 16px;border:1px solid var(--line);background:var(--surface-strong)}
+.soul-link .sl-no{flex:0 0 auto;width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:var(--blue);color:var(--white);font:800 14px/1 var(--font-display)}
+.soul-link h4{margin:0 0 4px;font:800 .9375rem/1.3 var(--font-display)}
+.soul-link p{margin:0;color:var(--ink-soft-2);font-size:.875rem;line-height:1.6}
+.soul-arrow{display:grid;place-items:center;color:var(--red);font:900 22px/1 var(--font-display)}
+.soul-curve{margin:0 0 16px}
+.soul-curve-svg{display:block;width:100%;height:200px;border:1px solid var(--line);background:var(--surface-strong)}
+.soul-curve-svg .sc-axis{stroke:var(--line);stroke-width:1;stroke-dasharray:4 4}
+.soul-curve-svg .sc-line{fill:none;stroke:var(--red);stroke-width:3;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
+.soul-curve-svg .sc-dot{fill:var(--red)}
+.sc-legend{display:flex;align-items:center;gap:8px;margin:8px 0 0;color:var(--muted);font:13px/1.4 var(--font-display)}
+.sc-legend .sc-swatch{width:14px;height:3px;background:var(--red);display:inline-block}
+
+/* ===== (2) 概念筹码条 .concept-chips(概念唯一归宿) ===== */
+.concept-chips{margin-bottom:28px}
+.cc-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cc-chip{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer;font:700 .9375rem/1.2 var(--font-display);color:var(--ink)}
+.cc-chip:hover{border-color:var(--gold)}
+.cc-chip.on{background:var(--green);color:var(--paper);border-color:var(--green)}
+/* 概念中英对照(视频型 Q6):英文原词跟在中文概念后,弹卡内以 --gold 斜体呈现 */
+.cc-chip .cc-en{margin-left:6px;color:var(--muted);font:600 .8125rem/1 var(--font-body);font-style:italic}
+.cc-chip.on .cc-en{color:var(--paper)}
+.cc-pop .cc-en{margin-left:6px;color:var(--gold);font-style:italic;font-weight:700}
+/* 误读角标(v4,Q2-2):common_misread 非空的 chip 面上右上角小「≠」,提示点进去有误读纠偏 */
+.cc-chip{position:relative}
+.cc-chip.cc-has-mis::after{content:"\2260";position:absolute;top:-6px;right:-6px;width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:var(--red);color:var(--white);font:800 11px/1 var(--font-display)}
+.cc-pops{margin-top:12px}
+.cc-pop{display:none;padding:16px 20px;border:1px solid var(--line);border-left:4px solid var(--gold);background:var(--surface-strong)}
+.cc-pop.on{display:block;animation:rise .3s ease both}
+.cc-pop .cc-one{margin:0 0 8px;font:800 1rem/1.5 var(--font-display);color:var(--ink)}
+.cc-pop .cc-mis{margin:0 0 6px;color:var(--red);font-size:.9375rem;line-height:1.6}
+.cc-pop .cc-stance{margin:0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.6}
+
+/* ===== (2) 章目录 .chapter-toc(目录态,默认收起 + 手风琴逃生门) ===== */
+.chapter-toc{margin-bottom:30px}
+.toc-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:14px 18px;border:1px solid var(--line);border-top:3px solid var(--ink);background:var(--surface-strong)}
+.toc-summary{font:700 1rem/1.4 var(--font-display);color:var(--ink)}
+.toc-progress{color:var(--muted);font:700 .875rem/1.3 var(--font-display)}
+.toc-expand{margin-left:auto;padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer;font:700 .8125rem/1.2 var(--font-display);color:var(--ink-soft)}
+.toc-expand:hover{border-color:var(--gold);color:var(--ink)}
+.toc-list{display:grid;gap:8px;margin-top:12px}
+.toc-row{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:12px 16px;border:1px solid var(--line);background:var(--surface);cursor:pointer;transition:border-color .2s}
+.toc-row:hover{border-color:var(--gold)}
+.toc-row.hl{border-color:var(--gold);box-shadow:var(--shadow)}
+.toc-no{flex:0 0 auto;width:36px;height:36px;display:grid;place-items:center;border-radius:50%;background:var(--line);color:var(--ink);font:800 15px/1 var(--font-display)}
+.toc-row.open .toc-no,.toc-row.read .toc-no{background:var(--gold);color:var(--white)}
+.toc-main{flex:1 1 auto;min-width:0}
+.toc-title{font:800 1.125rem/1.35 var(--font-display);color:var(--ink)}   /* T4 */
+.toc-sum{margin:2px 0 0;color:var(--muted);font-size:.875rem;line-height:1.5}
+/* 悬念钩子(v4,Q5-5):收起行第三层,强调色短句,取该章招牌案例的具象意象 */
+.toc-hook{display:block;margin:4px 0 0;color:var(--gold);font:700 .8125rem/1.4 var(--font-display)}
+.toc-hook::before{content:"\2192\00a0";color:var(--gold)}
+.toc-meta{flex:0 0 auto;display:flex;align-items:center;gap:10px;color:var(--muted);font:700 .8125rem/1.3 var(--font-display)}
+.toc-arrow{transition:transform .2s}
+.toc-row.open .toc-arrow{transform:rotate(180deg)}
+
+/* ===== (2) 手风琴章节 .bd-chapters / .bd-chapter(默认收起) ===== */
+.bd-chapters{margin-bottom:30px}
+.bd-chapter{margin:0 0 14px;border:1px solid var(--line);border-top:3px solid var(--red);background:var(--surface)}
+.bd-chapter:not(.open){display:none}
+.bd-chapter .ch-inner{padding:24px 26px}
+.bd-chapter h3{margin:0 0 16px;font:800 1.375rem/1.35 var(--font-display);color:var(--ink)}   /* T3 22px */
+.bd-chapter p{margin:0 0 14px;color:var(--ink-soft);font-size:1.0625rem;line-height:1.9}
+.bd-chapter .excerpt{margin:18px 0;padding:16px 20px;border-left:4px solid var(--gold);background:var(--paper-deep);color:var(--ink-soft);font-size:1rem;line-height:1.8;font-style:normal}
+.ch-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
+.ch-act{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer;font:700 .8125rem/1.2 var(--font-display);color:var(--ink-soft);text-decoration:none}
+.ch-act:hover{border-color:var(--gold);color:var(--ink)}
+.ch-act.ch-next{background:var(--green);color:var(--paper);border-color:var(--green)}
+
+/* ===== 出处小灰字 .src-note(随文常显,无开关) ===== */
+.src-note{display:block;margin-top:10px;color:var(--muted);font:12px/1.5 var(--font-display);text-align:right}
+.excerpt .src-note{text-align:left;margin-top:8px}
+
+/* ===== (2) 全书金句墙 .quote-wall(金句唯一集中归宿) ===== */
+.quote-wall{margin-top:8px}
+.qw-list{display:grid;gap:14px;margin-top:12px}
+.qw-card{margin:0;padding:22px 26px;border-left:4px solid var(--gold);background:var(--surface-strong)}
+.qw-card.qw-featured{border-left-width:6px;background:var(--paper-deep)}
+.qw-card blockquote{margin:0;color:var(--ink-soft);font:600 1.1875rem/1.8 var(--font-body)}
+.qw-featured blockquote{font-size:1.375rem}
+.qw-card figcaption{margin-top:10px;color:var(--muted);font:13px/1.5 var(--font-display)}
+.qw-card .qw-teleport{display:inline-block;margin-top:8px;color:var(--blue);font:700 .8125rem/1.3 var(--font-display);text-decoration:none}
+/* 双语引用(视频型 Q6):中文译作可读主行,英文原话照录在 blockquote[lang=en] 作原文佐证 */
+.qw-card blockquote[lang="en"]{font-style:italic;font-size:1.0625rem;color:var(--ink-soft-2)}
+.qw-card .qw-zh{margin:10px 0 0;color:var(--ink);font:600 1.1875rem/1.8 var(--font-body)}
+.qw-featured .qw-zh{font-size:1.375rem}
+
+/* ===== (3) 裁决条 .verdict-bar ===== */
+.verdict-bar{display:flex;align-items:center;gap:22px;padding:22px 26px;border:1px solid var(--line);border-left:6px solid var(--gold);background:var(--surface-strong);margin-bottom:24px}
+.vb-score{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;line-height:1}
+.vb-score b{font:900 2.75rem/1 var(--font-display);color:var(--gold)}
+.vb-score span{margin-top:4px;color:var(--muted);font:700 .75rem/1.3 var(--font-display)}
+.vb-text{margin:0;color:var(--ink-soft);font-size:1.0625rem;line-height:1.75}
+/* 热度条(视频型 Q6:替豆瓣评分):频道订阅大数 + 系列合计播放/赞,标 as_of 快照 */
+.verdict-bar .vb-heat{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;line-height:1}
+.verdict-bar .vb-heat b{font:900 2.25rem/1 var(--font-display);color:var(--gold)}
+.verdict-bar .vb-heat span{margin-top:4px;color:var(--muted);font:700 .75rem/1.3 var(--font-display)}
+.verdict-bar .vb-body{display:flex;flex-direction:column;gap:6px}
+.vb-heatline{margin:0;color:var(--ink-soft-2);font:700 .875rem/1.55 var(--font-display)}
+.vb-heatline b{color:var(--green)}
+
+/* ===== (3) 立论复述 .arg-restate(arguments.chain 唯一归宿) ===== */
+.arg-restate{margin:0 0 26px;padding:20px 24px;border-left:5px solid var(--red);background:var(--surface-strong)}
+.arg-restate .ar-sub{margin:0 0 10px;color:var(--red);font:700 .875rem/1.3 var(--font-display)}
+.arg-restate p{margin:0;color:var(--ink-soft);font-size:1.0625rem;line-height:1.85}
+/* 论证链胶囊(v4,Q4-7):散文段之上一条横向 step 链,5 秒可扫;窄屏纵排 */
+.arg-steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 16px;padding:0;list-style:none}
+.arg-step{padding:6px 13px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font:700 .875rem/1.3 var(--font-display)}
+.arg-step.arg-step-last{background:var(--green);color:var(--paper);border-color:var(--green)}
+.arg-arrow{flex:0 0 auto;color:var(--red);font:900 .9375rem/1 var(--font-display)}
+@media(max-width:560px){.arg-steps{flex-direction:column;align-items:flex-start}.arg-arrow{transform:rotate(90deg);margin-left:16px}}
+
+/* ===== (3) 内在张力 .tensions(A<->B 窄行,点开仲裁) ===== */
+.tensions{margin-bottom:26px}
+.tn-list{display:grid;gap:10px;margin-top:12px}
+.tn-row{padding:14px 18px;border:1px solid var(--line);background:var(--surface);cursor:pointer}
+.tn-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font:800 1.0625rem/1.4 var(--font-display);color:var(--ink)}
+.tn-a,.tn-b{flex:1 1 38%}
+.tn-vs{flex:0 0 auto;color:var(--red);font:900 1.125rem/1 var(--font-display)}
+.tn-note{display:none;margin:10px 0 0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.7}
+.tn-row.open .tn-note{display:block;animation:rise .3s ease both}
+
+/* ===== (3) 批判四区 .crit-quad(2x2 四色分区,全部可见) ===== */
+.crit-quad{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;margin-bottom:26px}
+.cq-zone{padding:18px 20px;border:1px solid var(--line);border-radius:6px}
+.cq-zone .zone-title{margin:0 0 12px;font:900 1.125rem/1.3 var(--font-display);border:0;padding:0}   /* T4 内标题 */
+.cq-zone .cq-item{margin:0 0 10px;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.7}
+.cq-zone .cq-item:last-child{margin-bottom:0}
+.cq-assume{background:color-mix(in srgb,var(--gold) 10%,transparent);border-left:4px solid var(--gold)}
+.cq-blind{background:color-mix(in srgb,var(--blue) 10%,transparent);border-left:4px solid var(--blue)}
+.cq-era{background:color-mix(in srgb,var(--green) 10%,transparent);border-left:4px solid var(--green);grid-column:1/-1}
+.cq-object{background:color-mix(in srgb,var(--red) 12%,transparent);border-left:4px solid var(--red);grid-column:1/-1}
+.cq-object .cq-strong{margin:0 0 10px;font:800 1.1875rem/1.5 var(--font-display);color:var(--ink)}
+
+/* ===== (3) 书评 .reviews(正反两列) ===== */
+.reviews{margin-bottom:26px}
+.review-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.review-col h4{margin:0 0 10px;font:800 1rem/1.3 var(--font-display)}
+.review-col.review-pos h4{color:var(--green)}
+.review-col.review-neg h4{color:var(--red)}
+.review-item{margin:0 0 10px;padding:14px 18px;border:1px solid var(--line);border-left:3px solid var(--blue);background:var(--surface);font-size:.9375rem;line-height:1.75;color:var(--ink-soft-2)}
+.review-item .stance{margin-right:8px;color:var(--green);font:700 12px/1 var(--font-display)}
+.review-item .stance.neg{color:var(--red)}
+.review-item .r-src{display:block;margin-top:8px;color:var(--muted);font:12px/1.5 var(--font-display)}
+
+/* ===== (3) 观点对照入口卡 .views-entry ===== */
+.views-entry{display:block;margin-bottom:26px;padding:22px 26px;border:1px solid var(--line);border-radius:6px;background:var(--surface);text-decoration:none;color:inherit;transition:border-color .2s,transform .2s}
+.views-entry:hover{border-color:var(--gold);transform:translateY(-2px)}
+.ve-kicker{color:var(--red);font:700 .8125rem/1.3 var(--font-display);letter-spacing:.08em}
+.ve-title{margin:6px 0 0;font:800 1.125rem/1.3 var(--font-display);color:var(--ink)}
+.ve-list{margin:10px 0;padding-left:20px;color:var(--ink-soft);font-size:1rem;line-height:1.8}
+.ve-go{color:var(--blue);font:700 .9375rem/1.3 var(--font-display)}
+
+/* ===== (4) 行动路线图 .chain(全可见 + .chain-detail + 回环 .chain-loop) ===== */
+.chain{position:relative;margin-top:8px}
+.chain-steps{display:grid;gap:12px}
+.chain-step{display:block;padding:16px 20px;border:1px solid var(--line);border-left:4px solid var(--line);background:var(--surface);cursor:pointer;transition:border-color .2s}
+.chain-step:hover,.chain-step.hl{border-left-color:var(--gold)}
+.cs-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.cs-no{flex:0 0 auto;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:var(--ink);color:var(--paper);font:800 15px/1 var(--font-display)}
+.cs-label{font:800 1.125rem/1.3 var(--font-display);color:var(--ink)}   /* T4 */
+.cs-badge{margin-left:auto;padding:3px 10px;border-radius:999px;background:var(--tint-accent);color:var(--ink-soft-2);font:700 .75rem/1.3 var(--font-display)}
+.chain-explain{margin:10px 0 0;color:var(--ink-soft);font-size:1rem;line-height:1.75}
+.chain-detail{margin:10px 0 0;padding:12px 16px;border-left:2px solid var(--line);background:var(--surface-strong);color:var(--ink-soft-2);font-size:.9375rem;line-height:1.8}
+.chain-loop{display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px 16px;color:var(--muted);font:700 .875rem/1.3 var(--font-display)}
+.chain-loop svg{flex:0 0 auto}
+.chain-loop .cl-path{fill:none;stroke:var(--gold);stroke-width:2;stroke-dasharray:5 4;stroke-linecap:round}
+
+/* ===== (4) 情境决策卡 .rules(.rule-chips 筛选 + .rule-card 三行全可见) ===== */
+.rules{margin-top:12px}
+.rule-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.rc-group-label{width:100%;margin:6px 0 0;color:var(--muted);font:700 .75rem/1.3 var(--font-display);letter-spacing:.06em}
+.rc-chip{padding:7px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer;font:700 .875rem/1.2 var(--font-display);color:var(--ink-soft-2)}
+.rc-chip:hover{border-color:var(--gold)}
+.rc-chip.on{background:var(--green);color:var(--paper);border-color:var(--green)}
+.rule-list{display:grid;gap:10px}
+.rule-card{padding:16px 20px;border:1px solid var(--line);background:var(--surface)}
+.rule-card.hl{border-color:var(--gold);box-shadow:var(--shadow)}
+.rc-when{margin:0 0 6px;font:700 1rem/1.5 var(--font-display);color:var(--ink)}
+.rc-do{margin:0 0 6px;font-size:1rem;line-height:1.6;color:var(--ink-soft)}
+.rc-because{margin:0;color:var(--muted);font-size:.9375rem;line-height:1.6}
+.rc-when b{color:var(--red)}
+.rc-do b{color:var(--green)}
+.rc-because b{color:var(--muted)}
+.rc-teleport{display:inline-block;margin-top:8px;color:var(--blue);font:700 .8125rem/1.3 var(--font-display);text-decoration:none}
+
+/* ===== (4) 心智模型抽屉卡 .models / .model-drawer(含 boundary) ===== */
+.models{margin-top:12px}
+.model-list{display:grid;gap:10px}
+.model-drawer{border:1px solid var(--line);background:var(--surface)}
+.md-head{display:flex;align-items:center;gap:10px;width:100%;padding:16px 20px;cursor:pointer;background:transparent;border:0;text-align:left}
+.md-name{font:800 1.125rem/1.3 var(--font-display);color:var(--ink)}   /* T4 */
+.md-essence{color:var(--muted);font-size:.9375rem;line-height:1.5}
+.md-toggle{margin-left:auto;flex:0 0 auto;color:var(--blue);font:700 .875rem/1 var(--font-display)}
+.model-drawer.open .md-head{border-bottom:1px solid var(--line)}
+.md-body{display:none;padding:6px 20px 18px}
+.model-drawer.open .md-body{display:block;animation:rise .3s ease both}
+.md-seg{margin:12px 0 0}
+.md-seg .md-k{display:block;margin-bottom:3px;color:var(--red);font:700 .8125rem/1.3 var(--font-display);letter-spacing:.06em}
+.md-seg.md-how .md-k{color:var(--green)}
+.md-seg.md-boundary .md-k{color:var(--red)}
+.md-seg p{margin:0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.75}
+
+/* ===== (4) 读完自检 .questions(followup 直显,无勾选) ===== */
+.questions{display:grid;gap:12px;counter-reset:q;margin-top:12px}
+.question{display:grid;grid-template-columns:54px 1fr;gap:14px;align-items:start;padding:18px;border:1px solid var(--line);background:var(--surface)}
+.question::before{counter-increment:q;content:counter(q,decimal-leading-zero);display:grid;place-items:center;width:46px;height:46px;color:var(--paper);background:var(--gold);font:900 20px/1 var(--font-display)}
+.question h3{margin:0 0 6px;font:800 1.125rem/1.35 var(--font-display)}   /* T4 */
+.question p{margin:0 0 6px;color:var(--ink-soft-2);font-size:1rem;line-height:1.7}
+.question .q-back{color:var(--blue);font:700 .8125rem/1.3 var(--font-display);text-decoration:none}
+
+/* ===== (5) 同类书卡 .similar(relation 三色徽标) ===== */
+.similar{margin-bottom:30px}
+.sim-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:12px}
+.sim-card{padding:18px 20px;border:1px solid var(--line);background:var(--surface);transition:border-color .2s,box-shadow .2s}
+.sim-card.hl{border-color:var(--gold);box-shadow:var(--shadow)}
+.sim-card h3{margin:0 0 4px;font:800 1.125rem/1.3 var(--font-display);display:flex;align-items:center;gap:10px;flex-wrap:wrap}   /* T4 */
+.sim-rel{padding:2px 10px;border-radius:999px;font:700 12px/1.5 var(--font-display);color:var(--white)}
+.rel-support{background:var(--green)}
+.rel-extend{background:var(--blue)}
+.rel-rebut{background:var(--red)}
+.sim-card .sim-author{margin:0 0 8px;color:var(--muted);font-size:.875rem}
+.sim-card .sim-why{margin:0 0 6px;color:var(--ink-soft);font-size:.9375rem;line-height:1.7}
+.sim-card .sim-fit{margin:0;color:var(--ink-soft-2);font-size:.875rem}
+
+/* ===== (5) 阅读路径 .reading-path(stepper) ===== */
+.reading-path{margin-bottom:30px}
+.rp-desc{margin:0 0 12px;color:var(--ink-soft);font-size:1rem;line-height:1.7}
+.rp-steps{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.rp-step{display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer;font:700 .9375rem/1.2 var(--font-display)}
+.rp-step:hover,.rp-step.hl{border-color:var(--gold)}
+.rp-step .rp-no{flex:0 0 auto;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:var(--ink);color:var(--paper);font:800 12px/1 var(--font-display)}
+.rp-arrow{color:var(--muted)}
+
+/* ===== (5) 作者书架 .author-shelf ===== */
+.author-shelf{margin-bottom:30px}
+.shelf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.shelf-head a{color:var(--blue);font:700 .9375rem/1.3 var(--font-display);text-decoration:none}
+.shelf-row{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px}
+.shelf-card{flex:0 0 210px;padding:16px 18px;border:1px solid var(--line);background:var(--surface)}
+.shelf-card .sh-year{color:var(--muted);font:700 .8125rem/1.3 var(--font-display)}
+.shelf-card .sh-title{margin:4px 0;font:800 1rem/1.3 var(--font-display);color:var(--ink)}
+.shelf-card .sh-one{margin:0;color:var(--ink-soft-2);font-size:.875rem;line-height:1.6}
+
+/* ===== (5) 跨域命名 .cross-domain(v4,Q4-3:这套思想在别处叫什么;排 crossbook 之前) ===== */
+.cross-domain{margin-bottom:24px}
+.xd-list{display:grid;gap:10px;margin-top:12px}
+.xd-item{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 12px;padding:14px 18px;border:1px solid var(--line);border-left:4px solid var(--gold);background:var(--surface)}
+.xd-domain{flex:0 0 auto;padding:3px 10px;border-radius:999px;background:var(--tint-accent);color:var(--ink-soft-2);font:700 .75rem/1.3 var(--font-display);white-space:nowrap}
+.xd-name{flex:0 0 auto;color:var(--ink);font:800 1.0625rem/1.3 var(--font-display)}
+.xd-note{flex:1 1 240px;min-width:0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.6}
+
+/* ===== (5) 跨书回声 .crossbook ===== */
+.crossbook{margin-bottom:24px}
+.xb-list{display:grid;gap:10px;margin-top:12px}
+.xb-echo{padding:14px 18px;border:1px solid var(--line);background:var(--surface);font-size:.9375rem;line-height:1.7;color:var(--ink-soft-2)}
+.xb-echo .tag{margin-right:8px;padding:3px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font:700 11px/1 var(--font-display);white-space:nowrap}
+.xb-echo a{color:var(--blue)}
+
+/* ===== (5) 离开前带走 .takeaway-strip(v4,Q2-1:出口骨架复现,声明式回顾;排末行指路之前) ===== */
+.takeaway-strip{margin:26px 0 0;padding:16px 18px;border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:8px;background:var(--surface)}
+.takeaway-strip .tw-head{margin:0 0 8px;color:var(--ink);font:800 1rem/1.4 var(--font-display)}
+.takeaway-strip .tw-formula{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 10px;margin:0 0 12px}
+.takeaway-strip .tw-formula .tw-eq{color:var(--green);font:800 1.0625rem/1.4 var(--font-display)}
+.takeaway-strip .tw-formula .tw-tag{padding:2px 9px;border:1px solid var(--gold);border-radius:999px;background:var(--tint-accent);color:var(--ink-soft);font:700 .6875rem/1.3 var(--font-display);white-space:nowrap}
+.takeaway-strip .tw-rings{display:flex;flex-wrap:wrap;gap:8px}
+.takeaway-strip .tw-ring{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink);font:700 .8125rem/1.3 var(--font-display);text-decoration:none;transition:transform .15s ease,border-color .15s ease}
+.takeaway-strip .tw-ring::before{content:counter(tw-ring);counter-increment:tw-ring;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--green);color:var(--paper);font-size:.6875rem}
+.takeaway-strip .tw-rings{counter-reset:tw-ring}
+.takeaway-strip .tw-ring:hover{transform:translateY(-1px);border-color:var(--gold)}
+
+/* ===== (5) 末行指路 .extend-pointer(⑤ 不设 next-cta) ===== */
+.extend-pointer{margin:22px 0 0;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.9375rem;line-height:1.7;text-align:center}
+.extend-pointer a{color:var(--blue)}
+
+/* ===== Footer ===== */
+.footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font:14px/1.75 var(--font-display)}
+
+/* ===== 浮动控件: 主题切换器(右下,弹层,非默认主题在前) ===== */
+.theme-picker{position:fixed;right:16px;bottom:20px;z-index:100}
+.theme-picker .tp-trigger{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border:1.5px solid var(--line);border-radius:999px;background:var(--bar-bg);backdrop-filter:blur(8px);color:var(--ink-soft);cursor:pointer;font:800 13px/1 var(--font-display);letter-spacing:.02em;box-shadow:var(--shadow);transition:border-color .2s,color .2s,transform .2s,box-shadow .2s}
+.theme-picker .tp-trigger:hover{border-color:var(--gold);color:var(--ink);transform:translateY(-2px);box-shadow:0 14px 34px color-mix(in srgb,var(--gold) 30%,transparent)}
+.theme-picker .tp-trigger .tp-ico{font-size:15px;line-height:1}
+.theme-picker .tp-trigger .tp-caret{transition:transform .2s}
+.theme-picker[data-open="1"] .tp-trigger .tp-caret{transform:rotate(180deg)}
+.theme-picker .tp-menu{position:absolute;right:0;bottom:calc(100% + 8px);display:none;flex-direction:column;gap:2px;width:172px;padding:7px;border:1px solid var(--line);border-radius:10px;background:var(--bar-bg);backdrop-filter:blur(10px);box-shadow:var(--shadow)}
+.theme-picker[data-open="1"] .tp-menu{display:flex}
+.theme-picker .tp-menu button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--ink-soft);cursor:pointer;font:600 13px/1.2 var(--font-display);text-align:left}
+.theme-picker .tp-menu button:hover{background:var(--tint-accent);color:var(--ink)}
+.theme-picker .tp-menu button[aria-current="true"]{border-color:var(--gold);color:var(--ink)}
+.theme-picker .tp-menu button .sw{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:var(--line)}
+.theme-picker .tp-menu button[aria-current="true"] .sw{background:var(--gold)}
+
+/* ===== 出处溯源(data-source 边线 + hover 气泡,常显) ===== */
+[data-source]{position:relative}
+[data-source]::after{content:attr(data-source);position:absolute;left:-4px;bottom:calc(100% + 4px);padding:3px 8px;background:var(--ink);color:var(--paper);font:11px/1.3 var(--font-display);border-radius:3px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s;z-index:3}
+[data-source]:hover::after{opacity:1}
+
+/* ===== 页内子视图 .subpage(全屏覆盖,hash 路由;返回件墨色胶囊 + 归属语境) ===== */
+.subpage{position:fixed;inset:0;z-index:200;overflow-y:auto;background:var(--bg);-webkit-overflow-scrolling:touch}
+.subpage-inner{width:min(980px,calc(100% - 32px));margin:0 auto;padding-bottom:80px}
+.subpage-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:16px;padding:16px 0;margin-bottom:20px;background:var(--bar-bg);backdrop-filter:blur(8px);border-bottom:2px solid var(--ink)}
+.sub-back{display:inline-flex;align-items:center;gap:8px;padding:10px 20px 10px 16px;border:0;border-radius:999px;background:var(--green);color:var(--paper);font:700 .875rem/1 var(--font-display);cursor:pointer;box-shadow:var(--shadow)}
+.sub-back::before{content:"\2190";font-size:1rem;line-height:1;transition:transform .18s ease}
+.sub-back:hover::before{transform:translateX(-3px)}
+.sub-back:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.sub-back:active{transform:scale(.97)}
+.subpage-bar .subpage-title{margin:0;font:800 1.375rem/1.2 var(--font-display);color:var(--ink)}   /* T3 22px */
+.subpage-bar .subpage-from{margin-left:auto;color:var(--muted);font:700 .8125rem/1.3 var(--font-display);letter-spacing:.06em}
+.subpage-body{color:var(--ink-soft);font-size:17px;line-height:1.9}
+.subpage-body .sp-lead{margin:0 0 18px;color:var(--ink-soft-2);font-size:18px;line-height:1.8;padding-left:14px;border-left:3px solid var(--red)}
+.sp-srcs{margin-top:20px;color:var(--muted);font:13px/1.6 var(--font-display)}
+.sp-srcs a{color:var(--blue)}
+
+/* ===== 作者子页 au-*(infobox 归一栏 + 五栏,F2) ===== */
+.au-body{display:grid;grid-template-columns:minmax(0,1fr) 296px;gap:24px 28px;align-items:start}
+.au-tagline{grid-column:1/-1;grid-row:1;margin:0;font:700 1.1875rem/1.7 var(--font-display);color:var(--ink);padding-left:14px;border-left:4px solid var(--gold)}
+/* 身份卡(v4,Q1-6):仅人物书,第一人称引块渲 persona_card;跨全宽,排 au-tagline 之下 */
+.au-persona{grid-column:1/-1;grid-row:2;margin:0;padding:18px 22px;border:1px solid var(--line);border-left:4px solid var(--red);background:var(--surface-strong);color:var(--ink-soft);font:italic 500 1.0625rem/1.85 var(--font-body);position:relative}
+.au-persona::before{content:"\201C";position:absolute;top:2px;left:10px;color:var(--red);font:900 2rem/1 var(--font-display);opacity:.35}
+.au-infobox{grid-column:2;grid-row:3;align-self:start;position:sticky;top:82px;padding:20px;border:1px solid var(--line);border-top:3px solid var(--red);border-radius:6px;background:var(--surface-strong)}
+.au-photo{margin:0 0 14px;display:grid;place-items:center}
+.au-photo img{width:120px;height:120px;object-fit:cover;border-radius:8px}
+.au-monogram{width:120px;height:120px;display:grid;place-items:center;border-radius:8px;background:var(--gold);color:var(--white);font:900 56px/1 var(--font-display)}
+.au-name{margin:0 0 4px;font:800 1.125rem/1.3 var(--font-display);color:var(--ink)}   /* T4 */
+.au-roles{margin:0 0 14px;color:var(--muted);font-size:.875rem;line-height:1.5}
+.au-facts{margin:0}
+.au-fact{display:grid;grid-template-columns:74px 1fr;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.au-fact dt{color:var(--muted);font:700 .8125rem/1.5 var(--font-display)}
+.au-fact dd{margin:0;color:var(--ink-soft);font-size:.875rem;line-height:1.6}
+.au-fact dd a{color:var(--blue)}
+.au-thisbook-badge{margin-left:6px;padding:1px 7px;border-radius:999px;background:var(--gold);color:var(--white);font:700 11px/1.4 var(--font-display);font-style:normal}
+.au-main{grid-column:1;grid-row:3;min-width:0}
+.au-sec{margin:0 0 30px}
+.au-sec-title{margin:0 0 14px;font:800 1.375rem/1.35 var(--font-display);color:var(--ink);padding-bottom:8px;border-bottom:2px solid var(--line)}   /* T3 */
+.au-timeline{list-style:none;margin:0;padding:0 0 0 22px;border-left:2px solid var(--gold)}
+.au-tl{position:relative;margin-bottom:20px}
+.au-tl::before{content:"";position:absolute;left:-29px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--gold)}
+.au-tl-period{color:var(--muted);font:700 .8125rem/1.3 var(--font-display)}
+.au-tl-body strong{display:block;margin:4px 0;font:800 1rem/1.3 var(--font-display);color:var(--ink)}
+.au-tl-body p{margin:0;color:var(--ink-soft-2);font-size:.9375rem;line-height:1.7}
+.au-stats{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px}
+.au-stat{padding:14px 18px;border:1px solid var(--line);background:var(--surface-strong);min-width:120px}
+.au-stat b{display:block;font:900 1.5rem/1.1 var(--font-display);color:var(--green)}
+.au-stat span{color:var(--muted);font:700 .8125rem/1.3 var(--font-display)}
+.au-debate-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.au-dcol h4{margin:0 0 10px;font:800 1rem/1.3 var(--font-display)}
+.au-dcol-pro h4{color:var(--green)}
+.au-dcol-con h4{color:var(--red)}
+.au-dentry{margin:0 0 10px;padding:12px 14px;border:1px solid var(--line);background:var(--surface)}
+.au-dentry a{color:var(--blue);font-size:13px}
+.au-lineage{margin:12px 0 0;padding:12px 16px;background:var(--tint-accent);color:var(--ink-soft-2);font:700 .9375rem/1.6 var(--font-display)}
+.au-works-list{list-style:none;margin:0;padding:0}
+.au-work{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:12px 8px;border-bottom:1px solid var(--line)}
+.au-work-this{background:var(--surface-strong)}
+.au-wyear{color:var(--red);font:700 .875rem/1.6 var(--font-display)}
+.au-work strong{font:800 1rem/1.4 var(--font-display)}
+.au-work a{color:var(--blue)}
+.au-work p{margin:4px 0 0;color:var(--ink-soft-2);font-size:.875rem;line-height:1.6}
+
+/* ===== 观点对照子页 view-topic(沿用 v2 + .vt-focus 争议焦点) ===== */
+.view-topic{margin:0 0 22px;padding:18px 20px;border:1px solid var(--line);background:var(--surface)}
+.vt-viewpoint{margin:0 0 8px;font:800 1.125rem/1.4 var(--font-display);color:var(--ink)}
+.vt-focus{margin:0 0 14px;color:var(--red);font:700 .9375rem/1.5 var(--font-display)}
+.vt-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.vt-col-label{margin:0 0 8px;font:800 .875rem/1.3 var(--font-display)}
+.vt-support .vt-col-label{color:var(--green)}
+.vt-critic .vt-col-label{color:var(--red)}
+.vt-entry{margin:0 0 10px;padding:12px 14px;border:1px solid var(--line);background:var(--surface-strong)}
+.vt-entry .vt-who{margin:0 0 4px;font:700 .875rem/1.3 var(--font-display);color:var(--ink)}
+.vt-entry .vt-say{margin:0 0 6px;color:var(--ink-soft-2);font-size:.875rem;line-height:1.65}
+.vt-entry a{color:var(--blue);font-size:13px}
+.vt-empty{color:var(--muted);font-size:.875rem;font-style:italic}
+
+/* ===== hash 路由落点高亮 ===== */
+.flash{animation:bd-flash 1.6s ease}
+@keyframes bd-flash{0%{background:var(--tint-accent-strong)}100%{background:transparent}}
+.panel [id]{scroll-margin-top:calc(var(--tab-h, 88px) + 12px)}
+
+/* ===== 响应式(移动端整体降半级) ===== */
+@media (max-width:880px){
+  .cb-banner{grid-template-columns:1fr}
+  .cb-banner img.cb-cover{max-height:280px;padding:24px}
+  .cb-banner .cb-meta{padding:26px 24px 30px}
+  .tabs{position:static;grid-template-columns:repeat(2,1fr)}
+  .ci-list,.sim-grid,.crit-quad,.au-debate-cols,.review-cols,.vt-cols{grid-template-columns:1fr}
+  .theme-picker .tp-menu{width:min(200px,calc(100vw - 28px))}
+}
+@media (max-width:720px){
+  .cb-banner .cb-title{font-size:1.75rem}     /* T1 mobile 28px */
+  .hero h1{font-size:2rem}                     /* T0 mobile 32px */
+  .section-title,.zone-title{font-size:1.375rem} /* T2 mobile 22px */
+  .bd-chapter h3,.subpage-bar .subpage-title,.au-sec-title,.soul-title{font-size:1.25rem} /* T3 mobile 20px */
+  .subpage-bar .subpage-from{display:none}
+  .sub-back{min-height:44px}
+  .au-body{grid-template-columns:1fr}
+  .au-infobox{grid-column:1;grid-row:auto;position:static;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:start}
+  .au-main{grid-row:auto}
+  .au-persona{grid-row:auto}
+  .au-photo{grid-row:1/4;margin:0}
+  .au-photo img,.au-monogram{width:76px;height:76px;font-size:34px}
+  .au-name,.au-roles,.au-facts{grid-column:2}
+}
+@media (max-width:520px){
+  .question{grid-template-columns:1fr}
+  .au-infobox{grid-template-columns:1fr}
+  .au-photo{grid-row:auto}
+}
+
+/* ============================================================
+   v4 批次 C(逐章交互 + UI 精修 + 手机端)· Q5/Q7 追加层
+   全走 token · 零 hex · 禁 prefers-reduced-motion 门控(作者机器常开减少动效,门控=看到静止)
+   ============================================================ */
+/* Q7-11 圆角三档 token(收敛 0/4/6/10/999 混用;--r-card 内容卡 / --r-ui 容器件 / --r-pill 胶囊) */
+:root{--r-card:0;--r-ui:6px;--r-pill:999px}
+.tab{border-radius:var(--r-ui)}
+
+/* Q5-1 / Q7-2 目录行:论点标题独占一行(永不截)+ 摘要另起一行;移动端摘要截 2 行 */
+.toc-title{display:block;text-wrap:pretty}
+.toc-sum{display:block;margin:3px 0 0;line-height:1.6}
+@media (max-width:880px){
+  .toc-sum{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+}
+
+/* Q7-1 正文行长收窄至中文舒适区(~40-44 字/行) */
+.bd-chapter .ch-inner{max-width:46em;margin:0 auto}
+.section-lead,.arg-restate p,.vb-text,.soul-intro{max-width:44em}
+.bd-chapter p{text-wrap:pretty}
+.section-title,.zone-title,.bd-chapter h3{text-wrap:balance}
+.qw-card blockquote{max-width:40em}
+
+/* Q7-5 sticky tab 毛玻璃 + 吸顶阴影(sentinel + IntersectionObserver 切 .stuck) */
+.tabs{backdrop-filter:saturate(160%) blur(12px);-webkit-backdrop-filter:saturate(160%) blur(12px)}
+.tabs.stuck{box-shadow:0 8px 24px -18px rgba(0,0,0,.4)}
+.tabs-sentinel{height:1px;margin:0 0 -1px}
+
+/* Q7-4 微动效:章展开 rise / 按压 scale .985 / 主题弹层 pop -- 无 reduced-motion 门控 */
+.bd-chapter.open .ch-inner{animation:rise .3s ease both}
+.tab,.next-cta,.cc-chip,.rc-chip,.toc-row,.ci,.md-head,.sub-back,.toc-expand,.ch-act,.rp-step,.tn-row,.chain-step{transition:transform .12s ease,border-color .2s ease,background .2s ease}
+.tab:active,.next-cta:active,.cc-chip:active,.rc-chip:active,.toc-row:active,.ci:active,.md-head:active,.toc-expand:active,.ch-act:active,.rp-step:active,.tn-row:active,.chain-step:active{transform:scale(.985)}
+@keyframes tp-pop{from{opacity:0;transform:scale(.94) translateY(4px)}to{opacity:1;transform:none}}
+.theme-picker[data-open="1"] .tp-menu{animation:tp-pop .18s cubic-bezier(.2,.8,.3,1.1) both;transform-origin:100% 100%}
+
+/* Q7-8 触达目标 ≥44px(行内传送门负 margin 扩热区,版面零位移)+ 全局焦点环 */
+.qw-teleport,.rc-teleport,.q-back,.r-src,.ci-teleport,.ci-portal,.extend-pointer a{padding:12px 10px;margin:-12px -10px;position:relative;z-index:1}
+@media (pointer:coarse){
+  .cc-chip,.rc-chip,.toc-expand,.ch-act,.sub-back,.tp-trigger,.rp-step{min-height:44px}
+}
+:is(.tab,.toc-row,.ci,.cc-chip,.rc-chip,.next-cta,.md-head,.toc-expand,.ch-act,.rp-step,.tn-row,.chain-step,a):focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* Q5-8 目录行整行可点 + hover 底色(点开平滑滚动落 tab 下沿由 scroll-margin-top 兜) */
+.toc-row:hover{background:var(--tint-accent)}
+
+/* Q5-3 读/开态视觉分离:开=金标+金描边高亮(正在读);读=绿标+✓ 角标(读到章尾才计,见 JS IO) */
+.toc-no{position:relative}
+.toc-row.open .toc-no{background:var(--gold);color:var(--white)}
+.toc-row.open{border-color:var(--gold);box-shadow:var(--shadow)}
+.toc-row.read .toc-no{background:var(--green);color:var(--white)}
+.toc-row.read .toc-no::after{content:"\2713";position:absolute;right:-4px;bottom:-4px;width:15px;height:15px;display:grid;place-items:center;border-radius:50%;background:var(--green);color:var(--white);border:2px solid var(--paper);font:800 9px/1 var(--font-display)}
+
+/* Q5-2 章尾下一章预告卡 / 末章终局卡(JS 读 toc 论点标题 + 读时填充,保留 .ch-next 契约) */
+.ch-actions .ch-next.cn-card,.ch-actions .ch-final{flex:1 1 100%;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:14px 18px;text-align:left;border-radius:var(--r-ui)}
+.ch-next .cn-kick{font:700 .75rem/1.3 var(--font-display);opacity:.86;letter-spacing:.02em}
+.ch-next .cn-title{font:800 1.0625rem/1.35 var(--font-display)}
+.ch-next .cn-meta{font:700 .8125rem/1.3 var(--font-display);opacity:.92}
+
+/* Q5-4 阅读中微型上下文条:挂 tab 栏下沿(top:--tab-h,与 Q7-6 同吸顶层,两者总高约 96px)
+   章正文入视口时显、离开隐(IntersectionObserver,与 Q5-3 共用观测) */
+.ch-ctxbar{position:sticky;top:var(--tab-h,64px);z-index:40;display:none;align-items:center;gap:9px;height:32px;padding:0 6px 0 14px;margin:0 0 12px;border:1px solid var(--line);border-radius:var(--r-pill);background:var(--bar-bg);backdrop-filter:saturate(160%) blur(12px);-webkit-backdrop-filter:saturate(160%) blur(12px);color:var(--ink-soft);font:700 .8125rem/1 var(--font-display);box-shadow:var(--shadow)}
+.ch-ctxbar.show{display:flex}
+.ch-ctxbar .cx-ch{color:var(--ink);white-space:nowrap}
+.ch-ctxbar .cx-sep{color:var(--line)}
+.ch-ctxbar .cx-progress{color:var(--muted);white-space:nowrap}
+.ch-ctxbar .cx-totoc{margin-left:auto;flex:0 0 auto;padding:6px 13px;border:1px solid var(--line);border-radius:var(--r-pill);background:var(--surface);color:var(--ink-soft);font:700 .75rem/1 var(--font-display);cursor:pointer}
+.ch-ctxbar .cx-totoc:hover{border-color:var(--gold);color:var(--ink)}
+
+/* Q7-11 张力行三栏居中(A 右 / 箭头中 / B 左)+ 行尾 ▾ 可点线索;观点卡奇数末卡跨满 */
+.tn-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
+.tn-a{text-align:right}
+.tn-b{text-align:left}
+.tn-row::after{content:"\25BE";display:block;margin:6px 0 0;text-align:center;color:var(--muted);font-size:.75rem;transition:transform .2s}
+.tn-row.open::after{transform:rotate(180deg)}
+.ci-list .ci:last-child:nth-child(odd):not(.ci-primary){grid-column:1/-1}
+
+/* Q7-11 出处气泡 z 提高(防被 sticky 栏截半)+ 贴左缘归位 */
+[data-source]::after{z-index:60;left:0}
+
+/* Q7-11 主题浮钮小屏图标钮化(48 圆钮,达 44 触达,只留 🎨) */
+@media (max-width:720px){
+  .theme-picker .tp-trigger{width:48px;height:48px;padding:0;justify-content:center;border-radius:50%}
+  .theme-picker .tp-trigger .tp-label,.theme-picker .tp-trigger .tp-caret{display:none}
+}
+
+/* Q7-6 移动端 tab 栏改 sticky 单行横滑(~64px;tab-sub 隐藏;min 48;激活 tab 由 JS scrollIntoView 居中) */
+@media (max-width:880px){
+  .tabs{position:sticky;top:0;display:flex;overflow-x:auto;gap:6px;padding:6px 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;min-height:48px;padding:6px 16px}
+  .tab .tab-sub{display:none}
+}
+
+/* Q7-7 暗色主题眉题对比:深底暗红 13px 小字不过 AA → 改金(金在深底天然达标,仍零 hex) */
+body[data-theme="dark"] .eyebrow,body[data-theme="brand-dark"] .eyebrow{color:var(--gold)}
+</style>
+</head>
+<body>
+<main data-book-slug="SLUG_PLACEHOLDER">
+
+  <!-- SLOT:HEADER 头部两层(纸底+森林绿粗色带刊头 + 封面简介 + hero 标语降级;导读条已删,导航唯一入口 = 下方 sticky nav.tabs) -->
+  <!-- 填槽: .cb-cover 书籍须为 data:image 真封面(禁外链);.cb-kicker=book_type+领域;.cb-intro=cover_intro(2-3 句,禁比喻/禁复用 napkin);
+       .cb-author 内 .cb-author-link=作者名(醒目胶囊,点进 #sub-author)+ .cb-author-hint 备注;
+       .hero>.eyebrow=core_question(v4,一句疑问句 ≤40 字,与 h1 成问答配对,禁复用 cover_intro/one_liner);.hero>h1=全书比喻一句(T0,只一句无解释)。 -->
+  <header class="cb-banner">
+    <img class="cb-cover" alt="{书名} 封面(dummy 占位,填页换真封面 base64)" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='320'%20height='440'%3E%3Crect%20width='320'%20height='440'%20fill='%23ece1cf'/%3E%3Ctext%20x='160'%20y='245'%20font-size='140'%20text-anchor='middle'%20fill='%236d6258'%3E%E4%B9%A6%3C/text%3E%3C/svg%3E">
+    <div class="cb-meta">
+      <p class="cb-kicker">{{book_type}} · {{领域}} 书系定位(dummy)</p>
+      <h2 class="cb-title">{书名}</h2>
+      <p class="cb-author"><span class="cb-author-lead">作者 ·</span> <a class="cb-author-link" href="#sub-author">{作者}</a> <span class="cb-author-hint">查看作者档案 →</span></p>
+      <p class="cb-intro">{{cover_intro}} -- 封面简介 2-3 句:素材从哪来、框架是什么、结论落在哪;关键词用 <strong>金下划线</strong> 标出。禁比喻、禁复用 napkin.one_liner(dummy)。</p>
+    </div>
+  </header>
+
+  <!-- SLOT:AUTHOR-ENTRY 演变入口卡(banner 之后 · hero 之前;链到该作者「思想演变全景」聚合页 author.html)
+       填槽: {作者}=author.json.author / {K}=本书在该作者已蒸序号 / {N}=该作者已蒸总数 / {role}=本书 books[].role_in_evolution / {author_slug}=authors 目录 slug;href=../authors/{author_slug}/author.html。
+       降级(硬): 该作者 <2 部已蒸 或 无 authors/{author_slug}/author.json → 生成时把本 SLOT(含注释对)整段删,单书页照常(见 references/author-craft.md §7)。下方为 dummy 示例。 -->
+  <a class="author-entry" href="../authors/AUTHOR_SLUG_PLACEHOLDER/author.html">
+    <span class="ae-badge">思想演变</span>
+    <span class="ae-text">这是 <b>{{author}}</b> 的第 <b>{{K}}</b>/<b>{{N}}</b> 部蒸馏 · {{role_in_evolution}}(dummy 示例)</span>
+    <span class="ae-go">查看思想演变全景 →</span>
+  </a>
+  <!-- /SLOT:AUTHOR-ENTRY -->
+
+  <section class="hero">
+    <p class="eyebrow">{{core_question}} 这本书回答的核心问题一句(疑问句 ≤40 字,与下方标语成问答配对,dummy)?</p>
+    <h1>{{hero_slogan}} 全书中心比喻一句(T0,dummy)</h1>
+  </section>
+  <!-- /SLOT:HEADER -->
+
+  <nav class="tabs" id="bd-tabs">
+    <button class="tab on" data-panel="panel-glance">全书速览<span class="tab-sub">先看全貌</span></button>
+    <button class="tab" data-panel="panel-full">逐章精读<span class="tab-sub">一章一章读</span></button>
+    <button class="tab" data-panel="panel-judge">批判与评价<span class="tab-sub">别急着全信</span></button>
+    <button class="tab" data-panel="panel-action">行动清单<span class="tab-sub">读完这么用</span></button>
+    <button class="tab" data-panel="panel-extend">延伸阅读<span class="tab-sub">接着读什么</span></button>
+  </nav>
+
+  <!-- ==================== 板块① 全书速览 ==================== -->
+  <section class="panel on" id="panel-glance">
+
+    <!-- SLOT:G-NAPKIN 餐巾纸四件套(公式 + 公式读法 + 一句话;sketch 见下一 SLOT。napkin.one_liner 全页唯一出现处) -->
+    <div class="note bd-napkin" data-source="全书收束章(示例)">
+      <h3>餐巾纸背面</h3>
+      <p class="formula">{{napkin.formula}} 投资成功 =(内在价值 − 买入价格)+ 情绪纪律(示例)</p>
+      <p class="formula-read">{{napkin.formula_read}} 为什么是加不是乘:两项相加、能以长补短(示例读法,前缀「怎么读:」由 CSS 出,勿手写)。</p>
+      <p>{{napkin.one_liner}} 整本书压成一句能讲给朋友的话(dummy,全页唯一出现)。</p>
+    </div>
+    <!-- /SLOT:G-NAPKIN -->
+
+    <!-- SLOT:G-SKETCH 因果骨架草图(v4,Q4-2:内联 SVG 纵向因果流,直角经典/浅色/静态一屏;餐巾纸后、脑图前;
+         initSketch() 读 #bd-sketch-data 通用出图,禁写死某本书;蒸不出干净骨架 → 整块删。数据契约见 html-spec §1.2.1a) -->
+    <div class="napkin-sketch">
+      <script type="application/json" id="bd-sketch-data">{
+        "type": "cascade",
+        "caption": "(示例)从起因经中间产物汇流到最终结果的因果骨架",
+        "nodes": [
+          { "id": "a", "label": "起因甲" }, { "id": "b", "label": "起因乙" }, { "id": "c", "label": "起因丙" },
+          { "id": "m1", "label": "中间产物甲", "mid": true }, { "id": "m2", "label": "中间产物乙", "mid": true },
+          { "id": "hub", "label": "汇流点" }, { "id": "z", "label": "最终结果" }
+        ],
+        "edges": [
+          { "from": "a", "to": "m1", "label": "" }, { "from": "b", "to": "m1", "label": "" },
+          { "from": "c", "to": "m2", "label": "" }, { "from": "m1", "to": "hub", "label": "" },
+          { "from": "m2", "to": "hub", "label": "汇入" }, { "from": "hub", "to": "z", "label": "长成" }
+        ]
+      }</script>
+      <div id="bd-sketch"></div>
+    </div>
+    <!-- /SLOT:G-SKETCH -->
+
+    <!-- SLOT:G-MINDMAP 全书脑图(v4.1 自绘 SVG 深色版:nodeData 双层知识树 → tidy-tree 布局 → SVG 挂线节点 + viewBox viewer;二级 hyperLink=#ch-N 承载章码传送门。SVG 版不画关联箭头/收纳虚线,arrows/summaries 若残留一律忽略。数据契约见 html-spec §5) -->
+    <div class="bd-mindmap-wrap">
+      <script type="application/json" id="bd-mindmap-data">{
+        "layout": "chapter-span",
+        "nodeData": {
+          "id": "root", "topic": "{书名}", "root": true,
+          "children": [
+            { "id": "p1", "topic": "① 命题(示例) · 第1章", "children": [
+              { "id": "ch1", "topic": "第二层思维", "tags": ["与众不同且更正确才有超额收益(示例)", "第1章"], "hyperLink": "#ch-1", "expanded": false, "children": [
+                { "id": "ch1-m", "topic": "🧠 一层/二层思维模型(示例)", "_src": "第1章·mental_model", "children": [
+                  { "id": "ch1-c", "topic": "📖 招牌案例(示例)", "_src": "第1章·narrative" } ] } ] } ] },
+            { "id": "p2", "topic": "② 方法(示例) · 第2章", "children": [
+              { "id": "ch2", "topic": "市场先生", "tags": ["市场报价是情绪指示计不是行动指令(示例)", "第2章"], "hyperLink": "#ch-2", "expanded": false, "children": [
+                { "id": "ch2-c", "topic": "📖 报价先生的钟摆(示例)", "_src": "第2章·narrative" } ] } ] },
+            { "id": "p3", "topic": "③ 落地(示例) · 第3章", "children": [
+              { "id": "ch3", "topic": "估价先行", "tags": ["先定价值再看价格才不会追涨杀跌(示例)", "第3章"], "hyperLink": "#ch-3", "expanded": false, "children": [
+                { "id": "ch3-r", "topic": "⚖️ 大跌时先复核价值(示例)", "_src": "第3章·decision_rule" } ] } ] }
+          ]
+        }
+      }</script>
+      <div id="bd-mindmap">
+        <div class="mm-stage" aria-hidden="false"></div>
+        <div class="mm-toolbar">
+          <button type="button" data-mm="out" title="缩小" aria-label="缩小脑图">－</button>
+          <button type="button" data-mm="in" title="放大" aria-label="放大脑图">＋</button>
+          <button type="button" data-mm="fit">复位</button>
+          <button type="button" class="mm-fs" data-mm="fs" aria-label="全屏查看脑图">⤢ 全屏</button>
+        </div>
+        <div class="mm-hint" aria-hidden="true"></div>
+        <div class="mm-toast" aria-hidden="true"></div>
+        <div class="mm-zoom" aria-hidden="true">100%</div>
+      </div>
+      <p class="mm-caption">点任一分支的章码,直达该章精读。滚轮 / 双指缩放 · 拖动平移 · 双击复位 · 矢量放大不糊。</p>
+    </div>
+    <!-- /SLOT:G-MINDMAP -->
+
+    <!-- SLOT:G-COREIDEAS 核心观点卡(v4:按 pillar 分组渲染,组头=脑图一级分支名,组内 2-4 卡,null 入「贯穿全书」组;点卡展开必渲 explain+evidence+evlevel 三件,T8) -->
+    <!-- 填槽:每个 .ci-group 对应一个脑图一级分支(core_ideas[].pillar=分支序号);.ci-group-head=分支名;pillar===null 的卡入末组「贯穿全书」。
+         与 soul_module 同源的那条 core_idea 不标 primary、渲普通卡 + 卡尾 .ci-portal 传送门到 #soul-block(Q1-4)。 -->
+    <div class="bd-coreideas">
+      <h2 class="section-title">核心观点</h2>
+      <p class="section-lead">全书 3-10 条主张按脑图一级分支归组,每条一句讲清 + 一句生活类比;最核心 1-2 条放大。点任一条看它的解释、证据与证据强度。</p>
+      <div class="ci-group">
+        <h3 class="ci-group-head">{{pillar1_name}} ① 问题的根源 · 第1-2章(dummy)</h3>
+        <div class="ci-list">
+          <article class="ci" data-source="第1章 · 约第12-20页(示例)">
+            <p class="ci-idea">{{core_ideas[0].idea}} 核心主张一:把抽象原则压成一句可反驳的判断句(dummy)。</p>
+            <p class="ci-analogy">就像 -- {{layman_analogy}} 邻居报低价你不会贱卖房子,持股一绿你却慌着割肉(示例)。</p>
+            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+            <div class="ci-detail">
+              <p class="ci-explain">{{explain}} 展开解释:这条主张为什么成立、在全书中的位置(dummy)。</p>
+              <p class="ci-evidence">{{evidence}} 书里给的最有力证据 / 案例 / 数据(dummy)。</p>
+              <span class="ci-evlevel" data-level="confirmed">证据强度:原文确认</span>
+              <a class="ci-teleport" href="#ch-1">出自第 1 章 →</a>
+            </div>
+          </article>
+          <article class="ci" data-source="第2章 · 约第30-40页(示例)">
+            <p class="ci-idea">{{core_ideas[1].idea}} 核心主张二(与书魂同源,故不放大):操作要基于算术而非信心(dummy)。</p>
+            <p class="ci-analogy">就像 -- 过马路只看有没有勇气而不看红灯,迟早出事(示例)。</p>
+            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+            <div class="ci-detail">
+              <p class="ci-explain">{{explain}} 展开解释(dummy)。</p>
+              <p class="ci-evidence">{{evidence}} 书里依据(dummy)。</p>
+              <span class="ci-evlevel" data-level="inferred">证据强度:结构推断</span>
+              <a class="ci-teleport" href="#ch-2">出自第 2 章 →</a>
+              <!-- Q1-4:与 soul_module 同源,降 primary + 传送门到本板块结尾书魂可视化 -->
+              <a class="ci-portal" href="#soul-block">完整可视化见本板块结尾 ↓</a>
+            </div>
+          </article>
+        </div>
+      </div>
+      <div class="ci-group">
+        <h3 class="ci-group-head">{{pillar2_name}} ② 三根支柱 · 第3-4章(dummy)</h3>
+        <div class="ci-list">
+          <article class="ci ci-primary" data-source="第3章 · 约第45-52页(示例)">
+            <p class="ci-idea">{{core_ideas[2].idea}} 核心主张三(primary):正确来自数据与推理,不来自附和多数人(dummy)。</p>
+            <p class="ci-analogy">就像 -- 全班都抄错答案,不会因为人多就变成对的(示例)。</p>
+            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+            <div class="ci-detail">
+              <p class="ci-explain">{{explain}} 展开解释(dummy)。</p>
+              <p class="ci-evidence">{{evidence}} 书里依据(dummy)。</p>
+              <span class="ci-evlevel" data-level="review">证据强度:需复核</span>
+              <a class="ci-teleport" href="#ch-3">出自第 3 章 →</a>
+            </div>
+          </article>
+        </div>
+      </div>
+      <div class="ci-group">
+        <h3 class="ci-group-head">贯穿全书(pillar===null 的卡入此组)</h3>
+        <div class="ci-list">
+          <article class="ci" data-source="引言 · 约全书2%处(示例)">
+            <p class="ci-idea">{{core_ideas[3].idea}} 核心主张四:一条横切全书、不专属某一段的主张(dummy)。</p>
+            <p class="ci-analogy">就像 -- 想让房间暖起来别对着温度计哈气,得去调锅炉(示例)。</p>
+            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+            <div class="ci-detail">
+              <p class="ci-explain">{{explain}} 展开解释(dummy)。</p>
+              <p class="ci-evidence">{{evidence}} 书里依据(dummy)。</p>
+              <span class="ci-evlevel" data-level="confirmed">证据强度:原文确认</span>
+              <a class="ci-teleport" href="#ch-1">出自引言 →</a>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+    <!-- /SLOT:G-COREIDEAS -->
+
+    <!-- SLOT:G-SOUL 两种养法对照(soul_module 收官;填页按 type 三选一,删掉不用的两型;标题用 soul 自带,不出现「书魂」;id=soul-block 供 Q1-4 观点卡传送门锚点) -->
+    <div class="soul-block" id="soul-block" data-source="第2章 · 约第30-42页(示例)">
+      <h3 class="soul-title">{{soul_module.title}} compare 型:两类投资者的差别不在努力,而在方向(示例)</h3>
+      <p class="soul-subtitle">{{soul_module.subtitle}} 同样勤奋,一类追高一类逢低,结果南辕北辙(必渲染,G11)。</p>
+      <p class="soul-intro">{{soul_module.intro}} 导语点反直觉:多数人以为差别是程度,其实是方向相反(dummy)。</p>
+      <div class="soul-grid">
+        <article class="soul-state">
+          <h4>态一:贪婪端(示例)</h4>
+          <p>整段解释这个态怎么运作(dummy)。</p>
+          <ul><li>输入:连涨</li><li>机理:追高</li><li>输出:泡沫</li></ul>
+        </article>
+        <article class="soul-state">
+          <h4>态二:恐惧端(示例)</h4>
+          <p>整段解释另一态,与态一同构对照(dummy)。</p>
+          <ul><li>输入:连跌</li><li>机理:割肉</li><li>输出:超卖</li></ul>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:G-SOUL -->
+
+    <a class="next-cta" data-panel="panel-full">下一步:进入逐章精读 →</a>
+  </section>
+
+  <!-- ==================== 板块② 逐章精读(目录态) ==================== -->
+  <section class="panel" id="panel-full">
+
+    <!-- Q5-4 阅读中微型上下文条:章正文占视口时挂 tab 栏下沿显示(IntersectionObserver 驱动,默认 display:none) -->
+    <div class="ch-ctxbar" aria-hidden="true">
+      <span class="cx-ch"></span>
+      <span class="cx-sep" aria-hidden="true">·</span>
+      <span class="cx-progress"></span>
+      <button class="cx-totoc" type="button">回目录</button>
+    </div>
+
+    <!-- SLOT:F-CONCEPTS 概念筹码条(概念唯一归宿;点 chip 弹卡 + 高亮含该概念的章行;concepts 空 → 整块删) -->
+    <!-- 误读角标(v4,Q2-2):common_misread 非空的 chip 加类 cc-has-mis → 面上右上「≠」小角标,title=「这个词常被理解错」 -->
+    <div class="concept-chips">
+      <h2 class="section-title">本书关键词</h2>
+      <p class="section-lead">全书反复出现的关键词,点一个看它的准确含义、常见误读与作者立场;带「≠」角标的词常被理解错。</p>
+      <div class="cc-row">
+        <button class="cc-chip cc-has-mis" type="button" data-concept-idx="0" data-concept-chs="1 2" title="这个词常被理解错">{{concept0}} 第二层思维</button>
+        <button class="cc-chip" type="button" data-concept-idx="1" data-concept-chs="2">{{concept1}} 市场先生</button>
+        <button class="cc-chip cc-has-mis" type="button" data-concept-idx="2" data-concept-chs="3" title="这个词常被理解错">{{concept2}} 安全边际</button>
+      </div>
+      <div class="cc-pops">
+        <div class="cc-pop" data-concept-idx="0">
+          <p class="cc-one">{{one_liner}} 一句话准确定义(dummy)。</p>
+          <p class="cc-mis">常见误读:{{common_misread}}(dummy)。</p>
+          <p class="cc-stance">作者立场:{{stance}}(dummy)。</p>
+        </div>
+        <div class="cc-pop" data-concept-idx="1">
+          <p class="cc-one">{{one_liner}} 一句话准确定义(dummy)。</p>
+          <p class="cc-mis">常见误读:{{common_misread}}(dummy)。</p>
+          <p class="cc-stance">作者立场:{{stance}}(dummy)。</p>
+        </div>
+        <div class="cc-pop" data-concept-idx="2">
+          <p class="cc-one">{{one_liner}} 一句话准确定义(dummy)。</p>
+          <p class="cc-mis">常见误读:{{common_misread}}(dummy)。</p>
+          <p class="cc-stance">作者立场:{{stance}}(dummy)。</p>
+        </div>
+      </div>
+    </div>
+    <!-- /SLOT:F-CONCEPTS -->
+
+    <!-- SLOT:F-TOC 章目录(目录态,默认收起!总章数 + 论点章名 + 约N分钟 + 已读n/N + 全部展开逃生门) -->
+    <!-- 收起行三层(v4,Q5-5):.toc-title 结论 + .toc-sum 概览 + .toc-hook 钩子(chapters[].hook,≤20 字具象悬念句,取该章招牌案例意象;hook 缺则省该 span) -->
+    <div class="chapter-toc">
+      <div class="toc-head">
+        <span class="toc-summary">全书 {{N}} 章 · 详实转述约 {{X}} 万字 · 通读约 {{M}} 分钟</span>
+        <span class="toc-progress">已读 0/3</span>
+        <button class="toc-expand" type="button" data-toc-toggle>全部展开</button>
+      </div>
+      <div class="toc-list">
+        <button class="toc-row" type="button" data-ch="1">
+          <span class="toc-no">1</span>
+          <span class="toc-main"><span class="toc-title">第二层思维:与众不同且更正确,才有超额收益(示例论点式章名)</span><span class="toc-sum">本章证明:比别人对得多一点,超额收益才成立(dummy)。</span><span class="toc-hook">{{chapters[0].hook}} 人人都看好的股票,凭什么还能赚(dummy 钩子)</span></span>
+          <span class="toc-meta">约 8 分钟<span class="toc-arrow" aria-hidden="true">▾</span></span>
+        </button>
+        <button class="toc-row" type="button" data-ch="2">
+          <span class="toc-no">2</span>
+          <span class="toc-main"><span class="toc-title">市场报价是情绪指示计,不是行动指令(示例论点式章名)</span><span class="toc-sum">本章证明:价格反映情绪而非价值(dummy)。</span><span class="toc-hook">{{chapters[1].hook}} 一夜暴跌 20%,公司还是那家公司(dummy 钩子)</span></span>
+          <span class="toc-meta">约 10 分钟<span class="toc-arrow" aria-hidden="true">▾</span></span>
+        </button>
+        <button class="toc-row" type="button" data-ch="3">
+          <span class="toc-no">3</span>
+          <span class="toc-main"><span class="toc-title">估价先行:先定价值再看价格,才不会追涨杀跌(示例论点式章名)</span><span class="toc-sum">本章证明:顺序反了就会被价格锚定(dummy)。</span><span class="toc-hook">{{chapters[2].hook}} 先看标价再砍价,你早被商家牵着走(dummy 钩子)</span></span>
+          <span class="toc-meta">约 7 分钟<span class="toc-arrow" aria-hidden="true">▾</span></span>
+        </button>
+      </div>
+    </div>
+    <!-- /SLOT:F-TOC -->
+
+    <!-- SLOT:F-CHAPTERS 手风琴章节(默认收起 .bd-chapter,与目录行 data-ch 联动;展开态: h3 → narrative → excerpt → ch尾三键) -->
+    <div class="bd-chapters">
+      <section class="bd-chapter" id="ch-1" data-source="第1章 · 约第1-18页(示例)">
+        <div class="ch-inner">
+          <h3>第二层思维:与众不同且更正确,才有超额收益(示例论点式标题)</h3>
+          <p>坡道开场 dummy:一个悬念或反常识场景把读者拽进来,别用「本章讲了……」式开场。铺一个具体情境,顺势带出本章要回答的问题。</p>
+          <p>论证主体 dummy:第一个重点 = 观点 + 至少一种案例/故事/数据,叙事整段完整讲(时间、人物、动作、转折、结果),含具体数字。narrative 书档 800-1500 字/章,此处占位。</p>
+          <blockquote class="excerpt" data-source="第1章 · 约第14页(示例)">
+            示例原文精选短段 — 原文照录不改写,单段 ≤150 字,带出处。章内唯一原文块(金句不入章内)。
+            <span class="src-note">— 原文,第1章 · 约第14页(示例)</span>
+          </blockquote>
+          <p>论证主体续 dummy:第二个重点递进而非重复,给出第二个案例或一组数据。</p>
+          <div class="ch-actions">
+            <button class="ch-act" type="button" data-ch-collapse="1">收起</button>
+            <button class="ch-act" type="button" data-ch-totoc>回目录</button>
+            <a class="ch-act ch-next" data-ch-next="1">继续读第 2 章 →</a>
+          </div>
+        </div>
+      </section>
+      <section class="bd-chapter" id="ch-2" data-source="第2章 · 约第19-46页(示例)">
+        <div class="ch-inner">
+          <h3>市场报价是情绪指示计,不是行动指令(示例论点式标题)</h3>
+          <p>坡道开场 dummy:用「市场先生」每天上门报价的寓言开场,把读者带入可感知的场景。</p>
+          <p>论证主体 dummy:完整讲一个案例故事(时间、人物、动作、转折、结果),再补一组原书数字佐证。</p>
+          <blockquote class="excerpt" data-source="第2章 · 约第28页(示例)">
+            示例原文短段二 — 照录、≤150 字、带 anchor 出处。
+            <span class="src-note">— 原文,第2章 · 约第28页(示例)</span>
+          </blockquote>
+          <p>论证主体续 dummy:把「价格 ≠ 价值」这条主线钉进读者脑子。</p>
+          <div class="ch-actions">
+            <button class="ch-act" type="button" data-ch-collapse="2">收起</button>
+            <button class="ch-act" type="button" data-ch-totoc>回目录</button>
+            <a class="ch-act ch-next" data-ch-next="2">继续读第 3 章 →</a>
+          </div>
+        </div>
+      </section>
+      <section class="bd-chapter" id="ch-3" data-source="第3章 · 约第47-66页(示例)">
+        <div class="ch-inner">
+          <h3>估价先行:先定价值再看价格,才不会追涨杀跌(示例论点式标题)</h3>
+          <p>坡道开场 dummy:一个具体的估值翻车或翻盘场景,让读者立刻感到与自己相关。</p>
+          <p>论证主体 dummy:观点 + 完整案例 + 数据,把「为什么顺序不能反」演算给读者看。</p>
+          <blockquote class="excerpt" data-source="第3章 · 约第58页(示例)">
+            示例原文短段三 — 照录、≤150 字。
+            <span class="src-note">— 原文,第3章 · 约第58页(示例)</span>
+          </blockquote>
+          <p>论证主体续 dummy:给出全书的操作起点 -- 估价先行。</p>
+          <div class="ch-actions">
+            <button class="ch-act" type="button" data-ch-collapse="3">收起</button>
+            <button class="ch-act" type="button" data-ch-totoc>回目录</button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <!-- /SLOT:F-CHAPTERS -->
+
+    <!-- SLOT:F-QUOTES 全书金句墙(金句唯一集中归宿;quotes 全量;featured 视觉加重仍在墙内;传送门回章) -->
+    <div class="quote-wall">
+      <h2 class="section-title">全书金句墙</h2>
+      <p class="section-lead">全书值得带走的话,集中收在这里(章内不再单列金句)。每条带出处,可回原章对照。</p>
+      <div class="qw-list">
+        <figure class="qw-card qw-featured" data-source="第5章 · 约第118页(示例)">
+          <blockquote>{{quotes[0].text}} 示例精选金句一 — 短句更有力,全书最该停下的一句。</blockquote>
+          <figcaption>{{quotes[0].note}} 编辑点评:反鸡汤的终极注脚(示例)</figcaption>
+          <a class="qw-teleport" href="#ch-1">出自第 1 章 →</a>
+        </figure>
+        <figure class="qw-card" data-source="第2章 · 约第28页(示例)">
+          <blockquote>{{quotes[1].text}} 示例金句二 — 带出处,读者可回原书对照。</blockquote>
+          <figcaption>{{quotes[1].note}} 编辑点评:把「市场先生」讲得最透的一句(示例)</figcaption>
+          <a class="qw-teleport" href="#ch-2">出自第 2 章 →</a>
+        </figure>
+        <figure class="qw-card" data-source="第3章 · 约第58页(示例)">
+          <blockquote>{{quotes[2].text}} 示例金句三(dummy)。</blockquote>
+          <figcaption>{{quotes[2].note}} 编辑点评(示例)</figcaption>
+          <a class="qw-teleport" href="#ch-3">出自第 3 章 →</a>
+        </figure>
+      </div>
+    </div>
+    <!-- /SLOT:F-QUOTES -->
+
+    <a class="next-cta" data-panel="panel-judge">下一步:看看该信几分 →</a>
+  </section>
+
+  <!-- ==================== 板块③ 批判与评价 ==================== -->
+  <section class="panel" id="panel-judge">
+
+    <!-- SLOT:J-VERDICT 开场裁决条(豆瓣分 + credibility_verdict 总裁决;缺分只留文,缺文只留分,全无删) -->
+    <div class="verdict-bar" data-source="全书 · 可信度总评(示例)">
+      <span class="vb-score"><b>{{rating}}</b><span>豆瓣评分</span></span>
+      <p class="vb-text">{{credibility_verdict}} 10 秒结论:哪些结论最硬、哪些要打折扣(2-3 句总裁决,dummy)。</p>
+    </div>
+    <!-- /SLOT:J-VERDICT -->
+
+    <!-- SLOT:J-ARG 立论复述(arguments.chain 唯一归宿;反驳之前先复述) -->
+    <!-- 论证链胶囊(v4,Q4-7):arguments.chain_steps[](4-8 步,每步 ≤14 字)渲成横向箭头链,排散文段之上,5 秒可扫;散文保留作展开 -->
+    <div class="arg-restate" data-source="全书 · 论证链(示例)">
+      <p class="ar-sub">反驳之前,先复述 -- 这是作者的完整论证</p>
+      <ol class="arg-steps">
+        <li class="arg-step">{{chain_steps[0]}} 前提一</li>
+        <span class="arg-arrow" aria-hidden="true">→</span>
+        <li class="arg-step">{{chain_steps[1]}} 前提二</li>
+        <span class="arg-arrow" aria-hidden="true">→</span>
+        <li class="arg-step">{{chain_steps[2]}} 推论</li>
+        <span class="arg-arrow" aria-hidden="true">→</span>
+        <li class="arg-step arg-step-last">{{chain_steps[3]}} 结论</li>
+      </ol>
+      <p>{{arguments.chain}} 作者完整论证一段:从起点前提推到终点结论,压成一段可转述的话(dummy)。</p>
+    </div>
+    <!-- /SLOT:J-ARG -->
+
+    <!-- SLOT:J-TENSIONS 内在张力(A<->B 窄行,≥2 对;点行展开 note 仲裁) -->
+    <div class="tensions">
+      <h3 class="zone-title">书里自带的矛盾</h3>
+      <p class="section-lead">作者自己没完全调和的两个立场,点一行看仲裁。</p>
+      <div class="tn-list">
+        <article class="tn-row" data-source="第2/5章对照(示例)">
+          <div class="tn-head"><span class="tn-a">纪律</span><span class="tn-vs" aria-hidden="true">⟷</span><span class="tn-b">勇气</span></div>
+          <p class="tn-note">{{tensions[0].note}} 仲裁:何时切换,书里未完全调和(dummy)。</p>
+        </article>
+        <article class="tn-row" data-source="第3/4章对照(示例)">
+          <div class="tn-head"><span class="tn-a">相信市场理性</span><span class="tn-vs" aria-hidden="true">⟷</span><span class="tn-b">靠市场犯蠢赚钱</span></div>
+          <p class="tn-note">{{tensions[1].note}} 仲裁:两个立场被勉强缝合(dummy)。</p>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:J-TENSIONS -->
+
+    <!-- SLOT:J-QUAD 批判四区(2x2 四色分区,全部可见;最强反对压轴大字 + counter_examples 附下) -->
+    <div class="crit-quad">
+      <section class="cq-zone cq-assume">
+        <h3 class="zone-title">没证明的前提</h3>
+        <p class="cq-item" data-source="第2章(示例)">{{unproven_assumptions}} + {{hidden_assumptions}} 作者当公理用、却没证明的前提(合并渲染,dummy)。</p>
+        <p class="cq-item" data-source="第4章(示例)">前提二(dummy)。</p>
+      </section>
+      <section class="cq-zone cq-blind">
+        <h3 class="zone-title">作者盲点</h3>
+        <p class="cq-item" data-source="第5章(示例)">{{blind_spots}} 作者视野外、没处理的情形(dummy)。</p>
+      </section>
+      <section class="cq-zone cq-era">
+        <h3 class="zone-title">时代局限</h3>
+        <p class="cq-item" data-source="全书 · 成书年代(示例)">{{era_limits}} 成书年代的市场结构与今天差异巨大(独立渲染,dummy)。</p>
+      </section>
+      <section class="cq-zone cq-object">
+        <h3 class="zone-title">最强反对</h3>
+        <p class="cq-strong" data-source="第1章 · 约第10-18页(示例)">{{strongest_objection}} 站在对立面最有力的一击(非稻草人,dummy)。</p>
+        <p class="cq-item" data-source="第4章(示例)">附:{{counter_examples}} 反例佐证(dummy)。</p>
+      </section>
+    </div>
+    <!-- /SLOT:J-QUAD -->
+
+    <!-- SLOT:J-REVIEWS 别人怎么评(reviews 正反两列;reviews===null → 整块删) -->
+    <div class="reviews">
+      <h3 class="zone-title">别人怎么评</h3>
+      <p class="section-lead">正反都收(全好评 = 信源可疑),每条带来源,保持原始比例。</p>
+      <div class="review-cols">
+        <div class="review-col review-pos">
+          <h4>赞同</h4>
+          <div class="review-item" data-source="豆瓣(示例)"><span class="stance">正</span>{{review}} 示例好评:把抽象原则压成了可执行的清单。<a class="r-src" href="https://book.douban.com/" rel="noopener">来源:豆瓣(示例)</a></div>
+          <div class="review-item" data-source="微信读书(示例)"><span class="stance">正</span>{{review}} 示例好评:读第二遍才看懂,值得放手边反复翻。<a class="r-src" href="https://weread.qq.com/" rel="noopener">来源:微信读书(示例)</a></div>
+        </div>
+        <div class="review-col review-neg">
+          <h4>质疑</h4>
+          <div class="review-item" data-source="Goodreads(示例)"><span class="stance neg">反</span>{{review}} 示例批评:数据陈旧,部分章节对当代读者门槛偏高。<a class="r-src" href="https://www.goodreads.com/" rel="noopener">来源:Goodreads(示例)</a></div>
+        </div>
+      </div>
+    </div>
+    <!-- /SLOT:J-REVIEWS -->
+
+    <!-- SLOT:J-VIEWS-ENTRY 观点对照子页入口(卡面列 4 议题 viewpoint;views_page===null → 入口 + 子视图一并删) -->
+    <a class="views-entry" href="#sub-views">
+      <span class="ve-kicker">观点对照 · 该信几分</span>
+      <span class="ve-title">四个核心议题,赞同方与质疑方各说了什么</span>
+      <ul class="ve-list">
+        <li>{{views_page.topics[0].viewpoint}} 议题一 viewpoint 一句话(dummy)</li>
+        <li>{{views_page.topics[1].viewpoint}} 议题二 viewpoint 一句话(dummy)</li>
+        <li>{{views_page.topics[2].viewpoint}} 议题三 viewpoint 一句话(dummy)</li>
+        <li>{{views_page.topics[3].viewpoint}} 议题四 viewpoint 一句话(dummy)</li>
+      </ul>
+      <span class="ve-go">进入观点对照 →</span>
+    </a>
+    <!-- /SLOT:J-VIEWS-ENTRY -->
+
+    <a class="next-cta" data-panel="panel-action">下一步:读完这么用 →</a>
+  </section>
+
+  <!-- ==================== 板块④ 行动清单 ==================== -->
+  <section class="panel" id="panel-action">
+
+    <!-- SLOT:A-CHAIN 行动路线图(action_chain 4-5 环,全部可见零点击;explain+detail 直显;第⑤→①回环虚线;点环滚到该环规则组) -->
+    <div class="chain" data-chain>
+      <h2 class="section-title">行动路线图</h2>
+      <p class="section-lead">读完这本书要走的一条路,4-5 环有先后。点某一环,跳到下方该环的情境规则。</p>
+      <div class="chain-steps">
+        <div class="chain-step" data-step="1">
+          <div class="cs-head"><span class="cs-no">1</span><span class="cs-label">{{action_chain[0].label}} 认清你在第几层</span><span class="cs-badge">2 条相关做法</span></div>
+          <p class="chain-explain">{{explain}} 一句直接显示:先搞清自己是第一层还是第二层思维(dummy)。</p>
+          <div class="chain-detail" data-source="第1章(示例)">{{detail}} 80-150 字扩写段,直接显示,治「薄」:第一层看到好公司就买,第二层还会问价格是否已反映所有人都知道的好。认不清层次,后面全白搭(dummy)。</div>
+        </div>
+        <div class="chain-step" data-step="2">
+          <div class="cs-head"><span class="cs-no">2</span><span class="cs-label">{{action_chain[1].label}} 先估价值再看价格</span><span class="cs-badge">1 条相关做法</span></div>
+          <p class="chain-explain">{{explain}} 先独立估内在价值,再回头看市场价格(dummy)。</p>
+          <div class="chain-detail" data-source="第3章(示例)">{{detail}} 扩写段:顺序不能反,反了就被价格锚定,追涨杀跌(dummy)。</div>
+        </div>
+        <div class="chain-step" data-step="3">
+          <div class="cs-head"><span class="cs-no">3</span><span class="cs-label">{{action_chain[2].label}} 等钟摆到极端</span><span class="cs-badge">1 条相关做法</span></div>
+          <p class="chain-explain">{{explain}} 耐心等市场情绪摆到贪婪或恐惧的极端(dummy)。</p>
+          <div class="chain-detail" data-source="第4章(示例)">{{detail}} 扩写段:机会出现在极端而非中点(dummy)。</div>
+        </div>
+        <div class="chain-step" data-step="4">
+          <div class="cs-head"><span class="cs-no">4</span><span class="cs-label">{{action_chain[3].label}} 反人性下手</span><!-- Q7-9:关联做法数为 0 → 不渲染 .cs-badge(verify 拦「0 条相关做法」) --></div>
+          <p class="chain-explain">{{explain}} 在别人恐惧时下手(dummy)。</p>
+          <div class="chain-detail" data-source="第5章(示例)">{{detail}} 扩写段:靠前三环积累的判断而非一时勇气(dummy)。</div>
+        </div>
+        <div class="chain-step" data-step="5">
+          <div class="cs-head"><span class="cs-no">5</span><span class="cs-label">{{action_chain[4].label}} 复盘再回到第一环</span><span class="cs-badge">通用做法</span></div>
+          <p class="chain-explain">{{explain}} 做完复盘,重新校准自己的层次(dummy)。</p>
+          <div class="chain-detail" data-source="全书(示例)">{{detail}} 扩写段:行动完回炉,循环动线的闭合(dummy)。</div>
+        </div>
+      </div>
+      <div class="chain-loop">
+        <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path class="cl-path" d="M20 6 A 14 14 0 1 1 6 20"/><path class="cl-path" d="M20 6 l-5 -3 M20 6 l-4 5"/></svg>
+        <span>走完第 ⑤ 环,回到第 ① 环,把自己再看一遍</span>
+      </div>
+    </div>
+    <!-- /SLOT:A-CHAIN -->
+
+    <!-- SLOT:A-RULES 情境决策卡(rule-chips 双轴筛选: 按环分组 + 遇事速查;rule-card 三行全可见 + 传送门回章) -->
+    <div class="rules">
+      <h2 class="section-title">情境决策卡</h2>
+      <p class="section-lead">遇到具体情况怎么办 -- 按行动环或情境筛,每条「当/做/因为」三行全可见。</p>
+      <div class="rule-chips">
+        <span class="rc-group-label">按行动环筛选</span>
+        <button class="rc-chip on" type="button" data-filter-step="all">全部</button>
+        <button class="rc-chip" type="button" data-filter-step="1">环 ①</button>
+        <button class="rc-chip" type="button" data-filter-step="2">环 ②</button>
+        <button class="rc-chip" type="button" data-filter-step="3">环 ③</button>
+        <button class="rc-chip" type="button" data-filter-step="general">通用</button>
+        <span class="rc-group-label">遇事速查</span>
+        <button class="rc-chip" type="button" data-filter-situ="大跌时">大跌时</button>
+        <button class="rc-chip" type="button" data-filter-situ="拿不准">拿不准</button>
+        <button class="rc-chip" type="button" data-filter-situ="想跟风">想跟风</button>
+      </div>
+      <div class="rule-list">
+        <article class="rule-card" data-step="1" data-situ="拿不准" data-source="第2章 · 约第24-31页(示例)">
+          <p class="rc-when"><b>当</b> 市价大幅波动而基本面未变(dummy)</p>
+          <p class="rc-do"><b>做</b> 把报价当情绪不当指令(dummy)</p>
+          <p class="rc-because"><b>因为</b> 价格是指示计,不是向导(dummy)</p>
+          <a class="rc-teleport" href="#ch-2">第 2 章 →</a>
+        </article>
+        <article class="rule-card" data-step="2" data-situ="拿不准" data-source="第3章 · 约第52-58页(示例)">
+          <p class="rc-when"><b>当</b> 说不清愿意投入多少精力(dummy)</p>
+          <p class="rc-do"><b>做</b> 默认走保守路线(dummy)</p>
+          <p class="rc-because"><b>因为</b> 回报取决于明智努力的程度(dummy)</p>
+          <a class="rc-teleport" href="#ch-3">第 3 章 →</a>
+        </article>
+        <article class="rule-card" data-step="3" data-situ="大跌时" data-source="第4章 · 约第70-77页(示例)">
+          <p class="rc-when"><b>当</b> 某操作收益小而潜在损失大(dummy)</p>
+          <p class="rc-do"><b>做</b> 直接远离(dummy)</p>
+          <p class="rc-because"><b>因为</b> 操作要基于算术而非信心(dummy)</p>
+          <a class="rc-teleport" href="#ch-1">第 1 章 →</a>
+        </article>
+        <article class="rule-card" data-step="general" data-situ="想跟风" data-source="第5章 · 约第96-104页(示例)">
+          <p class="rc-when"><b>当</b> 判断与多数人相反但数据扎实(dummy)</p>
+          <p class="rc-do"><b>做</b> 按自己的推理行动(dummy)</p>
+          <p class="rc-because"><b>因为</b> 正确来自数据与推理(dummy)</p>
+          <a class="rc-teleport" href="#ch-2">第 2 章 →</a>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:A-RULES -->
+
+    <!-- SLOT:A-MODELS 心智模型抽屉卡(卡面常显 model+本质;点开渲 how+evidence+boundary;一次开一张;boundary 必渲) -->
+    <div class="models">
+      <h2 class="section-title">心智模型工具架</h2>
+      <p class="section-lead">作者反复使用的思考透镜。点开一张,看怎么用、书里依据、以及什么时候失效。</p>
+      <div class="model-list">
+        <article class="model-drawer" data-source="第2章 · 约第30-42页(示例)">
+          <button class="md-head" type="button"><span class="md-name">{{mental_models[0].model}} 钟摆模型</span><span class="md-essence">市场情绪像钟摆在两极间摆动(dummy)</span><span class="md-toggle">展开 ▾</span></button>
+          <div class="md-body">
+            <div class="md-seg md-how"><span class="md-k">怎么用</span><p>{{how_to_apply}} 遇到没见过的新资产,先问它的钟摆现在摆到哪一端(dummy)。</p></div>
+            <div class="md-seg md-evidence"><span class="md-k">书里依据</span><p>{{evidence}} + 锚点(dummy)。</p></div>
+            <div class="md-seg md-boundary"><span class="md-k">什么时候失效</span><p>{{boundary}} 结构性趋势下钟摆可能长期偏向一端(dummy)。</p></div>
+          </div>
+        </article>
+        <article class="model-drawer" data-source="第4章 · 约第78-88页(示例)">
+          <button class="md-head" type="button"><span class="md-name">{{mental_models[1].model}} 安全边际</span><span class="md-essence">用余量吸收错误估计与坏运气(dummy)</span><span class="md-toggle">展开 ▾</span></button>
+          <div class="md-body">
+            <div class="md-seg md-how"><span class="md-k">怎么用</span><p>{{how_to_apply}} 下任何决定前先问「如果我算错了,还剩多少缓冲」(dummy)。</p></div>
+            <div class="md-seg md-evidence"><span class="md-k">书里依据</span><p>{{evidence}} + 锚点(dummy)。</p></div>
+            <div class="md-seg md-boundary"><span class="md-k">什么时候失效</span><p>{{boundary}} 余量过大时也会错过机会(dummy)。</p></div>
+          </div>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:A-MODELS -->
+
+    <!-- SLOT:A-QUESTIONS 读完自检(self_check 4-8 条;followup 直显;回链②;无勾选/打分/记录) -->
+    <div class="questions-wrap">
+      <h2 class="section-title">读完自检</h2>
+      <p class="section-lead">这几个问题,建议每隔一段时间回来问自己一遍(纯浏览,无打分)。</p>
+      <div class="questions">
+        <article class="question" data-source="第4章(示例)">
+          <div>
+            <h3>{{self_check[0].q}} 上次大跌时,你是加仓还是割肉?</h3>
+            <p>{{followup}} 追问:当时你复核过内在价值没变吗,还是只看了红绿?(dummy)</p>
+            <a class="q-back" href="#ch-2">回到第 2 章 →</a>
+          </div>
+        </article>
+        <article class="question" data-source="第1章(示例)">
+          <div>
+            <h3>{{self_check[1].q}} 你买入前,问过自己「这价格是否已反映所有人都知道的好」吗?</h3>
+            <p>{{followup}} 追问:如果人人都看好,你的超额收益从哪来?(dummy)</p>
+            <a class="q-back" href="#ch-1">回到第 1 章 →</a>
+          </div>
+        </article>
+        <article class="question" data-source="第3章(示例)">
+          <div>
+            <h3>{{self_check[2].q}} 你能说清手里这笔资产的内在价值区间吗?</h3>
+            <p>{{followup}} 追问:说不清的话,你凭什么判断现在的价格是贵还是便宜?(dummy)</p>
+            <a class="q-back" href="#ch-3">回到第 3 章 →</a>
+          </div>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:A-QUESTIONS -->
+
+    <a class="next-cta" data-panel="panel-extend">下一步:接着读什么 →</a>
+  </section>
+
+  <!-- ==================== 板块⑤ 延伸阅读 ==================== -->
+  <section class="panel" id="panel-extend">
+
+    <!-- SLOT:E-SIMILAR 同类书卡(similar_page.items;relation 三色徽标;内联无子视图;null/空 → 整块删) -->
+    <div class="similar">
+      <h2 class="section-title">同类书</h2>
+      <p class="section-lead">读完这本接着读的书,标出与本书的关系:印证 / 互补 / 纠偏。</p>
+      <div class="sim-grid">
+        <article class="sim-card" data-sim-idx="1" data-source="knowledge-index / 豆瓣(示例)">
+          <h3>{{similar[0].title}} 同类书一 <span class="sim-rel rel-support">印证</span></h3>
+          <p class="sim-author">{{author}} 作者 A(示例)</p>
+          <p class="sim-why">{{why}} 与本书什么关系 + 为什么值得读(dummy)。</p>
+          <p class="sim-fit"><strong>适合谁:</strong>{{fit}} 刚入门的读者(示例)</p>
+        </article>
+        <article class="sim-card" data-sim-idx="2" data-source="Goodreads readers also enjoyed(示例)">
+          <h3>{{similar[1].title}} 同类书二 <span class="sim-rel rel-extend">互补</span></h3>
+          <p class="sim-author">{{author}} 作者 B(示例)</p>
+          <p class="sim-why">{{why}} 从不同角度扩展本书没展开的一面(dummy)。</p>
+          <p class="sim-fit"><strong>适合谁:</strong>{{fit}} 想深入的读者(示例)</p>
+        </article>
+        <article class="sim-card" data-sim-idx="3" data-source="书评人推荐(示例)">
+          <h3>{{similar[2].title}} 同类书三 <span class="sim-rel rel-rebut">纠偏</span></h3>
+          <p class="sim-author">{{author}} 作者 C(示例)</p>
+          <p class="sim-why">{{why}} 对本书核心观点提出对立立场(dummy)。</p>
+          <p class="sim-fit"><strong>适合谁:</strong>{{fit}} 想听反方的读者(示例)</p>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:E-SIMILAR -->
+
+    <!-- SLOT:E-PATH 阅读路径(similar_page.reading_path + items[].order;点路径步高亮对应书卡) -->
+    <div class="reading-path">
+      <h2 class="section-title">阅读路径</h2>
+      <p class="rp-desc">{{reading_path}} 一条从入门到进阶(或印证到反驳)的路线说明(dummy)。点编号高亮对应书卡。</p>
+      <div class="rp-steps">
+        <button class="rp-step" type="button" data-sim-idx="1"><span class="rp-no">1</span>同类书一</button>
+        <span class="rp-arrow" aria-hidden="true">→</span>
+        <button class="rp-step" type="button" data-sim-idx="2"><span class="rp-no">2</span>同类书二</button>
+        <span class="rp-arrow" aria-hidden="true">→</span>
+        <button class="rp-step" type="button" data-sim-idx="3"><span class="rp-no">3</span>同类书三</button>
+      </div>
+    </div>
+    <!-- /SLOT:E-PATH -->
+
+    <!-- SLOT:E-SHELF 作者书架(author_page.works;栏头进作者子页;已蒸书站内互链;author_page===null → 整块删) -->
+    <div class="author-shelf">
+      <div class="shelf-head">
+        <h2 class="section-title" style="margin:0">作者书架</h2>
+        <a href="#sub-author">还想读 {作者} →</a>
+      </div>
+      <div class="shelf-row">
+        <article class="shelf-card">
+          <span class="sh-year">{{year}} 2020</span>
+          <p class="sh-title">{{works[0].title}} 本书</p>
+          <p class="sh-one">{{one_liner}} 一句话点评(dummy)。</p>
+        </article>
+        <article class="shelf-card">
+          <span class="sh-year">{{year}} 2019</span>
+          <p class="sh-title">{{works[1].title}} 另一本代表作</p>
+          <p class="sh-one">{{one_liner}} 一句话点评(dummy)。</p>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:E-SHELF -->
+
+    <!-- SLOT:E-CROSSDOMAIN 跨域命名(v4,Q4-3:cross_domain[]={domain,name,note},3-5 条;排 crossbook 之前独立小节;宁缺毋滥,空/缺 → 整块删) -->
+    <div class="cross-domain">
+      <h3 class="zone-title">这套思想在别处叫什么</h3>
+      <p class="section-lead">把书里的核心思想挂到你已有的知识域上 -- 换个学科,它其实早有名字。</p>
+      <div class="xd-list">
+        <div class="xd-item"><span class="xd-domain">{{cross_domain[0].domain}} 工程学</span><span class="xd-name">{{cross_domain[0].name}} 安全系数</span><span class="xd-note">{{cross_domain[0].note}} 造桥按 5 倍载荷设计,不是预计超载,是你算不准 -- 同「安全边际」(dummy)。</span></div>
+        <div class="xd-item"><span class="xd-domain">{{cross_domain[1].domain}} 概率论</span><span class="xd-name">{{cross_domain[1].name}} 期望值下注</span><span class="xd-note">{{cross_domain[1].note}} 赔率被市场算错时才下手,而非挑最可能赢的那个(dummy)。</span></div>
+      </div>
+    </div>
+    <!-- /SLOT:E-CROSSDOMAIN -->
+
+    <!-- SLOT:E-CROSSBOOK 跨书回声(cross_book_external + knowledge-index 互链;5-tag;CONTRADICTS 不抹平;全空 → 整块删) -->
+    <div class="crossbook">
+      <h3 class="zone-title">这本书在别的书里的回声</h3>
+      <p class="section-lead">同一概念在别的书里被印证 / 反驳,跨书越蒸越富。</p>
+      <div class="xb-list">
+        <div class="xb-echo" data-source="knowledge-index(示例)"><span class="tag">SUPPORTS</span>{{concept}} 安全边际 在 <a href="{对方slug}.html#ch-3">《已蒸的另一本》</a> 被印证(站内互链,dummy)。</div>
+        <div class="xb-echo" data-source="外部书(示例)"><span class="tag">CONTRADICTS</span>{{concept}} 市场可预测性 在 <a href="https://example.com/" rel="noopener">《外部书》</a> 持相反立场(外链,dummy)。</div>
+      </div>
+    </div>
+    <!-- /SLOT:E-CROSSBOOK -->
+
+    <!-- SLOT:E-TAKEAWAY 离开前带走(v4,Q2-1:出口骨架复现,声明式回顾。formula 复现标注「见过·回顾」,不算 F5 金句复发;
+         action_chain 各环 label 胶囊 data-panel=panel-action 经 initNav 跳④对应环。数据缺则整块删) -->
+    <div class="takeaway-strip">
+      <p class="tw-head">离开前带走:</p>
+      <p class="tw-formula"><span class="tw-eq">{{napkin.formula}} A = B × C(示例复现,小号)</span><span class="tw-tag">① 见过 · 回顾</span></p>
+      <div class="tw-rings">
+        <a class="tw-ring" data-panel="panel-action">{{action_chain[0].label}} 环一</a>
+        <a class="tw-ring" data-panel="panel-action">{{action_chain[1].label}} 环二</a>
+        <a class="tw-ring" data-panel="panel-action">{{action_chain[2].label}} 环三</a>
+        <a class="tw-ring" data-panel="panel-action">{{action_chain[3].label}} 环四</a>
+      </div>
+    </div>
+    <!-- /SLOT:E-TAKEAWAY -->
+
+    <!-- SLOT:E-POINTER 末行指路(单向小字;观点对照入口不放⑤;⑤ 是末板块,不设 next-cta) -->
+    <p class="extend-pointer">想看围绕本书观点的争论 → 回 <a href="#" data-panel="panel-judge">③ 批判与评价 · 观点对照</a></p>
+    <!-- /SLOT:E-POINTER -->
+  </section>
+
+  <!-- SLOT:FOOTER -->
+  <footer class="footer">
+    本页由 sansheng-distill 从《{书名}》({作者})蒸馏重组而成 -- 保留作者精确命名,出处页码按章节位置比例估算。
+    AI 蒸馏是地图,不是目的地 -- 关键章节请回原书细看。出处随文常显小灰字,右下角可切换 7 套主题。
+  </footer>
+  <!-- /SLOT:FOOTER -->
+
+  <!-- 主题切换器: 默认收起,点开弹层;菜单第一颗为非默认主题 brand-dark(深空),warm-paper 靠后(verify 冒烟依赖,勿重排) -->
+  <div class="theme-picker" role="group" aria-label="切换主题" data-open="0">
+    <div class="tp-menu" role="menu">
+      <button data-theme-pick="brand-dark" role="menuitemradio"><span class="sw" aria-hidden="true"></span>深空</button>
+      <button data-theme-pick="warm-paper" role="menuitemradio"><span class="sw" aria-hidden="true"></span>暖纸典藏</button>
+      <button data-theme-pick="minimal" role="menuitemradio"><span class="sw" aria-hidden="true"></span>极简学术</button>
+      <button data-theme-pick="dark" role="menuitemradio"><span class="sw" aria-hidden="true"></span>夜读深空</button>
+      <button data-theme-pick="ink-wash" role="menuitemradio"><span class="sw" aria-hidden="true"></span>东方水墨</button>
+      <button data-theme-pick="vintage-editorial" role="menuitemradio"><span class="sw" aria-hidden="true"></span>复古编辑</button>
+      <button data-theme-pick="paper-ink" role="menuitemradio"><span class="sw" aria-hidden="true"></span>纸墨风</button>
+    </div>
+    <button class="tp-trigger" type="button" aria-haspopup="true" aria-expanded="false"><span class="tp-ico" aria-hidden="true">🎨</span><span class="tp-label">主题</span><svg class="tp-caret" width="9" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+
+  <!-- ========== 页内子视图(2 张,</main> 前 · panel 外 · 全屏覆盖 · hidden 默认;hash 路由 #sub-* 开合)
+       入口 = hero 作者名 <a href="#sub-author"> + ⑤作者书架栏头链 + ③观点对照入口卡 <a href="#sub-views">
+       可降级: author_page===null → #sub-author + 全部入口删;views_page===null → #sub-views + 入口卡删
+       hidden 属性别删(删了子视图默认展开盖住全页)。同类书子视图 v3 已删(内联板块⑤)。 ========== -->
+
+  <!-- SLOT:SUB-AUTHOR 作者子页(#sub-author ← author_page;infobox 归一栏 + 五栏,§1.3.1;逐行/整栏降级) -->
+  <section class="subpage" id="sub-author" hidden aria-label="作者页">
+    <div class="subpage-inner">
+      <div class="subpage-bar">
+        <button class="sub-back" type="button" data-sub-back>返回</button>
+        <h2 class="subpage-title">{作者} · 作者档案</h2>
+        <span class="subpage-from">《{书名}》· 延伸档案</span>
+      </div>
+      <div class="subpage-body au-body">
+        <p class="au-tagline">{{author_page.tagline}} ≤50 字一句话把人钉住 -- 这本书在他谱系里是什么(dummy)。</p>
+        <!-- 身份卡(v4,Q1-6):仅 book_type=人物 且 persona_card 非空时保留;其他书型 / 字段空 → 删整块 -->
+        <blockquote class="au-persona">{{persona_card}} 第一人称身份卡(传主口吻「我是谁、我怎么想」)-- 仅人物书出现,其他书型删除此块(dummy)。</blockquote>
+
+        <aside class="au-infobox" aria-label="基础信息">
+          <figure class="au-photo"><!-- <img src="data:..."> 或降级为字符头像 --><span class="au-monogram">作</span></figure>
+          <h3 class="au-name">{作者}</h3>
+          <p class="au-roles">{{roles}} 讲书人 · 帆书创始人 · 前央视主持人(· 分隔,dummy)</p>
+          <dl class="au-facts">
+            <div class="au-fact"><dt>出生</dt><dd>{{birth}} 1976年3月24日 · 陕西西安(示例)</dd></div>
+            <div class="au-fact"><dt>祖籍</dt><dd>{{ancestry}} 山西运城(示例)</dd></div>
+            <div class="au-fact"><dt>学历</dt><dd>{{education}} 西安交大工学学士<br>管理学硕士<br>北师大传播学博士(示例)</dd></div>
+            <div class="au-fact"><dt>以何知名</dt><dd>{{known_for}} 每周精讲一本书的知识付费平台(示例)</dd></div>
+            <div class="au-fact"><dt>代表作</dt><dd>《{书名}》<em class="au-thisbook-badge">本书</em><br><a href="#au-works">《另一本代表作》…</a></dd></div>
+          </dl>
+        </aside>
+
+        <div class="au-main">
+          <section class="au-sec" id="au-life">
+            <h3 class="au-sec-title">人物经历 -- 每一步都踩在关键的风口上(直白名 -- 论点副题)</h3>
+            <ol class="au-timeline">
+              <li class="au-tl" data-source="百度百科/维基(示例)">
+                <span class="au-tl-period">{{period}} 1976-1999</span>
+                <div class="au-tl-body"><strong>{{label}} 少年到辩论冠军</strong><p>{{text}} 2-4 句短段(dummy)。</p></div>
+              </li>
+              <li class="au-tl" data-source="维基(示例)">
+                <span class="au-tl-period">{{period}} 1999-2013</span>
+                <div class="au-tl-body"><strong>{{label}} 央视主持人与大学教师</strong><p>{{text}} 2-4 句短段(dummy)。</p></div>
+              </li>
+              <li class="au-tl" data-source="媒体报道(示例)">
+                <span class="au-tl-period">{{period}} 2013-至今</span>
+                <div class="au-tl-body"><strong>{{label}} 讲书会起步到帆书</strong><p>{{text}} 2-4 句短段(dummy)。</p></div>
+              </li>
+            </ol>
+          </section>
+
+          <section class="au-sec" id="au-impact">
+            <h3 class="au-sec-title">成就与影响 -- 把讲书滚成一门生意</h3>
+            <div class="au-stats">
+              <div class="au-stat"><b>{{num}} 6500万</b><span>{{label}} 书友</span></div>
+              <div class="au-stat"><b>{{num}} 365元/年</b><span>{{label}} 会员模式</span></div>
+            </div>
+            <p>{{impact.text}} 1 段短散文(dummy)。</p>
+          </section>
+
+          <section class="au-sec" id="au-debate">
+            <h3 class="au-sec-title">争议与评价 -- 知识偶像,还是知识快餐</h3>
+            <div class="au-debate-cols">
+              <div class="au-dcol au-dcol-pro"><h4>围墙内</h4><article class="au-dentry" data-source="书友(示例)"><p>{{say}} 正面评价(dummy)。</p><a href="https://example.com/" rel="noopener">来源</a></article></div>
+              <div class="au-dcol au-dcol-con"><h4>围墙外</h4><article class="au-dentry" data-source="批评者(示例)"><p>{{say}} 质疑(dummy)。</p><a href="https://example.com/" rel="noopener">来源</a></article></div>
+            </div>
+          </section>
+
+          <section class="au-sec" id="au-thisbook">
+            <h3 class="au-sec-title">他与这本书 -- 一位职业读书人的二次创作</h3>
+            <p>{{this_book.text}} 散文 1-2 段:这本书在他谱系里的位置、他凭什么写(dummy)。</p>
+            <p class="au-lineage">{{this_book.lineage}} 2019《解具体难题》→ 2020 本书挖底层逻辑(写作谱系箭头行,dummy)</p>
+          </section>
+
+          <section class="au-sec" id="au-works">
+            <h3 class="au-sec-title">主要作品</h3>
+            <ol class="au-works-list">
+              <li class="au-work au-work-this"><span class="au-wyear">2020</span><div><strong>《{书名}》</strong><em class="au-thisbook-badge">本书</em><p>{{one_liner}} 一句话(dummy)。</p></div></li>
+              <li class="au-work"><span class="au-wyear">2019</span><div><strong><a href="another-slug.html">《另一本代表作》</a></strong><p>{{one_liner}} 一句话;已蒸=站内互链(dummy)。</p></div></li>
+            </ol>
+          </section>
+
+          <div class="sp-srcs">来源:<a href="https://zh.wikipedia.org/" rel="noopener">维基百科(示例)</a> · <a href="https://book.douban.com/" rel="noopener">豆瓣作者页(示例)</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLOT:SUB-VIEWS 观点对照子页(#sub-views ← views_page;沿用 v2 + 每 topic 加 .vt-focus 争议焦点;views_page===null → 删) -->
+  <section class="subpage" id="sub-views" hidden aria-label="观点对照页">
+    <div class="subpage-inner">
+      <div class="subpage-bar">
+        <button class="sub-back" type="button" data-sub-back>返回</button>
+        <h2 class="subpage-title">观点对照</h2>
+        <span class="subpage-from">《{书名}》· 延伸档案</span>
+      </div>
+      <div class="subpage-body">
+        <p class="sp-lead">书中核心主张的赞同方 / 质疑方对照,每条带来源;真一边倒则如实留另一边为空(dummy)。</p>
+        <article class="view-topic">
+          <h3 class="vt-viewpoint">{{views_page.topics[0].viewpoint}} 书中观点:合理胜过理性(示例)</h3>
+          <p class="vt-focus">争议焦点:{{focus}} 双方到底在争什么(一句小结,防在两列迷路,dummy)。</p>
+          <div class="vt-cols">
+            <div class="vt-col vt-support">
+              <p class="vt-col-label">赞同方</p>
+              <div class="vt-entry" data-source="外部来源(示例)"><p class="vt-who">{{who}} 某学者 / 媒体(示例)</p><p class="vt-say">{{say}} 表态摘要 ≤80 字,照录不改立场(dummy)。</p><a href="https://example.com/" rel="noopener">来源</a></div>
+            </div>
+            <div class="vt-col vt-critic">
+              <p class="vt-col-label">质疑方</p>
+              <div class="vt-entry" data-source="外部来源(示例)"><p class="vt-who">{{who}} 某批评者(示例)</p><p class="vt-say">{{say}} 质疑摘要 ≤80 字(dummy)。</p><a href="https://example.com/" rel="noopener">来源</a></div>
+            </div>
+          </div>
+        </article>
+        <article class="view-topic">
+          <h3 class="vt-viewpoint">{{views_page.topics[1].viewpoint}} 书中观点:运气与风险是一体两面(示例)</h3>
+          <p class="vt-focus">争议焦点:{{focus}} 一句小结(dummy)。</p>
+          <div class="vt-cols">
+            <div class="vt-col vt-support">
+              <p class="vt-col-label">赞同方</p>
+              <div class="vt-entry" data-source="Goodreads / 媒体(示例)"><p class="vt-who">{{who}} Goodreads 高赞读者(示例)</p><p class="vt-say">{{say}} 赞同摘要(dummy)。</p><a href="https://www.goodreads.com/" rel="noopener">来源</a></div>
+            </div>
+            <div class="vt-col vt-critic">
+              <p class="vt-col-label">质疑方</p>
+              <p class="vt-empty">此观点未搜到公开质疑,据实留空(示例)。</p>
+            </div>
+          </div>
+        </article>
+        <p class="sp-srcs">来源:<a href="https://www.goodreads.com/" rel="noopener">Goodreads(示例)</a> · <a href="https://www.zhihu.com/" rel="noopener">知乎(示例)</a></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* 交互层: 自绘 SVG 脑图(懒渲染, 恒深色不随页面主题) + hash 路由(切tab/开手风琴章/滚动/高亮)。
+   v4.1: 脑图换自绘 SVG(读 nodeData 出图, 无 vendor),点二级 a.jump -> location.hash -> initHashRouter 接管。hash #ch-N 走 window.__bdOpenChapter。 */
+(() => {
+  'use strict';
+  window.__bdInitExtra = function(activateTab){
+    initMindmap(); initSketch(); initHashRouter(activateTab);
+  };
+  /* 因果骨架草图(v4,Q4-2):读 #bd-sketch-data 的 {type,caption,nodes[],edges[]} -> 纵向分层布局(最长路径分层,
+     源节点在顶、逐层向下)-> 生成内联 SVG(圆角描边节点 + 父子直角肘形折线,零交互静态一屏)。
+     直角经典 + 浅色配色:色全走 CSS 类(.sk-node/.sk-mid/.sk-line/.sk-label/.sk-elabel/.sk-arrow),JS 只设几何,零内联 hex。
+     通用生成器,换书换 #bd-sketch-data 即出图;数据缺 / 节点 <2 -> 隐藏整块。 */
+  function initSketch(){
+    const wrap = document.querySelector('.napkin-sketch');
+    if (!wrap) return;
+    const host = wrap.querySelector('#bd-sketch');
+    const dataEl = wrap.querySelector('#bd-sketch-data');
+    if (!host || !dataEl){ wrap.style.display = 'none'; return; }
+    let d; try { d = JSON.parse(dataEl.textContent); } catch (e) { wrap.style.display = 'none'; return; }
+    const nodes = (d && Array.isArray(d.nodes)) ? d.nodes : [];
+    const edges = (d && Array.isArray(d.edges)) ? d.edges : [];
+    if (nodes.length < 2){ wrap.style.display = 'none'; return; }
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    const byId = {}; nodes.forEach(n => { byId[n.id] = n; });
+    // 分层:最长路径(源在 0 层,沿边 +1;带上限防环)
+    const layer = {}; nodes.forEach(n => { layer[n.id] = 0; });
+    const N = nodes.length;
+    for (let it = 0; it < N + 2; it++){
+      let changed = false;
+      edges.forEach(e => {
+        if (byId[e.from] === undefined || byId[e.to] === undefined) return;
+        if (layer[e.from] < N && layer[e.to] < layer[e.from] + 1){ layer[e.to] = layer[e.from] + 1; changed = true; }
+      });
+      if (!changed) break;
+    }
+    // 按层分组、层内保持数据顺序
+    const layers = {}; let maxL = 0;
+    nodes.forEach(n => { const L = layer[n.id]; (layers[L] = layers[L] || []).push(n); if (L > maxL) maxL = L; });
+    // 尺寸(CJK ~ 字号宽);节点宽随 label 自适应
+    // 横向布局(作者:横向从左到右、压低高度):层=列(x 递增),列内纵向堆叠居中
+    const FS = 11, CH = 15.2, PADX = 15, NH = 38, VGAP = 14, HGAP = 40, PAD = 12;
+    const wOf = n => Math.max(66, String(n.label || '').length * CH + PADX * 2);
+    // 每列宽=该列最宽节点;记最高列(节点最多)定画布高
+    const colW = {}; let maxColH = 0;
+    for (let L = 0; L <= maxL; L++){
+      const row = layers[L] || [];
+      colW[L] = row.reduce((m, n) => Math.max(m, wOf(n)), 0);
+      const h = row.length * NH + Math.max(0, row.length - 1) * VGAP;
+      if (h > maxColH) maxColH = h;
+    }
+    // 列 x 累加
+    const colX = {}; let xacc = PAD;
+    for (let L = 0; L <= maxL; L++){ colX[L] = xacc; xacc += colW[L] + HGAP; }
+    // 定位:列内纵向居中,x=列位
+    const pos = {};
+    for (let L = 0; L <= maxL; L++){
+      const row = layers[L] || [];
+      const colH = row.length * NH + Math.max(0, row.length - 1) * VGAP;
+      let y = PAD + (maxColH - colH) / 2;
+      const x = colX[L], w = colW[L];
+      row.forEach(n => { pos[n.id] = { x: x, y: y, w: w, cx: x + w / 2, cy: y + NH / 2, xL: x, xR: x + w }; y += NH + VGAP; });
+    }
+    const totalW = (xacc - HGAP) + PAD;
+    const totalH = PAD * 2 + maxColH;
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${Math.round(totalW)} ${Math.round(totalH)}`);
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', String((d && d.caption) || '全书因果骨架图'));
+    const mk = (t, a) => { const el = document.createElementNS(SVGNS, t); for (const k in a) el.setAttribute(k, a[k]); return el; };
+    // 边:横向直角肘(源右缘 -> 横 -> 竖 -> 横 -> 目标左缘);向右箭头。标签延后统一渲染(压在所有引线之上、节点之下,避免被后画的线穿过)
+    const elabels = [];
+    edges.forEach(e => {
+      const A = pos[e.from], B = pos[e.to];
+      if (!A || !B) return;
+      const x1 = A.xR, y1 = A.cy, x2 = B.xL, y2 = B.cy;
+      const midX = (x1 + x2) / 2;
+      const pts = (y1 === y2) ? `${x1},${y1} ${x2},${y2}` : `${x1},${y1} ${midX},${y1} ${midX},${y2} ${x2},${y2}`;
+      svg.appendChild(mk('polyline', { points: pts, class: 'sk-line' }));
+      const ah = 5;                                    // 向右小箭头(目标左缘)
+      svg.appendChild(mk('path', { d: `M ${x2 - ah} ${y2 - ah} L ${x2 - ah} ${y2 + ah} L ${x2} ${y2} Z`, class: 'sk-arrow' }));
+      const lab = (e.label || '').trim();
+      if (lab) elabels.push({ lab: lab, x: midX, ly: (y1 === y2) ? y1 : (y1 + y2) / 2 });
+    });
+    // 转换标签:纯文字挪到引线上方(不套框、不压箭头);延后渲染压在所有引线之上
+    elabels.forEach(b => {
+      const t = mk('text', { x: b.x, y: b.ly - 6, class: 'sk-elabel', 'text-anchor': 'middle' });
+      t.textContent = b.lab; svg.appendChild(t);
+    });
+    // 终点节点(有入边无出边)= 视觉落点深绿实底;中间产物 = 金实底;其余 = 浅底描边
+    const hasOut = {}, hasIn = {};
+    edges.forEach(e => { hasOut[e.from] = true; hasIn[e.to] = true; });
+    // 节点:三阶实底 + 居中文字(mid/end 用白字)
+    nodes.forEach(n => {
+      const p = pos[n.id]; if (!p) return;
+      const isEnd = !n.mid && hasIn[n.id] && !hasOut[n.id];
+      const cls = 'sk-node' + (n.mid ? ' sk-mid' : (isEnd ? ' sk-end' : ''));
+      svg.appendChild(mk('rect', { x: p.x, y: p.y, width: p.w, height: NH, rx: 9, ry: 9, class: cls }));
+      const tcls = 'sk-label' + (n.mid ? ' sk-tmid' : (isEnd ? ' sk-tend' : ''));
+      const t = mk('text', { x: p.cx, y: p.y + NH / 2 + FS * 0.35, class: tcls, 'text-anchor': 'middle' });
+      t.textContent = String(n.label || ''); svg.appendChild(t);
+    });
+    host.textContent = '';
+    if (d && d.caption){
+      const cap = document.createElement('p'); cap.className = 'sk-caption';
+      cap.innerHTML = '<b>一眼看清全书骨架 ·</b> ' + String(d.caption).replace(/[<>]/g, '');
+      host.appendChild(cap);
+    }
+    host.appendChild(svg);
+  }
+  /* 全书脑图:自绘 SVG 深色版(v4.1,替换 mind-elixir)。读内嵌 #bd-mindmap-data 的 nodeData 通用出图 --
+     tidy-tree 确定性布局 -> SVG 挂线节点(root 卡片 / 一级金奶油 / 二级双层[关键词+判断句+章码chip] / 三四级 emoji 前缀纯文字)
+     + 父子直角肘形梳齿引线(不画任何关联箭头/收纳虚线) + viewBox 缩放 viewer(连续指数 wheel/光标锚点/拖动不选中/pinch/双击复位/全屏/章码跳章)。
+     配色统一读 --mm-* dark token(与 CSS 同一套,零 hex 单一来源);nodeData 之外零硬编码,换书换数据即出图。 */
+  function initMindmap(){
+    const wrap = document.querySelector('.bd-mindmap-wrap');
+    const vp   = document.getElementById('bd-mindmap');
+    const dataEl = document.getElementById('bd-mindmap-data');
+    if (!wrap || !vp || !dataEl) return;
+    let stage = vp.querySelector('.mm-stage');
+    if (!stage) { stage = document.createElement('div'); stage.className = 'mm-stage'; vp.insertBefore(stage, vp.firstChild); }
+    let raw; try { raw = JSON.parse(dataEl.textContent); } catch (e) { return; }
+    const DATA = (raw && raw.nodeData) ? raw.nodeData : raw;      // 通用:只认 nodeData,arrows/summaries 一律忽略(SVG 版不画关联)
+    if (!DATA || !DATA.topic) return;
+
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    const SERIF = '"Source Han Serif SC","Noto Serif SC","Songti SC","STSong","SimSun",Georgia,serif';
+    const SANS  = '"Source Han Sans SC","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif';
+    // 深色配色:统一读 --mm-* dark token(CSS 定义、JS getComputedStyle 读同一套 -> 零 hex 单一来源;fallback 仅兜底)
+    const cs = getComputedStyle(wrap);
+    const T = (n, fb) => { const v = (cs.getPropertyValue(n) || '').trim(); return v || fb; };
+    const C = {
+      ink:T('--mm-ink','#f2ede1'), ink2:T('--mm-ink2','#dfe8e0'), ink3:T('--mm-ink3','#bccfc4'),
+      sec:T('--mm-sec','#d7c48c'), judge:T('--mm-judge','#a9c2b7'),
+      rootFill:T('--mm-root-fill','#235c4f'), rootBd:T('--mm-root-bd','#3c8272'), rootText:T('--mm-root-tx','#f4efe4'),
+      line:T('--mm-line','#5f8579'),
+      chipBg:T('--mm-chip-bg','rgba(143,208,191,0.15)'), chipBd:T('--mm-chip-bd','rgba(143,208,191,0.32)'), chipTx:T('--mm-chip-tx','#bfe0d3')
+    };
+    const LEAD = 10;   // 引线末端 -> 文字留白(文字纯挂线,不套框)
+
+    // 文本度量 + CJK 逐字换行
+    const mctx = document.createElement('canvas').getContext('2d');
+    const measure = (t, f) => { mctx.font = f; return mctx.measureText(t).width; };
+    function wrapText(text, font, maxW){
+      mctx.font = font; const lines = []; let cur = '';
+      for (const ch of String(text)) { const t = cur + ch; if (mctx.measureText(t).width > maxW && cur !== '') { lines.push(cur); cur = ch; } else cur = t; }
+      if (cur !== '') lines.push(cur); return lines.length ? lines : [''];
+    }
+
+    // 建树 + 逐节点定尺(root=卡片,其余=纯文字挂线)
+    function buildNode(rw, depth){
+      const n = { id: rw.id, topic: rw.topic || '', depth, tags: rw.tags || null, hyperLink: rw.hyperLink || null, children: [], root: !!rw.root };
+      (rw.children || []).forEach(c => n.children.push(buildNode(c, depth + 1)));
+      sizeNode(n); return n;
+    }
+    function sizeNode(n){
+      const d = n.depth;
+      if (d === 0) { const font = '700 22px ' + SERIF, pad = 16, tw = measure(n.topic, font); Object.assign(n, { w: tw + pad * 2, h: 30 + pad * 2, pad, font, kind: 'root' }); return; }
+      if (d === 1) { const font = '700 16.5px ' + SERIF, lh = 24, tw = measure(n.topic, font); Object.assign(n, { w: LEAD + tw + 2, h: lh, font, lh, lines: [n.topic], color: C.sec, kind: 'sec' }); return; }
+      if (d === 2) { // 二级双层:关键词(米白) + 判断句(浅青) + 章码 chip,整块挂线
+        const kwFont = '700 15px ' + SERIF, jFont = '400 11.5px ' + SANS, chFont = '600 10px ' + SANS, jMax = 212;
+        const judge = n.tags ? (n.tags[0] || '') : '', chap = n.tags ? (n.tags[1] || '') : '';
+        const kwW = measure(n.topic, kwFont), jLines = wrapText(judge, jFont, jMax);
+        const jW = Math.max(0, ...jLines.map(l => measure(l, jFont))), chW = measure(chap, chFont) + 16;
+        const blockW = Math.max(kwW, jW, chW), kwLH = 20, jLH = 15, chipH = 16, gapJC = 6;
+        const blockH = kwLH + jLines.length * jLH + gapJC + chipH;
+        Object.assign(n, { w: LEAD + blockW + 2, h: blockH, kwFont, jFont, chFont, kwLH, jLH, chipH, gapJC, jLines, chap, chW, kind: 'dual' }); return;
+      }
+      // 三/四级:类型靠 emoji 前缀区分,浅色文字纯挂线
+      let font, color, maxW, lh;
+      if (d === 3) { font = '400 13px ' + SANS; color = C.ink2; maxW = 214; lh = 19; }
+      else { font = '400 12px ' + SANS; color = C.ink3; maxW = 198; lh = 17.5; }
+      const innerMax = maxW - LEAD - 2, lines = wrapText(n.topic, font, innerMax), lineW = Math.max(...lines.map(l => measure(l, font)));
+      const w = (lines.length === 1) ? LEAD + lineW + 2 : maxW, h = lines.length * lh;
+      Object.assign(n, { w, h, font, color, lh, lines, kind: 'leaf' });
+    }
+    const rootNode = buildNode(DATA, 0);
+
+    // 按层收集 -> 列宽/列 x
+    const byDepth = {}; let maxDepth = 0;
+    (function collect(n){ (byDepth[n.depth] = byDepth[n.depth] || []).push(n); maxDepth = Math.max(maxDepth, n.depth); n.children.forEach(collect); })(rootNode);
+    const HGAP = 46, colW = [], colX = [];
+    for (let d = 0; d <= maxDepth; d++) colW[d] = Math.max(...byDepth[d].map(n => n.w));
+    colX[0] = 0; for (let d = 1; d <= maxDepth; d++) colX[d] = colX[d - 1] + colW[d - 1] + HGAP;
+    // 竖向 tidy 布局:后序 y 游标(变高不重叠),父居子中点
+    const VGAP = 16; let cursor = 0;
+    (function place(n){ n.x = colX[n.depth]; if (n.children.length === 0) { n.top = cursor; n.cy = cursor + n.h / 2; cursor += n.h + VGAP; } else { n.children.forEach(place); const f = n.children[0], l = n.children[n.children.length - 1]; n.cy = (f.cy + l.cy) / 2; n.top = n.cy - n.h / 2; } })(rootNode);
+    // 画布边界
+    const MARGIN = 42; let minY = Infinity, maxY = -Infinity, maxX = -Infinity;
+    Object.values(byDepth).flat().forEach(n => { minY = Math.min(minY, n.top); maxY = Math.max(maxY, n.top + n.h); maxX = Math.max(maxX, n.x + n.w); });
+    const W = maxX + MARGIN * 2, H = (maxY - minY) + MARGIN * 2, offY = MARGIN - minY, offX = MARGIN;
+
+    // 生成 SVG 字符串
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    function fontAttr(sh){ const m = sh.match(/^\s*(\d+)?\s*([\d.]+)px\s+(.+)$/); const weight = (m && m[1]) || '400', size = (m && m[2]) || '13', fam = (m && m[3]) || 'sans-serif'; return 'font-size="' + size + '" font-weight="' + weight + '" font-family="' + fam.replace(/"/g, '&quot;') + '"'; }
+    const X = n => n.x + offX, Y = n => n.top + offY, CY = n => n.cy + offY;
+    const parts = [];
+    parts.push('<svg xmlns="' + SVGNS + '" width="' + W.toFixed(0) + '" height="' + H.toFixed(0) + '" viewBox="0 0 ' + W.toFixed(0) + ' ' + H.toFixed(0) + '" font-family=\'' + SANS.replace(/"/g, '&quot;') + '\'>');
+    // 父子直角肘形梳齿引线(只画父子,SVG 版不画任何跨枝关联)
+    const conn = [];
+    Object.values(byDepth).flat().forEach(n => {
+      if (!n.children.length) return;
+      const busX = colX[n.children[0].depth] + offX - HGAP / 2, pRight = X(n) + n.w, pCy = CY(n);
+      let mn = pCy, mx = pCy; n.children.forEach(c => { mn = Math.min(mn, CY(c)); mx = Math.max(mx, CY(c)); });
+      conn.push('<path d="M' + pRight.toFixed(1) + ' ' + pCy.toFixed(1) + ' H' + busX.toFixed(1) + '"/>');
+      conn.push('<path d="M' + busX.toFixed(1) + ' ' + mn.toFixed(1) + ' V' + mx.toFixed(1) + '"/>');
+      n.children.forEach(c => { conn.push('<path d="M' + busX.toFixed(1) + ' ' + CY(c).toFixed(1) + ' H' + X(c).toFixed(1) + '"/>'); });
+    });
+    parts.push('<g fill="none" stroke="' + C.line + '" stroke-width="1" stroke-linecap="square" shape-rendering="crispEdges">' + conn.join('') + '</g>');
+    function nodeSVG(n){
+      const x = X(n), y = Y(n);
+      if (n.kind === 'root') {
+        let g = '<g>';
+        g += '<rect x="' + (x + 1).toFixed(1) + '" y="' + (y + 3).toFixed(1) + '" width="' + n.w.toFixed(1) + '" height="' + n.h.toFixed(1) + '" rx="8" fill="rgba(0,0,0,0.28)"/>';
+        g += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + n.w.toFixed(1) + '" height="' + n.h.toFixed(1) + '" rx="8" fill="' + C.rootFill + '" stroke="' + C.rootBd + '" stroke-width="1.4"/>';
+        g += '<text x="' + (x + n.w / 2).toFixed(1) + '" y="' + (y + n.h / 2 + 8).toFixed(1) + '" text-anchor="middle" ' + fontAttr(n.font) + ' fill="' + C.rootText + '">' + esc(n.topic) + '</text>';
+        return g + '</g>';
+      }
+      if (n.kind === 'sec') { const tx = x + LEAD, by = y + n.h / 2 + 16.5 * 0.34; return '<text x="' + tx.toFixed(1) + '" y="' + by.toFixed(1) + '" text-anchor="start" ' + fontAttr(n.font) + ' fill="' + n.color + '">' + esc(n.topic) + '</text>'; }
+      if (n.kind === 'dual') {
+        const tx = x + LEAD; let g = '<g>';
+        g += '<rect x="' + x.toFixed(1) + '" y="' + (y - 2).toFixed(1) + '" width="' + (n.w + 4).toFixed(1) + '" height="' + (n.h + 4).toFixed(1) + '" fill="rgba(0,0,0,0)" pointer-events="all"/>';
+        g += '<text x="' + tx.toFixed(1) + '" y="' + (y + 15).toFixed(1) + '" ' + fontAttr(n.kwFont) + ' fill="' + C.ink + '">' + esc(n.topic) + '</text>';
+        const jy = y + n.kwLH + 11; n.jLines.forEach((l, i) => { g += '<text x="' + tx.toFixed(1) + '" y="' + (jy + i * n.jLH).toFixed(1) + '" ' + fontAttr(n.jFont) + ' fill="' + C.judge + '">' + esc(l) + '</text>'; });
+        const chipTop = y + n.kwLH + n.jLines.length * n.jLH + n.gapJC;
+        g += '<rect x="' + tx.toFixed(1) + '" y="' + chipTop.toFixed(1) + '" width="' + n.chW.toFixed(1) + '" height="' + n.chipH + '" rx="8" fill="' + C.chipBg + '" stroke="' + C.chipBd + '" stroke-width="0.8"/>';
+        g += '<text x="' + (tx + n.chW / 2).toFixed(1) + '" y="' + (chipTop + n.chipH / 2 + 3.5).toFixed(1) + '" text-anchor="middle" ' + fontAttr(n.chFont) + ' fill="' + C.chipTx + '">' + esc(n.chap) + '</text>';
+        g += '</g>';
+        if (n.hyperLink) return '<a class="jump" href="' + esc(n.hyperLink) + '" data-ch="' + esc(n.hyperLink) + '">' + g + '</a>';
+        return g;
+      }
+      const tx = x + LEAD, fs = parseFloat(n.font.match(/(\d+(\.\d+)?)px/)[1]); let g = '';
+      n.lines.forEach((l, i) => { const by = y + i * n.lh + n.lh / 2 + fs * 0.34; g += '<text x="' + tx.toFixed(1) + '" y="' + by.toFixed(1) + '" text-anchor="start" ' + fontAttr(n.font) + ' fill="' + n.color + '">' + esc(l) + '</text>'; });
+      return g;
+    }
+    Object.values(byDepth).flat().forEach(n => parts.push(nodeSVG(n)));
+    parts.push('</svg>');
+    stage.innerHTML = parts.join('');
+    const svgEl = stage.querySelector('svg');
+
+    // ===== viewBox pan / zoom viewer(每次浏览器重新矢量光栅化,任意倍率锐利;非 transform:scale 位图放大糊) =====
+    const zb = vp.querySelector('.mm-zoom');
+    let stt = { x: 0, y: 0, k: 1 };
+    function apply(){ const r = vp.getBoundingClientRect(); if (!r.width || !r.height) return; svgEl.setAttribute('width', r.width); svgEl.setAttribute('height', r.height); svgEl.setAttribute('viewBox', (-stt.x / stt.k).toFixed(2) + ' ' + (-stt.y / stt.k).toFixed(2) + ' ' + (r.width / stt.k).toFixed(2) + ' ' + (r.height / stt.k).toFixed(2)); if (zb) zb.textContent = Math.round(stt.k * 100) + '%'; }
+    function fit(pad){ pad = pad || 28; const r = vp.getBoundingClientRect(); if (!r.width || !r.height) return; const k = Math.min((r.width - pad * 2) / W, (r.height - pad * 2) / H); stt.k = Math.min(k, 1.2); stt.x = (r.width - W * stt.k) / 2; stt.y = (r.height - H * stt.k) / 2; apply(); }
+    function zoomAt(cx, cy, f){ const r = vp.getBoundingClientRect(); const px = cx - r.left, py = cy - r.top, nk = Math.min(Math.max(stt.k * f, 0.15), 6); stt.x = px - (px - stt.x) * (nk / stt.k); stt.y = py - (py - stt.y) * (nk / stt.k); stt.k = nk; apply(); }
+    vp.addEventListener('wheel', e => { e.preventDefault(); let d = e.deltaY; if (e.deltaMode === 1) d *= 16; else if (e.deltaMode === 2) d *= 100; d = Math.max(-100, Math.min(100, d)); zoomAt(e.clientX, e.clientY, Math.exp(-d * 0.001)); }, { passive: false });
+    const pts = new Map(); let dragMoved = false, downPos = null, pinchStart = null, captured = false;
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    vp.addEventListener('pointerdown', e => {
+      if (e.target.closest && e.target.closest('.mm-toolbar')) return;   // 工具栏按钮不触发拖动
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) { downPos = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: stt.x, sy: stt.y }; dragMoved = false; captured = false; vp.classList.add('grabbing'); }
+      if (pts.size === 2) { const a = [...pts.values()]; pinchStart = { d: dist(a[0], a[1]), k: stt.k, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2 }; try { vp.setPointerCapture(e.pointerId); } catch (_) {} }
+      hideHint();
+    });
+    vp.addEventListener('pointermove', e => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size >= 2 && pinchStart) { const a = [...pts.values()], nd = dist(a[0], a[1]), r = vp.getBoundingClientRect(); const nk = Math.min(Math.max(pinchStart.k * (nd / pinchStart.d), 0.15), 6), px = pinchStart.mx - r.left, py = pinchStart.my - r.top; stt.x = px - (px - stt.x) * (nk / stt.k); stt.y = py - (py - stt.y) * (nk / stt.k); stt.k = nk; apply(); dragMoved = true; return; }
+      if (pts.size === 1 && downPos) { const dx = e.clientX - downPos.x, dy = e.clientY - downPos.y; if (Math.abs(dx) + Math.abs(dy) > 5) { dragMoved = true; if (!captured) { captured = true; try { vp.setPointerCapture(downPos.id); } catch (_) {} } } if (dragMoved) { stt.x = downPos.sx + dx; stt.y = downPos.sy + dy; apply(); } }
+    });
+    function up(e){ pts.delete(e.pointerId); if (pts.size < 2) pinchStart = null; if (pts.size === 0) { vp.classList.remove('grabbing'); captured = false; } }
+    vp.addEventListener('pointerup', up); vp.addEventListener('pointercancel', up);
+    vp.addEventListener('dblclick', () => fit());
+    // 章码跳章:点二级 a.jump -> location.hash -> 复用 initHashRouter(切 panel-full + 展开该章 + 高亮);拖动中不触发
+    stage.addEventListener('click', e => {
+      const a = e.target.closest && e.target.closest('a.jump'); if (!a) return;
+      e.preventDefault(); if (dragMoved) return;
+      const ch = a.getAttribute('data-ch') || a.getAttribute('href'); if (!ch) return;
+      const m = ch.match(/#ch-(\d+)/); if (m) toast('跳转到第 ' + m[1] + ' 章 · 逐章精读');
+      location.hash = ch;
+    }, true);
+    // 工具栏
+    const btn = k => vp.querySelector('.mm-toolbar [data-mm="' + k + '"]');
+    if (btn('in'))  btn('in').onclick  = () => { const r = vp.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.25); };
+    if (btn('out')) btn('out').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.25); };
+    if (btn('fit')) btn('fit').onclick = () => fit();
+    const fsBtn = btn('fs');
+    // 全屏 = 把 wrap 临时移到 <body> 顶层再加 .mm-fullscreen(逃离 main{isolation:isolate} / panel{transform} 的祖先 stacking context,
+    // 否则 fixed 也困在 main 内、被 sticky nav / 主题浮层盖住,进不了纯深色聚焦态)。退出时复位回原处。
+    let fsSlot = null, fsHome = null;
+    function toggleFs(){
+      const on = !wrap.classList.contains('mm-fullscreen');
+      if (on) {
+        fsHome = wrap.parentNode; fsSlot = document.createComment('mm-fs-slot');
+        fsHome.insertBefore(fsSlot, wrap); document.body.appendChild(wrap);
+        wrap.classList.add('mm-fullscreen'); document.body.style.overflow = 'hidden';
+      } else {
+        wrap.classList.remove('mm-fullscreen'); document.body.style.overflow = '';
+        if (fsSlot && fsHome) { fsHome.insertBefore(wrap, fsSlot); fsSlot.remove(); fsSlot = null; }
+      }
+      if (fsBtn) fsBtn.textContent = on ? '⤡ 退出' : '⤢ 全屏';
+      fit(); setTimeout(fit, 80);
+    }
+    if (fsBtn) fsBtn.onclick = toggleFs;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && wrap.classList.contains('mm-fullscreen')) toggleFs(); });
+    // 提示 / toast
+    const hintEl = vp.querySelector('.mm-hint'), toastEl = vp.querySelector('.mm-toast');
+    let hintTimer, toastTimer;
+    function showHint(){ if (!hintEl) return; const touch = matchMedia('(pointer:coarse)').matches || ('ontouchstart' in window) || navigator.maxTouchPoints > 0; hintEl.textContent = touch ? '双指缩放 · 单指拖动 · 双击复位' : '滚轮缩放 · 拖动平移 · 双击复位 · 点二级章码跳章'; hintEl.classList.add('show'); clearTimeout(hintTimer); hintTimer = setTimeout(hideHint, 4200); }
+    function hideHint(){ if (hintEl) hintEl.classList.remove('show'); }
+    function toast(msg){ if (!toastEl) return; toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000); }
+    // 换肤 no-op:脑图恒深色,不随页面主题(保留全局符号,initThemes 调用安全)
+    window.__bdMindmapRetheme = function(){};
+    // 诊断(供 verify 冒烟:节点数 / 是否 SVG viewer)
+    const allNodes = Object.values(byDepth).flat();
+    window.__mm = { W: W, H: H, nodes: allNodes.length, maxDepth: maxDepth, fit: fit, setView: (x, y, k) => { stt.x = x; stt.y = y; stt.k = k; apply(); } };
+    // 懒渲染:panel 隐藏(getBoundingClientRect 为 0)时等切到①再 fit
+    let inited = false;
+    function ready(){ if (inited) return; const r = vp.getBoundingClientRect(); if (!r.width || !r.height) return; inited = true; fit(); showHint(); }
+    ready();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (inited) fit(); else ready(); });
+    window.addEventListener('resize', () => { if (inited) fit(); else ready(); });
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => { if (t.dataset.panel === 'panel-glance') setTimeout(() => { ready(); if (inited) fit(); }, 60); }));
+  }
+  function initHashRouter(activateTab){
+    /* hash 路由: #sub-* → 开合全屏子视图;#ch-N → 章码传送门(切板块② + 展开该章 + 滚动 + 高亮);其余 #id → 切 tab + 滚动高亮。 */
+    const subpages = Array.prototype.slice.call(document.querySelectorAll('.subpage'));
+    const closeSubs = () => subpages.forEach(s => { s.hidden = true; });
+    const open = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      if (id.indexOf('sub-') === 0) {
+        const sub = document.getElementById(id);
+        if (sub && sub.classList.contains('subpage')) {
+          subpages.forEach(s => { s.hidden = (s !== sub); });
+          sub.scrollTop = 0;
+          return;
+        }
+      }
+      closeSubs();
+      const chm = id.match(/^ch-(\d+)$/);
+      if (chm) {
+        activateTab('panel-full');
+        if (window.__bdOpenChapter) setTimeout(() => window.__bdOpenChapter(chm[1], true), 30);
+        return;
+      }
+      const el = id && document.getElementById(id);
+      if (!el) return;
+      const panel = el.closest('.panel');
+      if (panel && !panel.classList.contains('on')) activateTab(panel.id);
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600);
+    };
+    window.addEventListener('hashchange', open); open();
+  }
+})();
+</script>
+<script>
+/* 基础层: IIFE 壳 + 幂等守卫 + 全部 v3 交互
+   initNav(tab/next-cta,切板滚到悬浮 tab 下方) / syncTabH(实测 tab 栏高→--tab-h) / initThemes / initChapters(手风琴多开+全展逃生门+已读计数)
+   / initCoreIdeas(展开三件) / initConcepts(弹卡+高亮章行) / initTensions / initModels(抽屉单开)
+   / initRules(chip 筛选 + chain-step 联动) / initReadingPath(高亮书卡) / initSubBack */
+(() => {
+  'use strict';
+  const $  = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+  const lsKey = (k) => `bd:${(document.querySelector('main[data-book-slug]') || {}).dataset ? document.querySelector('main[data-book-slug]').dataset.bookSlug : 'x'}:${k}`;
+
+  function activateTab(panelId){
+    $$('.panel').forEach(p => p.classList.toggle('on', p.id === panelId));
+    $$('.tab').forEach(t => {
+      const on = t.dataset.panel === panelId;
+      t.classList.toggle('on', on);
+      /* Q7-6:移动端横滑单行 tab 栏,激活 tab 自动居中(桌面 grid 无横向溢出,无副作用) */
+      if (on && t.scrollIntoView) { try { t.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {} }
+    });
+  }
+  function tabBarH(){ const n = document.getElementById('bd-tabs'); return n ? n.getBoundingClientRect().height : 0; }
+  function syncTabH(){ document.documentElement.style.setProperty('--tab-h', tabBarH() + 'px'); }
+  /* 切板 / 跳章后把目标顶部滚到 sticky tab 栏正下方(减去实测 tab 栏高度,不写死;scroll-margin-top 走 --tab-h) */
+  function scrollPanelTop(panelId){
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    const y = panel.getBoundingClientRect().top + window.pageYOffset - tabBarH() - 6;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  }
+
+  /* 导航: tab + next-cta + 末行指路回链 全走 data-panel;切板后统一把内容落到悬浮 tab 正下方(导读条 .reading-guide 已废) */
+  function initNav(){
+    $$('[data-panel]').forEach(el => el.addEventListener('click', (e) => {
+      if (el.tagName === 'A') e.preventDefault();
+      activateTab(el.dataset.panel);
+      scrollPanelTop(el.dataset.panel);
+    }));
+  }
+
+  function initThemes(){
+    let saved = null; try { saved = localStorage.getItem(lsKey('theme')); } catch (e) {}
+    if (saved) document.body.dataset.theme = saved;
+    const picker = document.querySelector('.theme-picker');
+    if (!picker) return;
+    const trigger = picker.querySelector('.tp-trigger');
+    const markCurrent = () => {
+      const cur = document.body.dataset.theme || 'warm-paper';
+      picker.querySelectorAll('[data-theme-pick]').forEach(b =>
+        b.setAttribute('aria-current', String(b.dataset.themePick === cur)));
+    };
+    const setOpen = (o) => {
+      picker.dataset.open = o ? '1' : '0';
+      if (trigger) trigger.setAttribute('aria-expanded', String(!!o));
+    };
+    if (trigger) trigger.addEventListener('click', (e) => { e.stopPropagation(); setOpen(picker.dataset.open !== '1'); });
+    picker.querySelectorAll('[data-theme-pick]').forEach(b =>
+      b.addEventListener('click', () => {
+        document.body.dataset.theme = b.dataset.themePick;
+        try { localStorage.setItem(lsKey('theme'), b.dataset.themePick); } catch (e) {}
+        markCurrent(); setOpen(false);
+        if (window.__bdMindmapRetheme) window.__bdMindmapRetheme();
+      }));
+    document.addEventListener('click', (e) => { if (picker.dataset.open === '1' && !picker.contains(e.target)) setOpen(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && picker.dataset.open === '1') setOpen(false); });
+    markCurrent();
+  }
+
+  /* ② 手风琴章节 + 目录态(v4 批次C:已读改章尾 IntersectionObserver 计数 + localStorage 持久;下一章预告卡;阅读中上下文条) */
+  const read = new Set();
+  function chTotal(){ return $$('.bd-chapter').length; }
+  function updateProgress(){
+    const total = chTotal();
+    const p = $('.toc-progress');
+    if (p) p.textContent = '已读 ' + read.size + '/' + total;
+    const cx = $('.ch-ctxbar .cx-progress');
+    if (cx) cx.textContent = '已读 ' + read.size + '/' + total;
+  }
+  function persistRead(){ try { localStorage.setItem(lsKey('read'), JSON.stringify(Array.from(read))); } catch (e) {} }
+  function loadRead(){   // Q5-3B:回访恢复已读(key 带 slug)
+    try {
+      const arr = JSON.parse(localStorage.getItem(lsKey('read')) || '[]');
+      if (Array.isArray(arr)) arr.forEach(n => {
+        if (!document.getElementById('ch-' + n)) return;
+        read.add(String(n));
+        const r = $('.toc-row[data-ch="' + n + '"]'); if (r) r.classList.add('read');
+      });
+    } catch (e) {}
+  }
+  function markRead(n){   // Q5-3:读到章尾入视口才计已读(非「点开即计」)
+    n = String(n);
+    if (read.has(n)) return;
+    read.add(n);
+    const r = $('.toc-row[data-ch="' + n + '"]'); if (r) r.classList.add('read');
+    persistRead(); updateProgress();
+  }
+  function setChapter(n, openState){   // Q5-3:只管展开/收起,不再碰已读
+    const ch = document.getElementById('ch-' + n);
+    const row = $('.toc-row[data-ch="' + n + '"]');
+    if (!ch) return;
+    ch.classList.toggle('open', openState);
+    if (row) row.classList.toggle('open', openState);
+  }
+  function openChapter(n, doScroll){
+    setChapter(n, true);
+    const ch = document.getElementById('ch-' + n);
+    if (doScroll && ch) {
+      ch.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      ch.classList.add('flash'); setTimeout(() => ch.classList.remove('flash'), 1600);
+    }
+  }
+  window.__bdOpenChapter = openChapter;
+
+  /* Q5-2:章尾裸钮 → 下一章预告卡(读 toc 论点标题 + 读时,JS 读 DOM);末章补终局卡跳 panel-judge */
+  function initChapterPreview(){
+    $$('.bd-chapter').forEach(ch => {
+      const n = ch.id.replace('ch-', '');
+      const nextBtn = ch.querySelector('[data-ch-next]');
+      const acts = ch.querySelector('.ch-actions');
+      if (nextBtn) {
+        const nn = String(Number(n) + 1);
+        const row = $('.toc-row[data-ch="' + nn + '"]');
+        const titleEl = row && row.querySelector('.toc-title');
+        const metaEl = row && row.querySelector('.toc-meta');
+        const title = titleEl ? (titleEl.textContent || '').trim() : '';
+        const meta = metaEl ? (metaEl.textContent || '').replace(/[▾▴▸→]/g, '').trim() : '';
+        if (title) {
+          nextBtn.classList.add('cn-card');
+          nextBtn.textContent = '';
+          const k = document.createElement('span'); k.className = 'cn-kick'; k.textContent = '继续读第 ' + nn + ' 章';
+          const t = document.createElement('span'); t.className = 'cn-title'; t.textContent = title;
+          const m = document.createElement('span'); m.className = 'cn-meta'; m.textContent = (meta ? meta + ' ' : '') + '→';
+          nextBtn.appendChild(k); nextBtn.appendChild(t); nextBtn.appendChild(m);
+        }
+      } else if (acts && !acts.querySelector('.ch-final')) {
+        const b = document.createElement('a');
+        b.className = 'ch-act ch-next ch-final';
+        b.setAttribute('data-panel', 'panel-judge');
+        const k = document.createElement('span'); k.className = 'cn-kick'; k.textContent = '全书读完 ✓';
+        const t = document.createElement('span'); t.className = 'cn-title'; t.textContent = '这书该信几分?';
+        const m = document.createElement('span'); m.className = 'cn-meta'; m.textContent = '→ 批判与评价';
+        b.appendChild(k); b.appendChild(t); b.appendChild(m);
+        acts.appendChild(b);
+      }
+    });
+  }
+
+  function initChapters(){
+    $$('.toc-row').forEach(row => row.addEventListener('click', () => {
+      const n = row.dataset.ch;
+      const ch = document.getElementById('ch-' + n);
+      const willOpen = !(ch && ch.classList.contains('open'));
+      setChapter(n, willOpen);
+      if (willOpen && ch) ch.scrollIntoView({ behavior: 'smooth', block: 'start' });   // Q5-8:平滑滚到章首,落 tab 下沿(scroll-margin-top)
+    }));
+    const btn = $('.toc-expand');
+    if (btn) btn.addEventListener('click', () => {   // Q5-3:全部展开只展开、不计已读
+      const chs = $$('.bd-chapter');
+      const anyClosed = chs.some(c => !c.classList.contains('open'));
+      chs.forEach(c => setChapter(c.id.replace('ch-', ''), anyClosed));
+      btn.textContent = anyClosed ? '全部收起' : '全部展开';
+    });
+    $$('.bd-chapter').forEach(ch => ch.addEventListener('click', (e) => {
+      const collapse = e.target.closest('[data-ch-collapse]');
+      const totoc = e.target.closest('[data-ch-totoc]');
+      const next = e.target.closest('[data-ch-next]:not(.ch-final)');
+      if (collapse) { setChapter(collapse.dataset.chCollapse, false); }
+      else if (totoc) { const t = $('.chapter-toc'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      else if (next) { e.preventDefault(); const cur = next.dataset.chNext; setChapter(cur, false); openChapter(String(Number(cur) + 1), true); }
+      // .ch-final 终局卡走 data-panel="panel-judge",由 initNav 委托切板,不在此拦截
+    }));
+    initChapterPreview();
+    loadRead();
+    updateProgress();
+  }
+
+  /* Q5-3/Q5-4:章尾入视口才计已读(IO)+ 阅读中上下文条(当前章 · 已读 n/N · 回目录),离开正文自动隐藏 */
+  function initReadingObservers(){
+    if (!('IntersectionObserver' in window)) return;
+    const endOb = new IntersectionObserver((ents) => {
+      ents.forEach(e => { if (e.isIntersecting) { const ch = e.target.closest('.bd-chapter'); if (ch) markRead(ch.id.replace('ch-', '')); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0 });
+    $$('.bd-chapter .ch-actions').forEach(a => endOb.observe(a));
+
+    const bar = $('.ch-ctxbar');
+    if (!bar) return;
+    const cxCh = bar.querySelector('.cx-ch');
+    const totoc = bar.querySelector('.cx-totoc');
+    if (totoc) totoc.addEventListener('click', () => { const t = $('.chapter-toc'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    const inView = new Map();
+    const paint = () => {
+      let pick = null, top = Infinity;
+      inView.forEach((vis, ch) => { if (vis) { const y = ch.getBoundingClientRect().top; if (y < top) { top = y; pick = ch; } } });
+      if (pick) {
+        if (cxCh) cxCh.textContent = '第 ' + pick.id.replace('ch-', '') + ' 章';
+        updateProgress();
+        bar.classList.add('show');
+      } else {
+        bar.classList.remove('show');
+      }
+    };
+    const bodyOb = new IntersectionObserver((ents) => {
+      ents.forEach(e => inView.set(e.target, e.isIntersecting));
+      paint();
+    }, { threshold: 0, rootMargin: '-100px 0px -38% 0px' });
+    $$('.bd-chapter').forEach(c => bodyOb.observe(c));
+  }
+
+  /* ① 核心观点卡: 点卡展开三件(explain+evidence+evlevel);内部传送门链不触发折叠;Q7-3 展开后翻文案 */
+  function initCoreIdeas(){
+    $$('.ci').forEach(card => card.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return;
+      card.classList.toggle('on');
+      const more = card.querySelector('.ci-more');
+      if (more) {
+        if (!more.dataset.def) more.dataset.def = more.textContent;
+        more.textContent = card.classList.contains('on') ? '收起 ▴' : more.dataset.def;
+      }
+    }));
+  }
+
+  /* ② 概念 chip: 弹卡(单开)+ 高亮含该概念的目录行 */
+  function initConcepts(){
+    const chips = $$('.cc-chip');
+    chips.forEach(chip => chip.addEventListener('click', () => {
+      const idx = chip.dataset.conceptIdx;
+      const wasOn = chip.classList.contains('on');
+      chips.forEach(c => c.classList.toggle('on', c === chip && !wasOn));
+      $$('.cc-pop').forEach(p => p.classList.toggle('on', p.dataset.conceptIdx === idx && !wasOn));
+      $$('.toc-row').forEach(r => r.classList.remove('hl'));
+      if (!wasOn) (chip.dataset.conceptChs || '').split(/\s+/).filter(Boolean).forEach(cn => {
+        const r = $('.toc-row[data-ch="' + cn + '"]'); if (r) r.classList.add('hl');
+      });
+    }));
+  }
+
+  /* ③ 内在张力: 点行展开仲裁 note */
+  function initTensions(){
+    $$('.tn-row').forEach(row => row.addEventListener('click', () => row.classList.toggle('open')));
+  }
+
+  /* ④ 模型抽屉: 一次开一张(手风琴);Q7-3 展开后翻文案 展开 ▾ ⇄ 收起 ▴ */
+  function syncModelToggle(d){
+    const t = d.querySelector('.md-toggle');
+    if (t) t.textContent = d.classList.contains('open') ? '收起 ▴' : '展开 ▾';
+  }
+  function initModels(){
+    const drawers = $$('.model-drawer');
+    drawers.forEach(d => {
+      const head = d.querySelector('.md-head');
+      if (!head) return;
+      head.addEventListener('click', () => {
+        const willOpen = !d.classList.contains('open');
+        drawers.forEach(x => { x.classList.remove('open'); syncModelToggle(x); });
+        if (willOpen) d.classList.add('open');
+        syncModelToggle(d);
+      });
+    });
+  }
+
+  /* ④ 情境决策卡: rule-chips 双轴筛选 + chain-step 点击联动筛选并滚动 */
+  function initRules(){
+    let curStep = 'all', curSitu = 'all';
+    const cards = $$('.rule-card');
+    const apply = () => cards.forEach(c => {
+      const stepOk = curStep === 'all' || c.dataset.step === curStep;
+      const situOk = curSitu === 'all' || (c.dataset.situ || '').indexOf(curSitu) >= 0;
+      c.style.display = (stepOk && situOk) ? '' : 'none';
+    });
+    $$('.rc-chip[data-filter-step]').forEach(chip => chip.addEventListener('click', () => {
+      curStep = chip.dataset.filterStep;
+      $$('.rc-chip[data-filter-step]').forEach(c => c.classList.toggle('on', c === chip));
+      apply();
+    }));
+    $$('.rc-chip[data-filter-situ]').forEach(chip => chip.addEventListener('click', () => {
+      const wasOn = chip.classList.contains('on');
+      curSitu = wasOn ? 'all' : chip.dataset.filterSitu;
+      $$('.rc-chip[data-filter-situ]').forEach(c => c.classList.toggle('on', c === chip && !wasOn));
+      apply();
+    }));
+    $$('.chain-step').forEach(step => step.addEventListener('click', () => {
+      const s = step.dataset.step;
+      curStep = s;
+      $$('.rc-chip[data-filter-step]').forEach(c => c.classList.toggle('on', c.dataset.filterStep === s));
+      apply();
+      $$('.chain-step').forEach(x => x.classList.remove('hl')); step.classList.add('hl');
+      const rules = $('.rules'); if (rules) rules.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    apply();
+  }
+
+  /* ⑤ 阅读路径: 点路径步高亮对应书卡 */
+  function initReadingPath(){
+    $$('.rp-step').forEach(step => step.addEventListener('click', () => {
+      const t = step.dataset.simIdx;
+      $$('.rp-step').forEach(s => s.classList.toggle('hl', s === step));
+      $$('.sim-card').forEach(c => c.classList.toggle('hl', c.dataset.simIdx === t));
+      const card = $('.sim-card[data-sim-idx="' + t + '"]'); if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }));
+  }
+
+  /* 子视图返回: history.back() 优先;直达深链兜底清 hash */
+  function initSubBack(){
+    $$('[data-sub-back]').forEach(b => b.addEventListener('click', () => {
+      if (location.hash.indexOf('#sub-') === 0 && window.history.length > 1) window.history.back();
+      else location.hash = '';
+    }));
+  }
+
+  /* Q7-5:sticky tab 吸顶阴影 -- sentinel 滚出视口(IO 不相交)即 .stuck,吸顶瞬间浮起(iOS 质感) */
+  function initStickyShadow(){
+    const tabs = document.getElementById('bd-tabs');
+    if (!tabs || !('IntersectionObserver' in window)) return;
+    if (tabs.previousElementSibling && tabs.previousElementSibling.classList.contains('tabs-sentinel')) return;
+    const sen = document.createElement('div');
+    sen.className = 'tabs-sentinel'; sen.setAttribute('aria-hidden', 'true');
+    tabs.parentNode.insertBefore(sen, tabs);
+    new IntersectionObserver(([e]) => tabs.classList.toggle('stuck', !e.isIntersecting), { threshold: 0 }).observe(sen);
+  }
+
+  function bdInit(){
+    const m = document.querySelector('main[data-book-slug]');
+    if (!m || m.dataset.bdReady) return;
+    m.dataset.bdReady = '1';
+    /* initChapters 先跑:它注入末章 .ch-final[data-panel](Q5-2 终局卡),initNav 再统一委托绑 data-panel */
+    initChapters(); initNav(); initThemes(); initCoreIdeas(); initConcepts();
+    initTensions(); initModels(); initRules(); initReadingPath(); initSubBack();
+    initReadingObservers(); initStickyShadow();
+    syncTabH();
+    let rt = null;
+    window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(syncTabH, 120); });
+    if (window.__bdInitExtra) window.__bdInitExtra(activateTab);   // 脑图 + hash 路由
+  }
+  if (document.readyState !== 'loading') bdInit();
+  else document.addEventListener('DOMContentLoaded', bdInit);
+  document.addEventListener('astro:page-load', bdInit);
+})();
+</script>
+</body></html>

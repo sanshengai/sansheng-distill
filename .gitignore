@@ -1,0 +1,21 @@
+# --- secrets (never commit real keys) ---
+.env
+*.env
+!.env.example
+
+# --- user's book/distill data (copyright originals + local outputs) ---
+distill-data/
+**/distill-data/
+
+# --- python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
