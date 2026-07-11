@@ -75,6 +75,26 @@ ln -s "$PWD/sansheng-distill" ~/.claude/skills/sansheng-distill
 
 然后重启 Claude Code。
 
+### 国内加速下载
+
+GitHub 直连不畅时，给 clone 地址前面加一层公共镜像即可（下载源码 zip 同理）：
+
+```bash
+# 加速 clone（把 gh-proxy.com 换成 ghfast.top 即备用镜像）
+git clone https://gh-proxy.com/https://github.com/sandypoli-boop/sansheng-distill.git
+```
+
+插件市场方式暂无稳定国内镜像；网络不畅时用上面的加速 clone + 软链。
+
+## 更新
+
+升级到新版，取决于你当初怎么装的：
+
+- **插件市场装的**：`claude plugin marketplace update` 刷新市场，再 `claude plugin update sansheng-distill`
+- **clone + 软链装的**：进本仓目录 `git pull`（软链即时生效，不必重装、不必重连）
+
+**怎么知道有新版**：看本仓 [Releases](../../releases)；点仓库右上角 **Watch → Custom → Releases**，发新版时 GitHub 会通知你。每版改了什么见 [CHANGELOG](CHANGELOG.md)。
+
 ## 快速上手
 
 ```bash
