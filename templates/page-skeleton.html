@@ -196,7 +196,7 @@ main{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:0 0 60px;isolatio
 .napkin-sketch .sk-caption{margin:0 0 8px;color:var(--ink-soft);font:700 .8125rem/1.5 var(--font-display);letter-spacing:.02em;text-align:center}
 .napkin-sketch .sk-caption b{color:var(--green)}
 .napkin-sketch svg{display:block;width:100%;height:auto;max-height:70vh;margin:0 auto}
-/* 二阶实底(作者:中间产物 + 终点统一绿实底白字 / 支柱·过程=浅底描边) */
+/* 二阶实底(sandy:中间产物 + 终点统一绿实底白字 / 支柱·过程=浅底描边) */
 .napkin-sketch .sk-node{fill:var(--surface-strong);stroke:var(--green);stroke-width:1.4}
 .napkin-sketch .sk-node.sk-mid{fill:var(--green);stroke:none}
 .napkin-sketch .sk-node.sk-end{fill:var(--green);stroke:none}
@@ -706,7 +706,7 @@ main{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:0 0 60px;isolatio
 
 /* ============================================================
    v4 批次 C(逐章交互 + UI 精修 + 手机端)· Q5/Q7 追加层
-   全走 token · 零 hex · 禁 prefers-reduced-motion 门控(作者机器常开减少动效,门控=看到静止)
+   全走 token · 零 hex · 禁 prefers-reduced-motion 门控(sandy 机器常开减少动效,门控=看到静止)
    ============================================================ */
 /* Q7-11 圆角三档 token(收敛 0/4/6/10/999 混用;--r-card 内容卡 / --r-ui 容器件 / --r-pill 胶囊) */
 :root{--r-card:0;--r-ui:6px;--r-pill:999px}
@@ -1697,7 +1697,7 @@ body[data-theme="dark"] .eyebrow,body[data-theme="brand-dark"] .eyebrow{color:va
     const layers = {}; let maxL = 0;
     nodes.forEach(n => { const L = layer[n.id]; (layers[L] = layers[L] || []).push(n); if (L > maxL) maxL = L; });
     // 尺寸(CJK ~ 字号宽);节点宽随 label 自适应
-    // 横向布局(作者:横向从左到右、压低高度):层=列(x 递增),列内纵向堆叠居中
+    // 横向布局(sandy:横向从左到右、压低高度):层=列(x 递增),列内纵向堆叠居中
     const FS = 11, CH = 15.2, PADX = 15, NH = 38, VGAP = 14, HGAP = 40, PAD = 12;
     const wOf = n => Math.max(66, String(n.label || '').length * CH + PADX * 2);
     // 每列宽=该列最宽节点;记最高列(节点最多)定画布高

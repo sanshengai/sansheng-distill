@@ -65,6 +65,43 @@
 
 > 通用底线(所有书型):`tensions`≥2、批判段四件套齐(§4.4)、每条 `core_ideas`/`decision_rules`/`quotes` 带 anchor -- 见 §7。
 
+### 1.4 render_profile:书型 → 输出形态(v6,2026-07-12 B-1)
+
+§1.1-1.3 判出 `book_type` 后,**Step1 再产一个 `render_profile` 写入 `distill.json` 顶层**,把书型从「只调门槛」升到「**驱动输出形态**」(tab 组合 / 区块取舍 / 字数策略 / 生效门禁)。这是 v6 治「所有书硬套五段漏斗」的总闸。
+
+> **为什么**:2026-07-12 五作者约 20 本复盘实测——book_type 判了却不改骨架(§1.3),34 本里 24 本塌成「论说」、KK《宝贵人生建议》箴言体被塞 22 章×878 字讲书稿(注水,违反自己的 G1)。而「按轴变体化门禁」的机制视频路径(§V)早有(G9 按 `source_type` 取 800/400),把它键到「书型轴」即可,是机械泛化非新架构。
+
+**8 型注册表**(`verify_page.py` 的 `RENDER_PROFILES` 是**权威镜像**,改此表必同步改脚本,否则 verify 拦篡改):
+
+| archetype | narrative_mode | 省略区块 omit_blocks | 生效 Tier-1 门禁 active_gates | 新原语 primitives | tabs |
+|---|---|---|---|---|---|
+| **论说/叙事/人物/工具**(legacy) | full-800 | (无) | 全 Tier-1 | (无) | 全 5 |
+| **语录**(箴言/格言/清单) | list | soul-block/arg-restate/rules/models/questions/verdict-bar | G16 | 语录墙 | glance/full/extend |
+| **书单**(荐书/书目导览) | list | 上 + bd-napkin | (无) | 书单卡 | glance/full/extend |
+| **课程**(教材/培训) | dense-card | soul-block/arg-restate | G9,G13 | 知识点树/练习卡 | glance/full/action/extend |
+| **考试**(备考/考点) | dense-card | 上 | G9 | 考点卡/例题解析/记忆卡 | glance/full/extend |
+
+schema(distill.json 顶层,Step1 产;下游 Step6 选模板变体 / Step2 按 narrative_mode 定字数 / Step7 只验 active_gates):
+
+```jsonc
+"render_profile": {
+  "archetype": "论说|叙事|人物|工具|语录|书单|课程|考试",
+  "narrative_mode": "full-800|dense-card|list",   // 字数策略,驱动 G9 档(full=800/dense=300/list=不产narrative)
+  "active_gates": ["G16", ...],                    // 必须逐字等于上表(verify 拦篡改绕门禁)
+  "primitives": ["语录墙", ...]                     // 可选,声明本页用的新结构原语(见 html-spec)
+}
+```
+
+**判型补充(扩 §1.2,四型之外先判这四新型,命中即停,都不像再回 §1.2 判 legacy)**:
+1. 全书是**箴言/格言/清单**(每条独立、无贯穿论证,如稻盛《活法》语录、KK《宝贵人生建议》)→ **语录**。
+2. 全书是**荐书/书目导览**(每节介绍别的一本书,如吴晓波《影响商业的 50 本书》)→ **书单**。
+3. 全书是**教材/培训课**(知识点递进 + 可练习,价值单元是「知识点+练习」非「论点+案例」)→ **课程**。
+4. 全书是**备考/考点**(考点密 + 例题 + 易错点)→ **考试**。
+
+**与门禁共存(§7 详)**:门禁分 **Tier-0 底线**(不编造/§5.1 anchor/版权≤150/真封面/零外链/Zero-Hex/data-source/破折号/G1 反空洞…,**任何 profile 不可关**)与 **Tier-1 形态**(随 `active_gates`)。**active_gates 是上表权威值,禁逐书手写篡改**;verify 拦「archetype 不在表 / active_gates 或 narrative_mode 与表不符」(防用自定义 profile 偷关反注水检查)。
+
+**向后兼容**:无 `render_profile` 的旧 distill.json = legacy 全门禁,**旧书不必重蒸**;四型 legacy 的 profile 等价于「不写 render_profile」。
+
 ---
 
 ## 2. Step2:两遍蒸馏总览(v2)
@@ -85,7 +122,7 @@
 | 证据等级 / 质量门禁 | deep-reading-coach / reading-pipeline | `evidence_level` / 全表 | §5 §7 |
 | **v2 浏览型延展字段**(生活类比 / 主次 / 金句点评 / 概念误读 / 书魂 / 因果链 / 第二人称自检 / 人物身份卡) | 本 skill v2(四源掉落宝石回收) | `core_ideas.layman_analogy`+`.primary` / `quotes.note`+`.featured` / `mental_models.how_to_apply` / `concepts.common_misread` / `soul_module` / `action_chain` / `self_check` / `persona_card`+`voice_dna` | §4.5 |
 | **v2 详实转述层**(讲书稿正文 + 原文摘录) | 本 skill v2(讲书稿范式立法) | `chapters[].narrative` / `chapters[].excerpts` | §3.5 |
-| **v3 浏览型新增字段**(封面简介 / 裁决条 / 行动扩写 / 规则模型挂环) | 本 skill v3(作者反馈重构) | `cover_intro` / `credibility_verdict` / `action_chain[].detail` / `decision_rules[].chain_step` / `mental_models[].chain_step` | §4.5(cover_intro/verdict/chain_step 属 Pass 1;detail 属 Pass 2 §3.5) |
+| **v3 浏览型新增字段**(封面简介 / 裁决条 / 行动扩写 / 规则模型挂环) | 本 skill v3(sandy 反馈重构) | `cover_intro` / `credibility_verdict` / `action_chain[].detail` / `decision_rules[].chain_step` / `mental_models[].chain_step` | §4.5(cover_intro/verdict/chain_step 属 Pass 1;detail 属 Pass 2 §3.5) |
 
 执行顺序(两遍):
 1. **Pass 1**:§3(三轮)→ §4(四嫁接件)→ §4.5(延展字段,含 v3 cover_intro / credibility_verdict / chain_step 归站)→ §5(逐条补 anchor + evidence_level)。
@@ -195,12 +232,18 @@ xray 餐巾纸是「公式 + 读法段 + 一句话 + 草图」四件套;v1-v3 �
 
 ### 3.5.5 长书执行方式(subagent fan-out)
 
+> 2026-07-12 五作者约 20 本批量复盘定案:**fan-out 分块数不是成本大头**(逐章命名 ≠ 逐章派 agent,各 subagent 仍 4-6 章/组;砍分块省不到 token 且掉详实度)。杠杆在**并发调度 + 失败核盘 + 统一命名**——本节据此收紧。
+
 章数多(如 20 章)时按章分组并行:
 
-1. **分组**:按章切组,**每组 ≤5 章**;每组派 1 个 subagent(全 Opus),各拿「本组各章 Pass 1 骨架 + 本组原文切片」。
+1. **分组**:按章切组,**每组 ≤5 章**;每组派 1 个 subagent(全 Opus),各拿「本组各章 Pass 1 骨架 + 本组原文切片」。**并发上限**:全局在飞的 Pass2 subagent **≤ 6-8**(批量多本时跨会话统算,见 SKILL `§批量模式` 并发闸),别一次性起满所有组、别多作者同时段并跑(会引爆 529 风暴)。
 2. **组内串行**:subagent 组内逐章写 narrative + excerpts(串行,保上下文连贯),不跳章。
-3. **主控合并**:各组产物回填 `distill.json` 对应 `chapters[].no`,主控做 **G9 字数 / G14 excerpts 机械核对 + 标志性案例保全抽检**(该书招牌故事必须完整出现在对应章,不得被压成标签)。
-4. 分组只切 narrative / excerpts 的生产,**Pass 1 骨架仍是全书一次产**(napkin / soul_module 等全局字段不分组)。
+3. **产物落盘·统一命名(硬)**:每组写 **`$DATA\{书目录}\_pass2_g{N}.json`**(N=组序,连续)。**只用这一套命名**——禁 `_ch_N` / `_pass2_N` / `_pass2_batchX` 等即兴变体(并发多会话命名漂移会致合并对不齐、掉章;复盘曾四套并存)。
+4. **主控合并 + 完整性门禁(硬)**:各组 `_pass2_g*.json` 回填 `distill.json` 对应 `chapters[].no`,主控做:
+   - **合并完整性断言**:回填后核「`chapters[].no` 全齐(1..总章数无缺)+ 每章 narrative 达 G9 字数下限 + 书籍每章 G14 excerpts」。缺口**只对缺章定点 gap-fill**(补派一个只写缺章的 subagent),**禁整组重跑**。
+   - **失败先核盘再重派**:某组 subagent 报「失败 / 无 result」时,**先看它的 `_pass2_g{N}.json` 是否已落盘**——已落盘且完整就直接用,别被「无 result」骗去整组重跑(复盘中吴晓波 23 个「无 result」的 agent 多已写盘、只是返回元数据被限流,整组重派 = 纯浪费)。
+   - **标志性案例保全抽检**:该书招牌故事必须完整出现在对应章,不得被压成标签(复盘实测此闸有效:卡哈马卡 / 秦池 / 火鸡均整段完整,保留)。
+5. 分组只切 narrative / excerpts 的生产,**Pass 1 骨架仍是全书一次产**(napkin / soul_module 等全局字段不分组)。
 
 ### 3.5.6 action_chain[].detail(v3,随 narrative 一起写)
 
@@ -262,7 +305,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 ### 4.5 v2/v3 浏览型延展字段规格(四源掉落宝石回收 + v3 重构新增)
 
-以下字段分两批:**v2**(4.5.1-4.5.8)从四源样张里回收的「掉落宝石」(旧管线 JSON 有、页面没落点或根本没产),全部在 **Pass 1** 随对应主字段一并产出;**v3**(4.5.9-4.5.11,2026-07-04 作者反馈重构新增)-- `cover_intro`(封面简介)/ `credibility_verdict`(裁决条)/ `chain_step`(规则模型挂环)属 Pass 1,`action_chain[].detail` 属 Pass 2(§3.5.6)。命名与 §6 schema 逐字一致,下游按此消费。
+以下字段分两批:**v2**(4.5.1-4.5.8)从四源样张里回收的「掉落宝石」(旧管线 JSON 有、页面没落点或根本没产),全部在 **Pass 1** 随对应主字段一并产出;**v3**(4.5.9-4.5.11,2026-07-04 sandy 反馈重构新增)-- `cover_intro`(封面简介)/ `credibility_verdict`(裁决条)/ `chain_step`(规则模型挂环)属 Pass 1,`action_chain[].detail` 属 Pass 2(§3.5.6)。命名与 §6 schema 逐字一致,下游按此消费。
 
 #### 4.5.1 core_ideas 增字段
 
@@ -408,7 +451,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 > `decision_rules`/`mental_models`/`concepts` + `enrich` 派生成 `#bd-mindmap-data` 的 JSON
 > (单键 `nodeData` + 可缺省 `layout`;schema 见 html-spec §5)。立法核心:**图是目录不是正文--节点文案是路标,
 > 血肉全部留在②逐章精读,靠传送门抵达**。「乱」的真度量是 topic 总字数,不是节点数;全图 topic 总字数 ≤900
-> (现状约 1970,重组后约 700,-57% 而节点数几乎不变)。引擎 **v4.1 起 mind-elixir → 自绘 SVG 深色版**(作者定稿):
+> (现状约 1970,重组后约 700,-57% 而节点数几乎不变)。引擎 **v4.1 起 mind-elixir → 自绘 SVG 深色版**(sandy 定稿):
 > 读 `nodeData` → tidy-tree 布局 → SVG 挂线节点 + 父子直角引线 + viewBox viewer,**去掉所有跨枝关联/收纳虚线**。
 > 这里定「怎么拆」,html-spec 定「怎么写」。
 
@@ -454,7 +497,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 **全展开 + viewBox 缩放(SVG 版)**:SVG 版一次画全 4 级,清爽由 viewBox viewer(连续缩放/拖动/复位/全屏)承担,
 不靠折叠。`expanded` 字段透传保留(兼容旧数据)但不驱动折叠。默认 `fit()` 铺满居中,矢量放大任意倍率不糊。
 
-**不画关联(SVG 版硬删)**:**去掉所有跨枝关联箭头(arrows)与收纳组(summaries)**--作者诉求:去掉所有关联虚线。
+**不画关联(SVG 版硬删)**:**去掉所有跨枝关联箭头(arrows)与收纳组(summaries)**--sandy 诉求:去掉所有关联虚线。
 只画父子直角引线。写作时**不再产出 `arrows`/`summaries` 两键**(留着只增体积、无渲染效果;生成器读到也忽略)。
 原「同一关系全页至多两处」的洞察改写进 napkin 公式或一级段名,不再画成图上箭头。
 
@@ -502,7 +545,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 ## 6. distill.json schema(主对象,整块契约 · v2)
 
-`evidence_level` 取值 `原文确认|结构推断|需复核`;`book_type` 取值 `论说|叙事|人物|工具`;`soul_module.type` 取值 `compare|chain|curve`。**本表是全 skill 契约单一来源,下游(enrich / page-skeleton / html-spec / verify)一律以此字段名为准。**
+`evidence_level` 取值 `原文确认|结构推断|需复核`;`book_type` 取值 `论说|叙事|人物|工具`;`render_profile.archetype` 取值 `论说|叙事|人物|工具|语录|书单|课程|考试`(v6,见 §1.4);`soul_module.type` 取值 `compare|chain|curve`。**本表是全 skill 契约单一来源,下游(enrich / page-skeleton / html-spec / verify)一律以此字段名为准。**
 
 > **`pub_year`(顶层整数,v5,原著/系列首版年)**:多书作者「思想演变专题」的排序轴(见 `author-craft.md`)。书籍填原著首版年;视频系列填该系列最早一集年份。**一次性查证/手填,非重蒸**;单书蒸馏不消费它,只作跨书聚合的时间锚。缺失时演变页降级(时间线/分期不可用),故建议每部蒸完即回填。
 
@@ -512,6 +555,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 {
   "slug": "touzi-zui-zhongyao-de-shi", "title": "投资最重要的事", "author": "霍华德·马克斯",
   "book_type": "论说|叙事|人物|工具",
+  "render_profile": {"archetype": "论说", "narrative_mode": "full-800", "active_gates": ["G4","G8","G9","G10","G11","G12","G13","G16","G17","G18","G19","G20"]},
   "pub_year": 2011,
   "napkin": {
     "formula": "投资成功 =(内在价值 − 买入价格)+ 情绪纪律",
@@ -649,6 +693,11 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 ## 7. 质量门禁清单(打回条件,命中任一即打回重蒸)
 
+> **门禁分两层(v6,2026-07-12 B-2,与 §1.4 render_profile 配套)**:
+> - **Tier-0 底线**(与书型无关,**任何 profile 不可关**):G1 反空洞夸赞 / G2·G3·§5.1 六类 anchor / G14 excerpts 版权≤150 / G15 primary·featured / chain_step 合法 + HTML 侧真封面 / 零外链 / Zero-Hex / data-source≥20 / 破折号 / lang=zh / 体积≤3MB。
+> - **Tier-1 形态**(随 `render_profile.active_gates` 生效):G4 公式 / G8 论点标题 / G9 字数 / G10 类比 / G11 soul / G12 self_check / G13·G17 行动链 / G16 cover_intro / G18 裁决 / G19 core_question / G20 论证链阶梯。**无 render_profile(legacy 四型)= 全 Tier-1 生效**(向后兼容);语录/书单/课程/考试按注册表关掉不适配项(见 §1.4 表)。
+> - **verify 机制**:`verify_page.py` 按 `active_gates` 变体化 Tier-1 校验,并拦「archetype 不在注册表 / active_gates 或 narrative_mode 被篡改」——**禁逐书手写 active_gates 偷关反注水检查**。**Tier-0 与「新型须先入注册表」不可绕**(收口铁律不变:绝不放宽验证或删检查项来假过关)。
+
 ### 7.1 通用门禁
 
 | # | 打回条件 | 判定标准 |
@@ -672,7 +721,9 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 ### 7.3 「公式含糊」判定(G4)+ 餐巾纸 formula_read / sketch 门禁(G4 扩展,v4)
 
-**G4 主判(`napkin.formula`)**:**必须含 `=` / `≈` / `∝` 之一,且其左侧为被定义的整体量,右侧各运算符号(`+ − - × * ÷ / > < ≥ ≤ → %`)两侧是有意义的量**。
+> **G4 属 Tier-1(v6 B-2/B-3)**:语录/书单 profile 无公式可提,`active_gates` 不含 G4、本组整关(见 §1.4);别为箴言/清单书硬造公式(硬凑连乘 = 伪造,违反不编造铁律)。**「契合则产,牵强留空」**:某本书的核心确实是一个「概念定义」而非「多因连乘」时,允许 `formula` 写成 `X = 定义式`(右侧是该概念的构成/条件而非乘法项),`formula_read` 解释这个定义为何这样切——这比硬塞一个 `A×B×C` 更诚实。判不出干净公式又不属语录/书单型 → 说明可能判型判错,回 §1.4 复核 archetype。
+
+**G4 主判(`napkin.formula`)**:**必须含 `=` / `≈` / `∝` 之一,且其左侧为被定义的整体量,右侧各运算符号(`+ − - × * ÷ / > < ≥ ≤ → %`)两侧是有意义的量**(定义式 profile 例外见上)。
 
 - ✅ 合格:`投资成功 =(内在价值 − 买入价格)+ 情绪纪律`
 - ❌ 打回:`安全边际、市场先生、能力圈`(纯名词并列,无运算关系)
@@ -708,7 +759,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 | # | 打回条件 | 判定标准 |
 |---|---|---|
 | G8 | `chapters[].title` 非论点式(零信息标题) | 命中任一即打回:① 匹配黑名单正则 `^(第?\d+[章节讲集]?\|视频\d+)$`(纯章号 / 集号);② 有效长度(去标点空白)< **8 字**;③ 整标题落通用容器词表(`章节脉络 / 全书脉络 / 内容概要 / 核心内容 / 主要观点 / 金句墙 / 金句 / 总结 / 概述 / 前言 / 结语`)。**判断句(可反驳陈述句)语义靠蒸馏自查;verify 机拦 ①②③。** |
-| G9 | `chapters[].narrative` 详实度不足 | 去空白字符数:书 < **800** / 视频 < **400**,任一章命中即打回该章。 |
+| G9 | `chapters[].narrative` 详实度不足(Tier-1) | 去空白字符数按 `render_profile.narrative_mode` 取档:**full-800** 书<800·视频<400;**dense-card**(课程/考试)<**300**;**list**(语录/书单)不产 narrative → G9 不在 active_gates、本项关。任一章命中即打回该章。 |
 | G10 | `core_ideas[].layman_analogy` 有空 | 任一条 `layman_analogy` 缺失或空串。 |
 | G11 | `soul_module` 不合规 | 命中任一:缺 `soul_module`;`states` 长度 < 2;`subtitle` 空;`title` 空;`type` ∉ `{compare,chain,curve}`;`type=curve` 但 `curve.series` 缺 / 空。 |
 | G12 | `self_check` 不合规 | 长度 < 4 或 > 8;或任一 `q` 不含「你」(非第二人称)。 |
@@ -725,7 +776,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 > **v4 补充**:`core_ideas[].pillar` ∈ [1,5] 或 `null`(同 chain_step 机检,牵强留空);`cross_domain[]` **宁缺毋滥、不设机检门禁**(置信不足不产);`action_chain[].detail` 末句时间盒动作(§4.5.6)靠蒸馏自查、不加机检。
 
 > **原 quiz 门槛已删除**:v2 无任何 `quiz` 相关门禁(§9 已弃用)。`tensions≥2`(G5)/ 批判段四件套(G6)/ **§5.1 六类字段 anchor 必带**(G2/G3 覆盖清单**以 §5.1 为准**,含 `chapters.excerpts` / `self_check`;Task 5 verify 须机拦全 6 类)/ evidence_level(G7)/ 无编造(G1 + §3.5.1 铁律)照旧不放宽。
-> **v3 新增门禁 G16-G18**(2026-07-04,作者反馈重构):G16 查 `cover_intro` 存在 + 2-3 句 + 不复用 napkin;G17 查 `action_chain[].detail` 每环 ≥60 字;G18 查书籍 `credibility_verdict` 存在。三条均机械可判(Task 6 verify 机拦)。`chain_step` 合法性(∈ [1,5] 或 `null`)一并由 verify 机拦(不单列 G 号)。原 **G8-G15 判定不变**。
+> **v3 新增门禁 G16-G18**(2026-07-04,sandy 反馈重构):G16 查 `cover_intro` 存在 + 2-3 句 + 不复用 napkin;G17 查 `action_chain[].detail` 每环 ≥60 字;G18 查书籍 `credibility_verdict` 存在。三条均机械可判(Task 6 verify 机拦)。`chain_step` 合法性(∈ [1,5] 或 `null`)一并由 verify 机拦(不单列 G 号)。原 **G8-G15 判定不变**。
 > **v4 新增门禁 G19-G21**(2026-07-05,深度分析批次 B):G19 查 `core_question` 存在 + ≤40 字疑问句 + 不复用 cover_intro/one_liner;G20 查 `arguments.chain_steps` 4-8 步、每步 ≤14 字;G21 查 `chapters[].hook` 若产则 ≤20 字。`pillar` 合法性(∈ [1,5] 或 `null`)一并由 verify 机拦(不单列 G 号)。三条均机械可判。原 **G8-G18 判定不变**。
 > **v4 批次 B-2 门禁(2026-07-05,餐巾纸四件套)**:**G4 扩展 a** 查 `napkin.formula_read` 存在 + ≤80 字 + 含运算符/语义词(书/视频必产);**G4 扩展 b** 查 `napkin.sketch` 若产则 `type/caption/nodes/edges` 齐全、`nodes` ∈ [6,12]、node.label 集合 ≠ 公式右侧项(sketch 可降级,缺失不拦)。两扩展均并入 G4、机械可判(见 §7.3)。原 **G8-G21 判定不变**。
 > **v4 批次 C 门禁 / 自查(2026-07-05,逐章交互 + UI 精修)**:
@@ -755,7 +806,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 ---
 
-## 9. 自测题生成规则(quiz[])-- 已弃用(2026-07-03)
+## 9. 自测题生成规则(quiz[])-- 浏览型已弃用(2026-07-03);v6 考试型有条件重启(2026-07-12 B-7)
 
 > **本节已弃用,不再执行。** 页面于 2026-07-03 从「学习型(含自测)」改为「浏览型(纯呈现核心内容)」,删除自测复习板块(M12)整套,骨架已无 `panel-quiz` / `.quiz-card` / ts-fsrs 复习卡。因此:
 > - **蒸馏时不再生成 `quiz[]`**(§6 schema 的 `quiz` 字段停产)。
@@ -765,6 +816,8 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 > - 若未来恢复自测,再据本节规则重启,并在 vendor 里加回 ts-fsrs。
 >
 > 以下为历史规则,仅备查:从 `core_ideas + decision_rules + mental_models` 生成 8-12 题主动回忆问答,每题带 anchor、答案可溯、覆盖不同来源。
+
+**v6 重启(2026-07-12 B-7,仅 `render_profile.archetype=考试`)**:考试型的价值单元是「练会/测会」而非「读懂一个思想」,故对该型**有条件重启自测**——但落**新原语** `.recall-card` 记忆卡 + `.worked-example` 例题解析(见 `html-spec.md §1.6`),**不回到旧 M12 / ts-fsrs 全书型自测板块**。出题仍按上方历史规则(主动回忆、带 anchor、答案可溯、覆盖不同来源);记忆卡可 Anki 导出。**其余七型仍不产 quiz**(浏览型定位不变)。首个考试型样书按「先抽样 1 本验收再铺量」补骨架 SLOT 与渲染后固化。
 
 ---
 
@@ -785,7 +838,7 @@ R3「知识连接」提出的每个可复用概念写进 `concepts[] = {concept,
 | skill | 干什么 | YouTube 免下载 | 何时用 |
 |---|---|---|---|
 | **video-to-subtitle-summary**(vendor,`~/.claude/skills/`) | 出字幕/转写文本(yt-dlp 抓字幕 / faster-whisper ASR / AI Douyin 下载非 YT) | ✅ 抓字幕 | **默认**:口播/知识型,转写就是价值 |
-| **claude-gemini-video**(可选外部依赖) | Gemini 原生看画面+音频 -> 转写/结构化理解 | ✅ `fileData.fileUri` 在线看 | **无字幕 / 需画面语义**(演示/代码/图表/PPT) |
+| **sansheng-gemini-video**(可选外部依赖) | Gemini 原生看画面+音频 -> 转写/结构化理解 | ✅ `fileData.fileUri` 在线看 | **无字幕 / 需画面语义**(演示/代码/图表/PPT) |
 
 **取材 cascade(按平台分流,能不下载就不下载):**
 
@@ -794,14 +847,14 @@ R3「知识连接」提出的每个可复用概念写进 `concepts[] = {concept,
 2. **认准【人工】字幕作转写源**:人工字幕文件(如 `subtitle.en-US.vtt`)一句一 cue、**无 `<...><c>` 内联词级标签、无 `align:/position:` 参数、无连续重复行**;VTT 可**直喂 build_series**(`SRT_TIME` 正则 `[,.]` 两用,兼容 vtt 毫秒点)。
    - ⚠️ **坑(Q6-4)**:`Kind: captions` 头**人工/自动都有,不能作判据**;脚本默认落地的 `text.txt`/`subtitle.srt` 常取**自动字幕**,带 `<c>` 词级标签 + 滚动重复约 **3×**(字数虚高 2-3 倍)。**别用 text.txt 当转写源**;快速判真:字数 ≈ 时长×(英文 ~150 / 中文 ~250)wpm 才对,2-3× 于此即为自动字幕。
 3. 只有【自动】字幕(无人工)-> 抓下来**必须去重**:去 `<...>` 标签 + 去 `align:/position:` + 折叠连续重复行,再喂 build_series。
-4. 无字幕 OR 需画面语义 -> `python claude-gemini-video/scripts/analyze_video.py <url> --prompt "逐字转写带[MM:SS],逐字照录不总结" --fps 0.2 --start/--end`(低 fps + 裁片段控成本;实测 ~$0.01/2min,40min ≈ $0.2;转写质量实测 ≈ 人工字幕)。
+4. 无字幕 OR 需画面语义 -> `python ~/.claude/skills/sansheng-gemini-video/scripts/analyze_video.py <url> --prompt "逐字转写带[MM:SS],逐字照录不总结" --fps 0.2 --start/--end`(低 fps + 裁片段控成本;实测 ~$0.01/2min,40min ≈ $0.2;转写质量实测 ≈ 人工字幕)。
 5. 兜底 -> 下载音频 + faster-whisper(`ASR_BACKEND=faster-whisper`)。
 
 ▎**非 YouTube**(B站/抖音/小红书:**先下载再解析**)
-- `video-to-subtitle-summary`:AI Douyin 代理拿直链下载 -> 有平台字幕抓字幕,否则 faster-whisper ASR。需画面语义 -> 下载后**本地文件 inline** 喂 claude-gemini-video(非 URL)。
+- `video-to-subtitle-summary`:AI Douyin 代理拿直链下载 -> 有平台字幕抓字幕,否则 faster-whisper ASR。需画面语义 -> 下载后**本地文件 inline** 喂 sansheng-gemini-video(非 URL)。
 
 ▎**本地视频/音频文件**
-- faster-whisper(纯语音)/ inline 喂 claude-gemini-video(需画面)。
+- faster-whisper(纯语音)/ inline 喂 sansheng-gemini-video(需画面)。
 
 **热度元数据(供 §3 热度条 / Q6-3)**:逐条 `yt-dlp --skip-download --print "%(view_count)s|%(like_count)s|%(comment_count)s|%(upload_date)s|%(channel_follower_count)s"`。⚠️ `--flat-playlist` 拉列表时这些字段为 `NA`,**必须逐条 full extract**;取即时快照值 + 标 `as_of` 日期(播放量随时间变)。
 

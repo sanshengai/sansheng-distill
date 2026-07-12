@@ -31,9 +31,12 @@
   "slug": "…",              // ✍️ (manual)
   "aliases": [],            // ✍️
   "bio": { "birth_year": 0, "one_liner": "…",
+           "portrait": "data:image/jpeg;base64,…",   // ✍️ 可选,缺则名片卡退化纯文字(布局不变)
            "background": [ { "label": "治学之路", "text": "…" }, { "label": "世界影响", "text": "…" }, { "label": "生活与底色", "text": "…" } ],
            "facts": [ { "label": "职业", "value": "…" }, { "label": "毕业院校", "value": "…" }, { "label": "研究领域", "value": "…" } ] },
            // ✍️ 任何 distill 都没有,纯人工。one_liner 渲成小传 lead(.c-lead)。
+           // portrait:88x88 展示,base64 内联(单文件页零外链铁律);优先复用该作者某本书蒸馏页 SUB01 作者子视图里已有的 au-photo(同一张脸,免重新找图);
+           //   与作者名横排渲成 .c-id 人物档案卡范式(.c-portrait + .c-idtext),渲染逻辑见 author-page-skeleton.html renderCard()。
            // background v5.2 起为 [{label,text}] 数组:每段带主题标签(治学之路/世界影响/生活与底色…)渲成结构化小传(label→.c-seg-k 绿色小标题,text→.c-seg-t),把「文字墙」拆成可扫读段落;
            //   旧式含 \n 的字符串仍兼容(退化成无标签 <p class=c-bg>,老 author.json 不改也能渲染)。知名作者务必详实(案例/师承/成长),数字以官网核实。
            // facts v5.2 起可选 [{label,value}] 数组:维基/百度信息框式身份字段(职业/毕业院校/研究领域/国籍等),渲染在右栏「生卒」下方、代表作之前,纯文本(多值「 · 」分隔,不成 chip),

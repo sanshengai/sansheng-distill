@@ -77,6 +77,11 @@ main{width:min(1120px,calc(100% - 32px));margin:0 auto;padding:0 0 64px}
 .ap-card{margin:24px 0 0;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0;border:1px solid var(--line);border-left:6px solid var(--green);border-radius:8px;background:linear-gradient(135deg,var(--paper),var(--paper-deep));box-shadow:var(--shadow);overflow:hidden}
 .ap-card .cardL{padding:26px 28px;border-right:1px solid var(--line)}
 .ap-card .cardR{padding:26px 28px;display:grid;grid-template-columns:1fr;gap:12px;align-content:center}
+/* 作者头像 + 名字横排(人物档案卡范式;bio.portrait 有值才渲染,缺则退化为纯文字,布局不变) */
+.ap-card .c-id{display:flex;align-items:flex-start;gap:24px}
+.ap-card .c-portrait{flex:none;width:176px;height:176px;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:var(--surface-strong);box-shadow:0 10px 26px rgba(0,0,0,.16)}
+.ap-card .c-portrait img{width:100%;height:100%;object-fit:cover;display:block}
+.ap-card .c-idtext{flex:1;min-width:0}
 .ap-card .c-name{margin:0 0 6px;font:900 2rem/1.16 var(--font-display);color:var(--ink)}
 .ap-card .c-alias{margin:0 0 10px;color:var(--muted);font:700 .8125rem/1.4 var(--font-display)}
 .ap-card .c-oneliner{margin:0;color:var(--ink-soft);font-size:1.0625rem;line-height:1.85}
@@ -307,6 +312,8 @@ a.ap-chip.chip-book:hover{background:var(--tint-accent)}
 }
 @media(max-width:560px){
   .pd-grid{grid-template-columns:1fr}
+  .ap-card .c-id{gap:16px}
+  .ap-card .c-portrait{width:112px;height:112px;border-radius:14px}
 }
 </style>
 </head>
@@ -417,6 +424,7 @@ a.ap-chip.chip-book:hover{background:var(--tint-accent)}
  "aliases": [],
  "bio": {
   "birth_year": 1980,
+  "portrait": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 88 88'%3E%3Crect width='88' height='88' fill='%23ece1cf'/%3E%3Ccircle cx='44' cy='34' r='16' fill='%23b8892f'/%3E%3Cpath d='M16 82c0-16 12-26 28-26s28 10 28 26z' fill='%23b8892f'/%3E%3C/svg%3E",
   "one_liner": "研究专注与意义的独立作者(合成测试数据)",
   "background": [
    { "label": "治学之路", "text": "这是 v5.2 开发用的合成夹具,非真实人物 -- background 现为 [{label,text}] 数组,每段带主题标签渲染成结构化小传:label 走 .c-seg-k(绿色小标题),text 走 .c-seg-t,把一坨密集文字拆成可扫读的段落,与右栏 label:内容 节奏呼应。" },
@@ -599,9 +607,18 @@ a.ap-chip.chip-book:hover{background:var(--tint-accent)}
     const life = bio.birth_year ? (bio.birth_year + ' --') : '待补';
 
     const L = el('div', { class: 'cardL' });
-    L.appendChild(el('h1', { class: 'c-name' }, A.author || ''));   // 页面唯一 H1 = 作者名(原页顶大字 h1 已去掉)
-    if ((A.aliases || []).length) L.appendChild(el('p', { class: 'c-alias' }, '亦作 ' + A.aliases.join(' · ')));
-    if (bio.one_liner) L.appendChild(el('p', { class: 'c-lead' }, bio.one_liner));   // 一句话定位 = 小传 lead
+    const idRow = el('div', { class: 'c-id' });
+    if (bio.portrait) {   // 头像可选:有值渲染人物照,缺则退化纯文字(布局不变)
+      const fig = el('figure', { class: 'c-portrait' });
+      fig.appendChild(el('img', { src: bio.portrait, alt: (A.author || '') + ' 肖像' }));
+      idRow.appendChild(fig);
+    }
+    const idText = el('div', { class: 'c-idtext' });
+    idText.appendChild(el('h1', { class: 'c-name' }, A.author || ''));   // 页面唯一 H1 = 作者名(原页顶大字 h1 已去掉)
+    if ((A.aliases || []).length) idText.appendChild(el('p', { class: 'c-alias' }, '亦作 ' + A.aliases.join(' · ')));
+    if (bio.one_liner) idText.appendChild(el('p', { class: 'c-lead' }, bio.one_liner));   // 一句话定位 = 小传 lead
+    idRow.appendChild(idText);
+    L.appendChild(idRow);
     // background 结构化小传:
     //   · 新式(推荐)= [{label,text}] 数组 -> 每段带主题标签(治学之路/世界影响/…),把文字墙拆成可扫读结构;
     //   · 旧式 = 含 \n 的字符串 -> 拆多段无标签(向后兼容,老 author.json 不改也能渲染)。

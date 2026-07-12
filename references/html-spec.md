@@ -2,7 +2,7 @@
 
 > **执行手册,不是理论文**。管线跑到 Step6 时 agent 逐节照做:复制 `templates/page-skeleton.html`,把 `distill.json`(v3)/ `enrich.json`(v3)的字段逐槽位填进去,产出一张能过 `verify_page.py` 的单文件 HTML。
 > 核心理念(承 method.md):知识档案是主对象,**HTML 是投影** -- 本步只做「把结构化知识摆进既有槽位」,**不设计新结构、不自创模块**。设计层(token / signature / 排版 craft)见 `design-craft.md`;token 值与 7 主题见 `brand-tokens.md`。
-> **v3 页型 = 浏览型「5 板块 · 按读者逻辑链」**(2026-07-04 作者反馈重构,替换 v2 五段漏斗):读者动线「全局 → 细节 → 反思 → 循环 → 延伸」落成 5 个 tab 板块,每板块内部按「先结论后论证、先立后破」自上而下排。板块② 逐章精读改**目录态**(默认收起 + 手风琴多开);头部走**纸底 + 森林绿粗色带刊头**(banner v3.2,原案 A 墨底反白已废,§2.3.1);字号收进 **6 级字阶**;金句、概念各归**唯一集中归宿**;子视图从 3 张减到 **2 张**(作者页 + 观点对照页,同类书内联板块⑤)。
+> **v3 页型 = 浏览型「5 板块 · 按读者逻辑链」**(2026-07-04 sandy 反馈重构,替换 v2 五段漏斗):读者动线「全局 → 细节 → 反思 → 循环 → 延伸」落成 5 个 tab 板块,每板块内部按「先结论后论证、先立后破」自上而下排。板块② 逐章精读改**目录态**(默认收起 + 手风琴多开);头部走**纸底 + 森林绿粗色带刊头**(banner v3.2,原案 A 墨底反白已废,§2.3.1);字号收进 **6 级字阶**;金句、概念各归**唯一集中归宿**;子视图从 3 张减到 **2 张**(作者页 + 观点对照页,同类书内联板块⑤)。
 > 本规范里写的每一个 class / id **都是 T5 骨架(page-skeleton.html)的对齐契约**,与实施计划 Task 5 接口段逐字一致;T5 照此建骨架、T6(verify_page.py)照此建门禁。填槽时不得漂移。
 > 全文破折号一律 `--`;门禁全部给可判定标准(数字 / 枚举 / 命令),不用「酌情」「适当」。
 
@@ -224,6 +224,27 @@
 - **删可降级块后 data-source 可能跌破 20**:删完复跑 verify;不足 20 说明蒸得薄,回补①核心观点 / ②章节 / ③批判 / ④规则的 anchor,**别为凑数塞空 `data-source`**。
 - 单区块内部条目偏少但整块不该删的(如 quotes 只 2 条),据实少给,不硬凑、不编造。
 
+### 1.6 render_profile 变体化区块 / tab + 新结构原语(v6,2026-07-12 B-1/B-5/B-7)
+
+§1.5 是 legacy 四型的必含区块。**书型自适应(见 `method.md §1.4`)按 `render_profile.archetype` 增删区块、tab 并挂新原语。** verify 按注册表 `RENDER_PROFILES` 的 `omit_blocks`/`tabs` 变体化校验;**无 render_profile = §1.5 全量必检(向后兼容,现有页不受影响)**。
+
+| archetype | 省略区块(不必含) | 保留 tab | 主体新原语(签名 class) |
+|---|---|---|---|
+| 论说/叙事/人物/工具 | (无,同 §1.5) | 全 5 | (无) |
+| 语录 | `.soul-block` `.arg-restate` `.rules` `.models` `.questions` `.verdict-bar` | 速览/精读/延伸 | **`.quote-board` 语录墙** |
+| 书单 | 上 + `.bd-napkin` | 速览/精读/延伸 | **`.booklist-cards` 书单卡** |
+| 课程 | `.soul-block` `.arg-restate` | 速览/精读/清单/延伸 | **`.kp-tree` 知识点树** + `.exercise-card` 练习卡 |
+| 考试 | 上 + `.rules` `.models` `.questions` `.verdict-bar` | 速览/精读/延伸 | **`.exam-point` 考点卡** + `.worked-example` 例题解析 + `.recall-card` 记忆卡 |
+
+**新原语规格(填 `#panel-full` 主体,替代/补充讲书稿逐章)**:
+- **`.quote-board` 语录墙(语录型)**:格言按主题聚成卡组,**每卡 = 原文 excerpt(blockquote 照录 ≤150 字 + anchor)+ 一句点评**;点评转述(破折号 `--`)、原文照录(豁免)。主体前置,不套每章 800 字 narrative(治抽象密集书注水)。
+- **`.booklist-cards` 书单卡(书单型)**:每本一卡 = 书名 + 作者 + 一句「为何读」+ 关键观点 1-2 条(带 anchor);已蒸的关联书挂站内互链 `../{slug}/{slug}.html`。
+- **`.kp-tree` 知识点树(课程型)**:层级大纲,叶子=可独立掌握的最小知识点,带前置依赖标注;可复用脑图 concept-cluster 引擎渲染。配 `.exercise-card`(题干/提示/参考)。
+- **`.exam-point` / `.worked-example` / `.recall-card`(考试型)**:考点卡(考点名 + 考频/难度 chip + 要点)、例题解析(题干/标准解法/常见陷阱)、记忆卡(正反面、间隔重复、可 Anki 导出)。**这是 `method.md §9` 停产 quiz 的按体裁重启**——仅考试型激活,不回全书型自测。
+- **合法自创口(T1)**:新 primitive 的签名 class 须**先入本表 + verify `RENDER_PROFILES`**,再据以填页;禁逐书即兴造未登记的块。
+
+> ⚠ **状态(诚实标注)**:契约层(profile 注册表 / omit_blocks / tabs / 门禁分层 / verify 拦篡改)已落地且测试覆盖;**但四新型的骨架 SLOT 与 CSS 尚未用真书 E2E 验收**(手上暂无语录/书单/课程/考试样书)。首次蒸对应书型时按 method「先抽样 1 本验收再铺量」跑通、补 `page-skeleton.html` 的 SLOT 与样式,再固化。**案例档案 `.case-archive`(B-5)= 论说/叙事型的可选子视图**(把埋在章正文的招牌案例升为可浏览卡,挂 ⑤ 或 ② 下),按 `render_profile.primitives` 声明触发,非默认必含。
+
 ---
 
 ## 2. 版式铁律(命中即返工)
@@ -272,7 +293,7 @@
 
 #### 2.3.1 banner 纸底 + 森林绿粗色带刊头(v3.2,替换旧「案 A 墨底反白」)
 
-**变更缘由**(作者 2026-07-04):旧「墨底反白」整块纯黑(`--ink` 底)压在暖纸页上太突兀。改成**与页面一体的纸底 + 左侧森林绿粗色带 + 深字**:banner 背景走 `linear-gradient(135deg,var(--paper),var(--paper-deep))`(极淡纸质渐变,仅 var);左缘 `border-left:6px solid var(--green)`(森林绿呼应「培育成长」主题);文字全部翻**深色**(书名 `--ink`、作者/简介 `--ink-soft`);`--gold` 只做**装饰级**(kicker 金章描边 + tint 底、作者胶囊金边、`.cb-intro strong` 金下划线、底缘金渐变线),绕开 `--gold` 小字前景对比度短板(§1 注意列 -- 金只上边框/装饰底/大字,正文字色一律深墨)。书封由 `filter` 双投影(落纸阴影 + 1px 轻边)在纸底上立体化。**零 hex、零新 token**(dark 系主题 `--paper`/`--paper-deep` 自动翻深、`--ink` 翻亮 → banner 自动变「暗纸 + 亮字 + 绿带」,与站壳一体,属预期语义反转;交互态选中 / CTA / 返回胶囊仍走 `--green` §2.3.0,不受影响)。
+**变更缘由**(sandy 2026-07-04):旧「墨底反白」整块纯黑(`--ink` 底)压在暖纸页上太突兀。改成**与页面一体的纸底 + 左侧森林绿粗色带 + 深字**:banner 背景走 `linear-gradient(135deg,var(--paper),var(--paper-deep))`(极淡纸质渐变,仅 var);左缘 `border-left:6px solid var(--green)`(森林绿呼应「培育成长」主题);文字全部翻**深色**(书名 `--ink`、作者/简介 `--ink-soft`);`--gold` 只做**装饰级**(kicker 金章描边 + tint 底、作者胶囊金边、`.cb-intro strong` 金下划线、底缘金渐变线),绕开 `--gold` 小字前景对比度短板(§1 注意列 -- 金只上边框/装饰底/大字,正文字色一律深墨)。书封由 `filter` 双投影(落纸阴影 + 1px 轻边)在纸底上立体化。**零 hex、零新 token**(dark 系主题 `--paper`/`--paper-deep` 自动翻深、`--ink` 翻亮 → banner 自动变「暗纸 + 亮字 + 绿带」,与站壳一体,属预期语义反转;交互态选中 / CTA / 返回胶囊仍走 `--green` §2.3.0,不受影响)。
 
 ```css
 .cb-banner{display:grid;grid-template-columns:300px 1fr;margin:18px 0 8px;
@@ -388,7 +409,7 @@
 
 ## 5. 脑图 JSON 数据契约(`#bd-mindmap-data`,自绘 SVG 深色版,位置固定①内)
 
-> 脑图落位 **固定在板块① 餐巾纸正下方、核心观点之前**(F5)。引擎 **v4.1 起从 mind-elixir 换自绘 SVG**(作者定稿):树骨架 + 关联/收纳这套 vendor 组件被替换成一段**通用 SVG 生成器 + viewBox viewer**(无任何 vendor,净省 ~69KB)。写进 `<script type="application/json" id="bd-mindmap-data">` 的仍是一段 JSON,数据主体是 `nodeData` 双层知识树(顶层 `layout` 字段可缺省;**`arrows`/`summaries` 已废——SVG 版不画任何跨枝关联/收纳虚线,残留字段生成器一律忽略**)。脚本层 `initMindmap()` 读 `nodeData` → tidy-tree 确定性布局 → 生成 SVG 挂线节点(root 卡片 / 一级金奶油纯文字 / 二级双层[关键词 + 判断句 + 章码 chip] / 三四级 emoji 前缀纯文字)+ **父子直角肘形梳齿引线**,插进 `<div id="bd-mindmap"><div class="mm-stage">` 并挂 viewBox viewer。**nodeData 之外零硬编码,换书换数据即出图(通用生成器,禁把某本书内容写死进 skeleton)**。**nodeData 是「关键词路标 + 判断句副文本」双层知识树**(真 4 级:一级章区段 → 二级核心观点[双层] → 三级支撑[🧠/💡/⚖️] → 四级案例/外部[📖/📚],45-75 节点;拆法见 method §4.6),**全图 topic 总字数 ≤900**。
+> 脑图落位 **固定在板块① 餐巾纸正下方、核心观点之前**(F5)。引擎 **v4.1 起从 mind-elixir 换自绘 SVG**(sandy 定稿):树骨架 + 关联/收纳这套 vendor 组件被替换成一段**通用 SVG 生成器 + viewBox viewer**(无任何 vendor,净省 ~69KB)。写进 `<script type="application/json" id="bd-mindmap-data">` 的仍是一段 JSON,数据主体是 `nodeData` 双层知识树(顶层 `layout` 字段可缺省;**`arrows`/`summaries` 已废——SVG 版不画任何跨枝关联/收纳虚线,残留字段生成器一律忽略**)。脚本层 `initMindmap()` 读 `nodeData` → tidy-tree 确定性布局 → 生成 SVG 挂线节点(root 卡片 / 一级金奶油纯文字 / 二级双层[关键词 + 判断句 + 章码 chip] / 三四级 emoji 前缀纯文字)+ **父子直角肘形梳齿引线**,插进 `<div id="bd-mindmap"><div class="mm-stage">` 并挂 viewBox viewer。**nodeData 之外零硬编码,换书换数据即出图(通用生成器,禁把某本书内容写死进 skeleton)**。**nodeData 是「关键词路标 + 判断句副文本」双层知识树**(真 4 级:一级章区段 → 二级核心观点[双层] → 三级支撑[🧠/💡/⚖️] → 四级案例/外部[📖/📚],45-75 节点;拆法见 method §4.6),**全图 topic 总字数 ≤900**。
 
 ### 5.1 schema(单键 `nodeData` + 可缺省 `layout`)
 
@@ -400,7 +421,7 @@
   - **三级 = 支撑**(每个二级 ≤4 个,只收三类,排序固定 🧠→💡→⚖️):🧠 机制/心智模型、💡 核心概念、⚖️ 决策规则(当X→做Y)。**动宾/名词短语 ≤14 字,禁冒号双段式**;emoji 前缀承载类型。
   - **四级 = 📖 案例 / 📚 外部书**(真四级,挂到它直接证明的那条支撑之下,无所属支撑的案例可直挂二级末位):📖 = 专名短语 ≤12 字(挂 narrative/excerpts 招牌真事,细节不进图);📚 = 书名 + ≤6 字关系词(挂二级最末位,每二级 ≤1,只用 enrich 真实书目)。每叶子带 `_src`(章锚点或书名)--**溯源用,生成器原样忽略;verify 亦忽略未知字段**。
   - 同一概念不同说法(归属感 / 被接纳、概念条 vs 规则条)**归并为一个节点**,不在多枝重复。
-- **~~`arrows` / `summaries`~~(已废)**:SVG 版**不画任何跨枝关联箭头、不画收纳组虚线**(作者诉求:去掉所有关联虚线)。生成器读到也忽略;写作时**不再产出这两键**(留着只增体积、无渲染效果)。
+- **~~`arrows` / `summaries`~~(已废)**:SVG 版**不画任何跨枝关联箭头、不画收纳组虚线**(sandy 诉求:去掉所有关联虚线)。生成器读到也忽略;写作时**不再产出这两键**(留着只增体积、无渲染效果)。
 
 ### 5.2 硬约束
 
@@ -443,7 +464,7 @@
 
 - **交互脚本勿动,无 vendor**:`</main>` 之后是**纯自写**交互 `<script>`(含 `initTabs`/`initThemes`/`initChain`/`initSubBack`/`initHashRouter`/`initMindmap`[自绘 SVG 脑图生成器 + viewBox viewer]/目录态与传送门逻辑);这些块勿删勿改勿重排。脑图**不再有任何 vendor 依赖**(mind-elixir/markmap/d3 全部移除)。
 - **体积账**:verify 上限 **≤3MB**。自绘 SVG 脑图为纯 JS(几 KB,较 mind-elixir 单件再省 ~69KB,较旧 markmap 三件套省 ~650KB);详实正文预估 1.5-2.5MB。留给正文净预算约 ≤2.8MB(含 base64 封面)。
-- **超预算合法裁法**:① 删净 dummy / 未用槽位;② 先压 excerpts,再压封面图(WebP data URI / 降尺寸),再收紧啰嗦 lede / section-lead;③ 仍超再报用户。**禁**删 vendor / 删必需区块 / 删 `data-source` / 压 narrative 跌破 G9。
+- **超预算合法裁法**:① 删净 dummy / 未用槽位;② 先压 excerpts,再压封面图(WebP data URI / 降尺寸),再收紧啰嗦 lede / section-lead;③ 仍超再报 sandy。**禁**删 vendor / 删必需区块 / 删 `data-source` / 压 narrative 跌破 G9。
 - **零外链**:所有 `<script src>` / `<link href>` / `<img src>` 不得指向 `http(s)://`;图片一律 `data:` 内联;引用出处 `<a href>` 是唯一允许外链。
 - **extract 兼容三条(勿破坏)**:① 页面 JS 全包在一个 IIFE 内,init 幂等(`main[data-bd-ready]` 守卫);② 初始化挂 `astro:page-load` + `DOMContentLoaded` 双时机;③ CSS 可被 `@scope(.bk-wrap)` 包裹,token 块保持 `:root{}` / `body[data-theme=…]{}` 标准形态,子视图 `.subpage{position:fixed}` 上站后仍全屏覆盖。
 

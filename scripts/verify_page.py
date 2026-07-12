@@ -102,6 +102,70 @@ AUTHOR_DASH_EXEMPT_KEYS = {"external", "_provenance", "sources", "source", "time
 # 深链 slug 坏字符(会破坏 ../{slug}/{slug}.html 内链;不强求目标文件存在,只验格式)
 SLUG_BAD_RE = re.compile(r'[\s/\\<>"\']')
 
+# ---- render_profile 书型自适应注册表(2026-07-12 B-1/B-2;method §1.4 契约镜像)----
+# 门禁分两层,防「灵活」变成绕过反注水检查的洞:
+#   Tier-0 底线(**不列入 active_gates,永远校验**):§5.1 六类 anchor / excerpts≤150 版权(G14 长度)/
+#     primary·featured(G15)/ chain_step 合法 / 真封面 / 零外链 / Zero-Hex / data-source≥20 / 破折号 / lang=zh / 体积
+#     —— 与书型无关,任何 profile 不可关。
+#   Tier-1 形态(**随 archetype 的 active_gates 生效**):对不同体裁一刀切会误伤,故变体化。
+TIER1_GATES = {"G4", "G8", "G9", "G10", "G11", "G12", "G13", "G16", "G17", "G18", "G19", "G20"}
+_ALL_T1 = frozenset(TIER1_GATES)
+# 四型 legacy = 全 Tier-1(= 无 render_profile 时的现行行为,向后兼容,旧书不必重蒸);四新型按体裁裁剪。
+# active_gates 是注册表**权威**值:verify 以本表为准,data.render_profile.active_gates 与之不符即判篡改(防逐书手写绕检查)。
+RENDER_PROFILES = {
+    "论说": {"narrative_mode": "full-800", "active_gates": _ALL_T1, "omit_blocks": ()},
+    "叙事": {"narrative_mode": "full-800", "active_gates": _ALL_T1, "omit_blocks": ()},
+    "人物": {"narrative_mode": "full-800", "active_gates": _ALL_T1, "omit_blocks": ()},
+    "工具": {"narrative_mode": "full-800", "active_gates": _ALL_T1, "omit_blocks": ()},
+    # 语录/箴言:原文 excerpt 为主 + 逐条点评,砍讲书稿字数下限/公式/soul/行动链/论证链(治抽象密集书注水)
+    "语录": {"narrative_mode": "list", "active_gates": frozenset({"G16"}),
+             "primitives": ("语录墙",), "tabs": ("glance", "full", "extend"),
+             "omit_blocks": ("soul-block", "arg-restate", "rules", "models", "questions", "verdict-bar")},
+    # 书单/合集:每本一卡,无单一「本书」可蒸(单一 napkin/soul/core_question 是范畴错误)
+    "书单": {"narrative_mode": "list", "active_gates": frozenset(),
+             "primitives": ("书单卡",), "tabs": ("glance", "full", "extend"),
+             "omit_blocks": ("soul-block", "arg-restate", "rules", "models", "questions", "verdict-bar", "bd-napkin")},
+    # 课程培训:知识点树(递进结构非论点)+ 练习/项目卡
+    "课程": {"narrative_mode": "dense-card", "active_gates": frozenset({"G9", "G13"}),
+             "primitives": ("知识点树", "练习卡"), "tabs": ("glance", "full", "action", "extend"),
+             "omit_blocks": ("soul-block", "arg-restate")},
+    # 考试:考点卡 + 例题解析 + 记忆卡(复活 quiz)
+    "考试": {"narrative_mode": "dense-card", "active_gates": frozenset({"G9"}),
+             "primitives": ("考点卡", "例题解析", "记忆卡"), "tabs": ("glance", "full", "extend"),
+             "omit_blocks": ("soul-block", "arg-restate", "rules", "models", "questions", "verdict-bar")},
+}
+LEGACY_ARCHETYPES = frozenset({"论说", "叙事", "人物", "工具"})
+# dense-card 档 narrative 字数下限(考点/知识点卡本应短密,不套 800)
+DENSE_CARD_FLOOR = 300
+
+
+def _resolve_active_gates(prof):
+    """按 render_profile.archetype 取注册表**权威** active_gates。
+    无 profile / 未知 archetype → 返回 None = legacy(全 Tier-1 校验,向后兼容 + 安全兜底)。"""
+    if not isinstance(prof, dict):
+        return None
+    reg = RENDER_PROFILES.get(prof.get("archetype"))
+    return set(reg["active_gates"]) if reg else None
+
+
+def _lint_profile_integrity(prof) -> list:
+    """render_profile 完整性校验(防逐书手写门禁绕反注水检查):
+    archetype 必须命中注册表;data 里声明的 active_gates / narrative_mode 必须与注册表**一致**(不许篡改)。"""
+    if not prof:
+        return []
+    if not isinstance(prof, dict):
+        return ["[profile] render_profile 非对象"]
+    v = []
+    arch = prof.get("archetype")
+    reg = RENDER_PROFILES.get(arch)
+    if reg is None:
+        return [f"[profile] render_profile.archetype {arch!r} 不在注册表 {sorted(RENDER_PROFILES)}(禁自造书型;新型须先入注册表)"]
+    if "active_gates" in prof and set(prof.get("active_gates") or []) != set(reg["active_gates"]):
+        v.append(f"[profile] archetype={arch} 的 active_gates 与注册表不一致(禁逐书篡改绕门禁;应为 {sorted(reg['active_gates'])})")
+    if "narrative_mode" in prof and prof.get("narrative_mode") != reg["narrative_mode"]:
+        v.append(f"[profile] archetype={arch} 的 narrative_mode 应为 {reg['narrative_mode']!r}")
+    return v
+
 
 def _effective_len(t: str) -> int:
     """去标点空白后的有效长度(CJK/字母/数字计入;Python3 \\w 默认含 CJK,不吃中文)。"""
@@ -205,14 +269,27 @@ def anchor_ok(s) -> bool:
 
 def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None) -> list:
     v = []
+    # render_profile(2026-07-12 B-1/B-2):非 legacy 书型可按 omit_blocks/tabs 省略部分区块与 tab;
+    #   无 profile / 未知 archetype → 全量必检(向后兼容,现有 legacy 页与 196 测试不受影响)。
+    #   profile 完整性校验由 lint_distill 统一做(此处不重复,避免重复报 [profile])。
+    prof = distill.get("render_profile") if isinstance(distill, dict) else None
+    _reg = RENDER_PROFILES.get((prof or {}).get("archetype")) if prof else None
+    omit_blocks = set(_reg["omit_blocks"]) if _reg else set()
+    allowed_tabs = set(_reg.get("tabs", ())) if _reg else None   # None = 全 5 tab 必检
+    active_h = _resolve_active_gates(prof)
+
+    def gon_h(g):  # Tier-1 形态门禁在 HTML 侧是否生效
+        return active_h is None or g in active_h
     # 体积上限 3MB
     if len(html.encode("utf-8")) > SIZE_LIMIT:
         v.append("[lint] 体积超 3MB 预算")
-    # 必需签名 class 齐 + 禁存在 v2 遗留金句结构(T7)
+    # 必需签名 class 齐(render_profile.omit_blocks 声明省略的块不检)+ 禁存在 v2 遗留金句结构(T7)
     for cls in REQUIRED_CLASSES:
+        if cls in omit_blocks:
+            continue
         if not _has_class(html, cls):
             v.append(f"[lint] 缺必需区块 .{cls}")
-    if "data-chain" not in html:
+    if "data-chain" not in html and "rules" not in omit_blocks:  # 行动 tab 省略(rules 在 omit)时不检行动路线图
         v.append("[lint] 缺行动路线图 .chain[data-chain](④)")
     for cls in FORBIDDEN_CLASSES:
         if _has_class(html, cls):
@@ -225,10 +302,13 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
     for cls in ("ci-explain", "ci-evidence", "ci-evlevel"):
         if not _has_class(html, cls):
             v.append(f"[lint] 核心观点卡展开态缺 .{cls}(T8 必渲三件:explain/evidence/evlevel)")
-    # 五 tab:panel id + 按钮 + A 套文案(tab 按钮/文案限定 nav.tabs 内查 —— data-panel 也用于 reading-guide/next-cta,全文查会漏报 tab 缺失)
+    # 五 tab:panel id + 按钮 + A 套文案(render_profile.tabs 声明的才检;新型可只留部分 tab)。
+    #   tab 按钮/文案限定 nav.tabs 内查 —— data-panel 也用于 reading-guide/next-cta,全文查会漏报 tab 缺失。
     nav_m = re.search(r'<nav[^>]*\bid="bd-tabs"[^>]*>(.*?)</nav>', html, re.S)
     nav_html = nav_m.group(1) if nav_m else ""
     for pid, label in TABS:
+        if allowed_tabs is not None and pid.replace("panel-", "") not in allowed_tabs:
+            continue  # 本 profile 未声明该 tab,不检
         if f'data-panel="{pid}"' not in nav_html:
             v.append(f"[lint] 缺 tab 按钮 data-panel={pid}")
         if f'id="{pid}"' not in html:
@@ -251,7 +331,7 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
         m = re.search(r"<h3[^>]*>(.*?)</h3>", body, re.S)
         if m:
             title = _strip_tags(m.group(1)).strip()
-            if is_bad_title(title):
+            if gon_h("G8") and is_bad_title(title):  # 论点式标题门禁(语录/考试等 profile 可关,见 render_profile)
                 v.append(f"[lint] 章标题非论点式(G8): {title!r}")
     # 书籍封面 img.cb-cover[src^="data:image"]
     if not (re.search(r'<img[^>]*\bclass="[^"]*\bcb-cover\b[^"]*"[^>]*\bsrc="data:image', html)
@@ -464,19 +544,29 @@ def lint_distill(data: dict) -> list:
     action_chain(G13)/ cover_intro(G16)/ action_chain[].detail(G17)/ credibility_verdict(G18)/ chain_step 合法性。"""
     v = []
     is_video = data.get("source_type") == "video_series"
-    floor = 400 if is_video else 800
+    # render_profile(2026-07-12 B-1/B-2):无 profile → active=None = legacy 全 Tier-1(向后兼容,旧书不必重蒸)
+    prof = data.get("render_profile")
+    active = _resolve_active_gates(prof)
+
+    def gon(g):  # Tier-1 形态门禁是否生效(Tier-0 底线不走此闸,恒校验)
+        return active is None or g in active
+    nmode = (prof or {}).get("narrative_mode") or "full-800"
+    v += _lint_profile_integrity(prof)  # profile 完整性(防逐书篡改绕门禁)
+    # G9 字数档:dense-card(考点/知识点卡)300 / 视频 400 / 详实逐章 800
+    floor = DENSE_CARD_FLOOR if nmode == "dense-card" else (400 if is_video else 800)
     for ch in data.get("chapters", []) or []:
         no = ch.get("no", "?")
-        # G9 narrative 详实度(按 source_type 取档)
-        narr_len = len(re.sub(r"\s", "", ch.get("narrative", "") or ""))
-        if narr_len < floor:
-            v.append(f"[distill] 第{no}章 narrative {narr_len} 字 < {floor}(G9 详实度)")
+        # G9 narrative 详实度(list/none 档不产 narrative → 关;dense-card 降档)
+        if gon("G9"):
+            narr_len = len(re.sub(r"\s", "", ch.get("narrative", "") or ""))
+            if narr_len < floor:
+                v.append(f"[distill] 第{no}章 narrative {narr_len} 字 < {floor}(G9 详实度)")
         # G8 章标题黑名单
-        if is_bad_title(ch.get("title", "") or ""):
+        if gon("G8") and is_bad_title(ch.get("title", "") or ""):
             v.append(f"[distill] 第{no}章标题非论点式(G8): {ch.get('title')!r}")
-        # G14 excerpts:书籍每章 ≥1(视频不检),版权红线 ≤150,§5.1 anchor 必带
+        # G14 excerpts:详实逐章档书籍每章 ≥1(视频/语录/清单档不强求),版权红线 ≤150 与 §5.1 anchor 恒为 Tier-0
         exs = ch.get("excerpts", []) or []
-        if not is_video and len(exs) < 1:
+        if not is_video and nmode == "full-800" and len(exs) < 1:
             v.append(f"[distill] 书籍第{no}章 excerpts 缺(G14 每章 ≥1)")
         for ex in exs:
             if len(re.sub(r"\s", "", ex.get("text", "") or "")) > EXCERPT_MAX:
@@ -651,6 +741,23 @@ def lint_distill(data: dict) -> list:
     # chain_step 合法性(∈[1,5] 或 null,不越界):decision_rules + mental_models
     v += _check_chain_step(data.get("decision_rules", []), "decision_rule", n_rings)
     v += _check_chain_step(data.get("mental_models", []), "mental_model", n_rings)
+    # Tier-1 形态门禁按 render_profile.active_gates 变体化(2026-07-12 B-2):非 legacy 时,滤掉「未激活门禁」的违规。
+    #   Tier-0 底线门禁(anchor/G14 版权≤150/G15/chain_step/真封面…)无 (Gxx) 编号或不在 TIER1,恒保留、不受影响。
+    #   G17(行动链 detail 详实度)归属 G13;profile 完整性 [profile] 无编号 → 恒保留。active=None(legacy)整段跳过 = 行为不变。
+    if active is not None:
+        t1_nums = {int(g[1:]) for g in TIER1_GATES}
+
+        def _gnum(msg):
+            m = re.search(r"\(G(\d+)", msg)
+            return int(m.group(1)) if m else None
+        filtered = []
+        for msg in v:
+            g = _gnum(msg)
+            g = 13 if g == 17 else g          # G17 detail 归属 G13
+            if g in t1_nums and f"G{g}" not in active:
+                continue
+            filtered.append(msg)
+        v = filtered
     return v
 
 
@@ -786,8 +893,11 @@ def lint_author_html(html: str, author: dict | None) -> list:
     return v
 
 
-def author_smoke(path: Path, screenshot: str | None) -> list:
-    """作者演变页渲染冒烟:4 视图 SVG/容器出图 + 无 JS 错误 + 概念节点可展开(章码深链 = 静态门禁 slug 格式已管)。"""
+def author_smoke(path: Path, screenshot: str | None, author: dict | None = None) -> list:
+    """作者演变页渲染冒烟:4 视图 SVG/容器出图 + 无 JS 错误 + 概念节点可展开(章码深链 = 静态门禁 slug 格式已管)。
+    注(转向段降级一致性,author-craft §4.3/§6):`.turn-card` 只在 author.turns 存在 verdict≠null 的可渲染转向时才应出现;
+    深化型作者(turns=[] 或全 null,如稻盛)按契约整段隐藏、无转向卡 —— 故本断言按数据是否有可渲染转向来门控,
+    避免把「fixture 恰有 confirmed 转向」误当成所有作者页的硬要求(旧版对 turns=0 作者会误报)。"""
     from playwright.sync_api import sync_playwright
     v, errors = [], []
     with sync_playwright() as p:
@@ -806,8 +916,9 @@ def author_smoke(path: Path, screenshot: str | None) -> list:
             v.append("[author渲染] 母题 ribbon 未出 SVG(#rb-host 内无 <svg>)")
         if pg.locator("#dag-host svg").count() < 1:
             v.append("[author渲染] 概念图 DAG 未出 SVG(#dag-host 内无 <svg>)")
-        if pg.locator(".turn-card").count() < 1:
-            v.append("[author渲染] 关键转向未出转向卡(.turn-card;fixture 应有 confirmed 转向)")
+        has_renderable_turn = any((t or {}).get("verdict") for t in ((author or {}).get("turns") or []))
+        if has_renderable_turn and pg.locator(".turn-card").count() < 1:
+            v.append("[author渲染] 关键转向未出转向卡(.turn-card;数据有 verdict≠null 的转向却未渲染)")
         node = pg.locator(".dag-node").first
         if node.count():
             node.click()
@@ -1021,7 +1132,7 @@ def main():
         author, perr = _load_author_json(html, a.author_json)
         v = perr + lint_author_html(html, author)
         if not a.skip_interact:
-            v += author_smoke(Path(a.page), a.screenshot)
+            v += author_smoke(Path(a.page), a.screenshot, author)
         print("\n".join(v) if v else "全部通过")
         return 1 if v else 0
     # 蒸馏页(默认路径)

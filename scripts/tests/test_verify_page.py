@@ -7,9 +7,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_mindmap,
                          lint_author_html, is_author_page)  # 纯函数:-> list[str] 违规
 
-REPO_ROOT = Path(__file__).resolve().parents[4]  # tests->scripts->sansheng-distill->skills->repo-root
-SKELETON = REPO_ROOT / "skills" / "sansheng-distill" / "templates" / "page-skeleton.html"
-AUTHOR_SKELETON = REPO_ROOT / "skills" / "sansheng-distill" / "templates" / "author-page-skeleton.html"
+SKILL_ROOT = Path(__file__).resolve().parents[2]  # tests -> scripts -> 仓根
+SKELETON = SKILL_ROOT / "templates" / "page-skeleton.html"
+AUTHOR_SKELETON = SKILL_ROOT / "templates" / "author-page-skeleton.html"
 
 # ---------------------------------------------------------------- HTML fixtures (v3:5 板块签名 class)
 TOKENS = ':root{--ink:#171411;--red:#c0392b;--gold:#b8860b}body[data-theme="dark"]{--ink:#ddd}'
