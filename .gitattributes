@@ -1,0 +1,12 @@
+# 统一换行为 LF,消除 Windows autocrlf 的「LF will be replaced by CRLF」噪音
+* text=auto eol=lf
+# 二进制资产不做 EOL 转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
