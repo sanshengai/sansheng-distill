@@ -511,7 +511,7 @@ def distill(**over):
                       "hidden_assumptions": [], "counter_examples": []},
         "cover_intro": "作者从三十年备忘录里归纳出投资心法。全书拎出价值、风险、周期几根支柱。最后落到少犯错胜过多正确。",
         "credibility_verdict": "最硬的是风险即永久损失一条,有大量周期实例支撑。要打折的是逆向操作对普通人的可行性。",
-        "core_ideas": [{"idea": "a", "anchor": "第3章", "primary": True, "layman_analogy": "类比一句", "chain_step": 1}],
+        "core_ideas": [{"idea": "a", "anchor": "第3章", "primary": True, "layman_analogy": "类比一句", "evidence_level": "原文确认", "chain_step": 1}],
         "decision_rules": [{"when": "x", "do": "y", "because": "z", "anchor": "第2章", "chain_step": 2}],
         "quotes": [{"text": "q", "anchor": "第5章", "featured": True}],
         "mental_models": [{"model": "m", "evidence": ["证据在 第4章"], "boundary": "b", "chain_step": None}],
@@ -585,7 +585,7 @@ def test_anchor_missing_mental_model_evidence_flagged():
 def test_video_anchor_accepted():
     d = distill(source_type="video_series",
                 chapters=[dch(narr=450, excerpts=[], title="手动写 vs Codex 代写的分水岭")],
-                core_ideas=[{"idea": "a", "anchor": "视频2·12:30", "primary": True, "layman_analogy": "比方"}],
+                core_ideas=[{"idea": "a", "anchor": "视频2·12:30", "primary": True, "layman_analogy": "比方", "evidence_level": "原文确认"}],
                 decision_rules=[{"when": "x", "do": "y", "because": "z", "anchor": "视频1"}],
                 quotes=[{"text": "q", "anchor": "视频3·05:10", "featured": True}],
                 mental_models=[{"model": "m", "evidence": ["证据 视频4"], "boundary": "b"}],
@@ -839,8 +839,42 @@ def test_pillar_bool_flagged():
 
 def test_pillar_null_and_valid_ok():
     assert lint_distill(distill(core_ideas=[
-        {"idea": "a", "anchor": "第1章", "primary": True, "layman_analogy": "比", "pillar": 2},
-        {"idea": "b", "anchor": "第2章", "primary": False, "layman_analogy": "比", "pillar": None}])) == []
+        {"idea": "a", "anchor": "第1章", "primary": True, "layman_analogy": "比", "evidence_level": "原文确认", "pillar": 2},
+        {"idea": "b", "anchor": "第2章", "primary": False, "layman_analogy": "比", "evidence_level": "原文确认", "pillar": None}])) == []
+
+
+# ---------------------------------------------------------------- v6.1 stakes / certainty (G22) + G7 evidence_level 机检
+def _hi(**over):
+    """stakes=high fixture:decision_rules + core_ideas 每条带 certainty(否则触发 G22)。"""
+    dr = [{"when": "x", "do": "y", "because": "z", "anchor": "第2章", "certainty": "book_explicit", "chain_step": 2}]
+    ci = [{"idea": "a", "anchor": "第3章", "primary": True, "layman_analogy": "比", "evidence_level": "原文确认", "certainty": "book_explicit"}]
+    base = dict(stakes="high", decision_rules=dr, core_ideas=ci)
+    base.update(over)
+    return distill(**base)
+
+
+def test_g22_high_with_certainty_ok():
+    assert lint_distill(_hi()) == []
+
+
+def test_g22_high_missing_certainty_flagged():
+    d = _hi(); d["decision_rules"][0].pop("certainty")
+    assert any("G22" in x and "decision_rule" in x for x in lint_distill(d))
+
+
+def test_g22_high_bad_certainty_value_flagged():
+    d = _hi(); d["core_ideas"][0]["certainty"] = "bogus"
+    assert any("G22" in x for x in lint_distill(d))
+
+
+def test_g22_normal_certainty_optional():
+    # stakes=normal(默认):缺 certainty 不触发 G22(可选产)
+    assert not any("G22" in x for x in lint_distill(distill()))
+
+
+def test_g7_missing_evidence_level_flagged():
+    v = lint_distill(distill(core_ideas=[{"idea": "a", "anchor": "第1章", "primary": True, "layman_analogy": "比"}]))
+    assert any("G7" in x for x in v)
 
 
 # ---------------------------------------------------------------- v4 G20 chain_steps

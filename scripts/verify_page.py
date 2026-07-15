@@ -538,10 +538,27 @@ def _check_chain_step(items: list, kind: str, n_rings: int) -> list:
     return v
 
 
+CERTAINTY_VALUES = ("book_explicit", "cross_book_synthesis", "general_knowledge")
+
+
+def _check_certainty(items: list, kind: str) -> list:
+    """G22(v6.1,仅 stakes=high 激活):decision_rules / core_ideas 每条可执行建议必带
+    certainty ∈ {book_explicit, cross_book_synthesis, general_knowledge}。缺失或非枚举即打回。"""
+    v = []
+    for it in items or []:
+        c = it.get("certainty", None)
+        if c is None:
+            v.append(f"[distill] {kind} 缺 certainty(G22,stakes=high 必产)")
+        elif c not in CERTAINTY_VALUES:
+            v.append(f"[distill] {kind}.certainty {c!r} ∉ {{book_explicit,cross_book_synthesis,general_knowledge}}(G22)")
+    return v
+
+
 def lint_distill(data: dict) -> list:
-    """distill.json 契约门禁(§7.5 可机拦部分 G8-G18):narrative(G9)/ 章标题(G8)/ §5.1 六类 anchor /
+    """distill.json 契约门禁(§7 可机拦部分 G7-G22):evidence_level(G7)/ 章标题(G8)/ narrative(G9)/ §5.1 六类 anchor /
     excerpts(G14)/ primary·featured(G15)/ layman_analogy(G10)/ soul_module(G11)/ self_check(G12)/
-    action_chain(G13)/ cover_intro(G16)/ action_chain[].detail(G17)/ credibility_verdict(G18)/ chain_step 合法性。"""
+    action_chain(G13)/ cover_intro(G16)/ detail(G17)/ credibility_verdict(G18)/ core_question(G19)/ chain_steps(G20)/
+    hook(G21)/ chain_step 合法性 / certainty(G22,仅 stakes=high 激活)。"""
     v = []
     is_video = data.get("source_type") == "video_series"
     # render_profile(2026-07-12 B-1/B-2):无 profile → active=None = legacy 全 Tier-1(向后兼容,旧书不必重蒸)
@@ -577,6 +594,8 @@ def lint_distill(data: dict) -> list:
     for ci in data.get("core_ideas", []) or []:
         if not anchor_ok(ci.get("anchor", "")):
             v.append("[distill] core_idea 缺 anchor(G2/§5.1)")
+        if ci.get("evidence_level") not in ("原文确认", "结构推断", "需复核"):
+            v.append(f"[distill] core_idea 缺 evidence_level 或非三值枚举(G7): {ci.get('evidence_level')!r}")
     for dr in data.get("decision_rules", []) or []:
         if not anchor_ok(dr.get("anchor", "")):
             v.append("[distill] decision_rule 缺 anchor(G3/§5.1)")
@@ -741,6 +760,12 @@ def lint_distill(data: dict) -> list:
     # chain_step 合法性(∈[1,5] 或 null,不越界):decision_rules + mental_models
     v += _check_chain_step(data.get("decision_rules", []), "decision_rule", n_rings)
     v += _check_chain_step(data.get("mental_models", []), "mental_model", n_rings)
+    # G22(v6.1):高后果书 stakes=high → decision_rules + core_ideas 每条必带 certainty。
+    #   独立 stakes 闸:G22 不进 TIER1_GATES(下方变体化过滤据 g∉t1_nums 自动放行=恒保留),只由 stakes 触发;
+    #   normal 书不检(certainty 可选)。事实抽检(数字真伪)靠硬门禁②人工,G22 只机拦「有没有标」。
+    if data.get("stakes") == "high":
+        v += _check_certainty(data.get("decision_rules", []), "decision_rule")
+        v += _check_certainty(data.get("core_ideas", []), "core_idea")
     # Tier-1 形态门禁按 render_profile.active_gates 变体化(2026-07-12 B-2):非 legacy 时,滤掉「未激活门禁」的违规。
     #   Tier-0 底线门禁(anchor/G14 版权≤150/G15/chain_step/真封面…)无 (Gxx) 编号或不在 TIER1,恒保留、不受影响。
     #   G17(行动链 detail 详实度)归属 G13;profile 完整性 [profile] 无编号 → 恒保留。active=None(legacy)整段跳过 = 行为不变。

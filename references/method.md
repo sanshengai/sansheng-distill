@@ -102,6 +102,19 @@ schema(distill.json 顶层,Step1 产;下游 Step6 选模板变体 / Step2 按 na
 
 **向后兼容**:无 `render_profile` 的旧 distill.json = legacy 全门禁,**旧书不必重蒸**;四型 legacy 的 profile 等价于「不写 render_profile」。
 
+### 1.5 stakes:后果轴(高后果实操书标签,v6.1,2026-07-15)
+
+**与 book_type / render_profile 正交的第三根轴**:书型 / archetype 决定「内容怎么组织、页面什么形态」,`stakes` 只回答「**读者照着做,数字错了后果多大**」。二者独立并存 -- 一本育儿书既是「工具 / 论说」型、又是高后果。Step1 判型时一并定 `stakes`(顶层枚举 `high|normal`,缺省 `normal`):
+
+| 值 | 判定 | 例 |
+|---|---|---|
+| `high` | 书里给**读者会直接照做的可执行指令**(月龄窗口 / 剂量 / 时长 / 频次 / 温度 / 仓位…),且**数字错会造成现实伤害或误导** -- 育儿、医疗、用药、投资仓位、法律、饮食营养、健身处方等 | 婴幼儿睡眠训练、喂养剂量、投资操作手册 |
+| `normal` | 观点 / 思想 / 史论 / 方法论为主,数字错顶多减损说服力、不直接伤人 | 《思考,快与慢》《人类简史》《影响商业的 50 本书》 |
+
+**为什么做正交标签而非第五书型**(四证):① book_type / archetype 是「组织形态」轴、stakes 是「后果」轴,一本书可同属两轴(育儿书 = 工具型 + 高后果),塞进 book_type 枚举会互斥;② 既有正交维度(`source_type` / `pub_year` / `render_profile`)的落法都是「新加顶层键」,不扩 book_type;③ §V.5 明确先例「视频不新增第五型、用 `source_type` 正交」,后果轴照此;④ verify 的 archetype 注册表驱动 tab / 区块取舍,stakes 只该**追加门禁**、不该开关区块。
+
+**驱动什么**:`stakes=high` 激活门禁 **G22**(可执行数字必带 `certainty`,§4.5.16 / §7)+ 硬门禁②的**事实抽检**(SKILL 铁律「不编造」:回原书抽检 ≥5 条数字 + 金句)。`normal` 书不强制 certainty(可选产)。**旧 distill 无 `stakes` = normal**(向后兼容,旧书不必回填,除非要做高后果主题聚合 / StepB)。
+
 ---
 
 ## 2. Step2:两遍蒸馏总览(v2)
@@ -243,7 +256,7 @@ xray 餐巾纸是「公式 + 读法段 + 一句话 + 草图」四件套;v1-v3 �
    - **合并完整性断言**:回填后核「`chapters[].no` 全齐(1..总章数无缺)+ 每章 narrative 达 G9 字数下限 + 书籍每章 G14 excerpts」。缺口**只对缺章定点 gap-fill**(补派一个只写缺章的 subagent),**禁整组重跑**。
    - **失败先核盘再重派**:某组 subagent 报「失败 / 无 result」时,**先看它的 `_pass2_g{N}.json` 是否已落盘**——已落盘且完整就直接用,别被「无 result」骗去整组重跑(复盘中吴晓波 23 个「无 result」的 agent 多已写盘、只是返回元数据被限流,整组重派 = 纯浪费)。
    - **标志性案例保全抽检**:该书招牌故事必须完整出现在对应章,不得被压成标签(复盘实测此闸有效:卡哈马卡 / 秦池 / 火鸡均整段完整,保留)。
-5. 分组只切 narrative / excerpts 的生产,**Pass 1 骨架仍是全书一次产**(napkin / soul_module 等全局字段不分组)。
+   - **清理中间态(合并通过后收尾,硬)**:上述完整性断言**全绿后**(章号 1..N 全齐 + 每章 narrative 达 G9 + 书籍每章 G14 excerpts),删本书目录下 `_pass2_g*.json` -- 它们已回填进 `distill.json`、已被 gitignore、无保留价值,留着只会在下次入库/聚合时污染目录(2026-07-15 复盘实测 13 本睡眠书里 7 本残留)。**唯一例外**:仍需对照调试分块产物时暂留,收工前删。⚠ **无合并脚本在环**(现行 group 格式 = 按章号 keyed 的 dict `{"1":{…},"2":{…}}`,旧 `merge_pass2.py` 按「一文件一章 + 顶层 `no`」设计、已与之脱节失效),本步是主控手动 `rm _pass2_g*.json` 的**文字规约**,不是 CLI flag;删前必先确认完整性断言过、`distill.json` 已收全。
 
 ### 3.5.6 action_chain[].detail(v3,随 narrative 一起写)
 
@@ -443,6 +456,20 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 - 取该章 narrative 里最有画面感的招牌案例,**不新造**。
 - 门禁 G21(机检):hook 若存在,有效长 **≤20 字**(超出打回);「是否具象、非论点复述」属蒸馏自查(§7 自查项)。存在性推荐(书每章宜产),不硬拦缺失。
 
+#### 4.5.16 certainty(v6.1 可执行数字确定性,decision_rules + core_ideas 元素级,Pass 1 产)
+
+区别于 `evidence_level`(问「转述**忠不忠于原文**」),`certainty` 问「这条可照做的建议,**知识来源硬不硬、该信几分**」--- 让下游(读者 / 主题聚合 StepB 的数字对照表 / 引用本书的文章)一眼分清哪些数字是书里白纸黑字、哪些是编者合成或通识。**加在 `decision_rules[]` 与 `core_ideas[]` 元素级**(可执行数字的两处主要载体):
+
+| 值 | 含义 | 例 |
+|---|---|---|
+| `book_explicit` | **书里白纸黑字**的确切值,`anchor` 指向处能找到原句 | 「先等至少 90 秒再进房」(How Babies Sleep 原文) |
+| `cross_book_synthesis` | **跨书合成 / 并集**,单本没有、由多本拼出 | 「婴儿睡眠周期 30-60 分钟」(三本各给一段并成区间) |
+| `general_knowledge` | **编者补的通识**,书里没有、属教科书常识 | 「成人 REM 约占两成」(13 本睡眠书 distill 均无此数) |
+
+- **何时必产**:`stakes=high`(§1.5)的书,`decision_rules[]` 每条 + `core_ideas[]` 每条**必带** `certainty`(门禁 G22 机拦)。`stakes=normal` 书**可选**(不产不拦)。
+- **与 evidence_level 正交共存**:`core_ideas[]` 同时挂 `evidence_level`(忠实度)与 `certainty`(来源硬度),二者互不覆盖、都填。
+- **诚实优先**:拿不准往低标(宁 `general_knowledge` 不冒充 `book_explicit`);`cross_book_synthesis` / `general_knowledge` 的数字**尤其要过硬门禁②事实抽检** -- 它们最易在下游被当成「书里说的」误引(这正是 2026-07-15 婴幼儿睡眠文章 fact-check 抓出「成人 REM 20%」「一晚醒 2-8 次」的根因:distill 没标来源硬度,写作时被当书中数据引用)。
+
 ---
 
 ## 4.6 M03 脑图拆分(自绘 SVG 知识树:关键词路标 + 判断句副文本,先读骨架再读血肉)
@@ -545,7 +572,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 ## 6. distill.json schema(主对象,整块契约 · v2)
 
-`evidence_level` 取值 `原文确认|结构推断|需复核`;`book_type` 取值 `论说|叙事|人物|工具`;`render_profile.archetype` 取值 `论说|叙事|人物|工具|语录|书单|课程|考试`(v6,见 §1.4);`soul_module.type` 取值 `compare|chain|curve`。**本表是全 skill 契约单一来源,下游(enrich / page-skeleton / html-spec / verify)一律以此字段名为准。**
+`evidence_level` 取值 `原文确认|结构推断|需复核`;`book_type` 取值 `论说|叙事|人物|工具`;`render_profile.archetype` 取值 `论说|叙事|人物|工具|语录|书单|课程|考试`(v6,见 §1.4);`soul_module.type` 取值 `compare|chain|curve`;`stakes` 取值 `high|normal`(v6.1,顶层,缺省 normal,见 §1.5);`certainty` 取值 `book_explicit|cross_book_synthesis|general_knowledge`(v6.1,decision_rules / core_ideas 元素级,stakes=high 必产,见 §4.5.16)。**本表是全 skill 契约单一来源,下游(enrich / page-skeleton / html-spec / verify)一律以此字段名为准。**
 
 > **`pub_year`(顶层整数,v5,原著/系列首版年)**:多书作者「思想演变专题」的排序轴(见 `author-craft.md`)。书籍填原著首版年;视频系列填该系列最早一集年份。**一次性查证/手填,非重蒸**;单书蒸馏不消费它,只作跨书聚合的时间锚。缺失时演变页降级(时间线/分期不可用),故建议每部蒸完即回填。
 
@@ -556,6 +583,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
   "slug": "touzi-zui-zhongyao-de-shi", "title": "投资最重要的事", "author": "霍华德·马克斯",
   "book_type": "论说|叙事|人物|工具",
   "render_profile": {"archetype": "论说", "narrative_mode": "full-800", "active_gates": ["G4","G8","G9","G10","G11","G12","G13","G16","G17","G18","G19","G20"]},
+  "stakes": "normal",
   "pub_year": 2011,
   "napkin": {
     "formula": "投资成功 =(内在价值 − 买入价格)+ 情绪纪律",
@@ -590,15 +618,17 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
   "core_ideas": [{
     "idea": "…", "explain": "…", "evidence": "…",
     "anchor": "第3章·约45-52页", "evidence_level": "原文确认",
+    "certainty": "book_explicit",
     "layman_analogy": "邻居报低价你不会贱卖房子,持股一绿你却慌着割肉",
     "primary": true, "pillar": 2
   }],
+  // certainty:仅 stakes=high 必产(§4.5.16);normal 书可省。与 evidence_level 正交:前者=来源硬度,后者=转述忠实度
   "arguments": { "chain": "…", "chain_steps": ["市场常错价", "价格≠价值", "算清安全边际", "反人性下手"], "hidden_assumptions": ["…"], "counter_examples": ["…"] },
   "cross_domain": [
     { "domain": "工程学", "name": "安全系数", "note": "造桥按 5 倍载荷设计,不是预计超载,是你算不准 -- 同「安全边际」" },
     { "domain": "概率论", "name": "期望值下注", "note": "赔率被市场算错时才下手,而非挑最可能赢的" }
   ],
-  "decision_rules": [{ "when": "…", "do": "…", "because": "…", "anchor": "…", "chain_step": 3 }],
+  "decision_rules": [{ "when": "…", "do": "…", "because": "…", "anchor": "…", "certainty": "book_explicit", "chain_step": 3 }],
   "mental_models": [{
     "model": "…", "evidence": ["…第N章…"], "boundary": "…",
     "how_to_apply": "遇到一个没见过的新资产,先问它的钟摆现在摆到哪一端",
@@ -639,7 +669,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 }
 ```
 
-> 约束回顾:`primary:true` 的 core_ideas **1-2 条**(G15);`featured:true` 的 quotes **≤3 条**(§4.5.2);`soul_module.states` **2-3 个同构态**、`subtitle` 非空(G11);`soul_module.curve` **仅 `type=curve` 必填**;`action_chain` **4-5 环**(G13);`self_check` **4-8 条**(G12);书 `chapters[].excerpts` **每章 ≥1**(G14)。**v3 新增**:`cover_intro` **2-3 句、禁比喻、禁复用 napkin ≥12 字连续片段**(G16);`action_chain[].detail` **每环去空白 ≥60 字**(G17);`credibility_verdict` **书籍必产**(G18);`decision_rules[].chain_step` / `mental_models[].chain_step` ∈ **[1,5] 或 null**(牵强留空,禁硬塞)。**v4 新增**:`core_question` **书/视频必产、≤40 字疑问句、禁复用 cover_intro/one_liner ≥12 字连续片段**(G19);`core_ideas[].pillar` ∈ **[1,5] 或 null**(牵强留空);`arguments.chain_steps` **4-8 步、每步 ≤14 字**(G20);`chapters[].hook` **若产则 ≤20 字**(G21);`cross_domain[]` **3-5 条、宁缺毋滥不设机检**;`action_chain[].detail` 末句补**时间盒首步动作**(§4.5.6 自查,不加机检)。**餐巾纸四件套(§3 餐巾纸压缩)**:`napkin.formula_read` **书/视频必产、≤80 字、须含运算符或「乘·加·减·除·归零·缺一·比例·乘积」语义词**(G4 扩展);`napkin.sketch` **可降级(蒸不出干净骨架即省略);若产则 type∈{cascade,fork,loop}、caption 非空、nodes ∈ [6,12] 含 ≥1 中间产物(mid:true)、edges ≥1、label 集合 ≠ 公式右侧项**(G4 扩展,防重画公式凑数)。
+> 约束回顾:`primary:true` 的 core_ideas **1-2 条**(G15);`featured:true` 的 quotes **≤3 条**(§4.5.2);`soul_module.states` **2-3 个同构态**、`subtitle` 非空(G11);`soul_module.curve` **仅 `type=curve` 必填**;`action_chain` **4-5 环**(G13);`self_check` **4-8 条**(G12);书 `chapters[].excerpts` **每章 ≥1**(G14)。**v3 新增**:`cover_intro` **2-3 句、禁比喻、禁复用 napkin ≥12 字连续片段**(G16);`action_chain[].detail` **每环去空白 ≥60 字**(G17);`credibility_verdict` **书籍必产**(G18);`decision_rules[].chain_step` / `mental_models[].chain_step` ∈ **[1,5] 或 null**(牵强留空,禁硬塞)。**v4 新增**:`core_question` **书/视频必产、≤40 字疑问句、禁复用 cover_intro/one_liner ≥12 字连续片段**(G19);`core_ideas[].pillar` ∈ **[1,5] 或 null**(牵强留空);`arguments.chain_steps` **4-8 步、每步 ≤14 字**(G20);`chapters[].hook` **若产则 ≤20 字**(G21);`cross_domain[]` **3-5 条、宁缺毋滥不设机检**;`action_chain[].detail` 末句补**时间盒首步动作**(§4.5.6 自查,不加机检)。**餐巾纸四件套(§3 餐巾纸压缩)**:`napkin.formula_read` **书/视频必产、≤80 字、须含运算符或「乘·加·减·除·归零·缺一·比例·乘积」语义词**(G4 扩展);`napkin.sketch` **可降级(蒸不出干净骨架即省略);若产则 type∈{cascade,fork,loop}、caption 非空、nodes ∈ [6,12] 含 ≥1 中间产物(mid:true)、edges ≥1、label 集合 ≠ 公式右侧项**(G4 扩展,防重画公式凑数)。**v6.1(2026-07-15)**:`stakes` ∈ `{high,normal}`(顶层,缺省 normal,§1.5);**`stakes=high` 时** `decision_rules[]` + `core_ideas[]` 每条必带 `certainty` ∈ `{book_explicit,cross_book_synthesis,general_knowledge}`(§4.5.16,G22 机拦);`normal` 书 certainty 可选、不产不拦。
 
 ### 6.2 视频系列例(增量键,详见 §V)
 
@@ -772,6 +802,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 | G19 | `core_question`(v4)缺 / 越界 / 复用总论 | 命中任一即打回:① 缺 `core_question` 或空串(书 / 视频必产);② 有效长(去标点空白)> **40 字**,或不以 `?` / `?` 结尾;③ 与 `cover_intro` **或** `napkin.one_liner` 存在 **≥12 字连续重叠片段**(查重)。 |
 | G20 | `arguments.chain_steps`(v4)不合规 | 命中任一:缺 `chain_steps` 或数 ∉ **[4,8]**;或任一步有效长 > **14 字**。 |
 | G21 | `chapters[].hook`(v4)超长 | 任一章 `hook` **存在且**有效长 > **20 字**即打回该章(缺失不拦,存在性属自查;「具象 / 非论点复述」靠蒸馏自查)。 |
+| G22 | `stakes=high` 书 `certainty` 缺失 / 非法(v6.1) | **仅 `stakes=="high"`(§1.5)激活**:`decision_rules[]` 任一条 **或** `core_ideas[]` 任一条缺 `certainty` 或值 ∉ `{book_explicit,cross_book_synthesis,general_knowledge}` 即打回。`stakes=normal` 本项**不检**(certainty 可选)。 |
 
 > **v4 补充**:`core_ideas[].pillar` ∈ [1,5] 或 `null`(同 chain_step 机检,牵强留空);`cross_domain[]` **宁缺毋滥、不设机检门禁**(置信不足不产);`action_chain[].detail` 末句时间盒动作(§4.5.6)靠蒸馏自查、不加机检。
 
@@ -779,6 +810,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 > **v3 新增门禁 G16-G18**(2026-07-04,sandy 反馈重构):G16 查 `cover_intro` 存在 + 2-3 句 + 不复用 napkin;G17 查 `action_chain[].detail` 每环 ≥60 字;G18 查书籍 `credibility_verdict` 存在。三条均机械可判(Task 6 verify 机拦)。`chain_step` 合法性(∈ [1,5] 或 `null`)一并由 verify 机拦(不单列 G 号)。原 **G8-G15 判定不变**。
 > **v4 新增门禁 G19-G21**(2026-07-05,深度分析批次 B):G19 查 `core_question` 存在 + ≤40 字疑问句 + 不复用 cover_intro/one_liner;G20 查 `arguments.chain_steps` 4-8 步、每步 ≤14 字;G21 查 `chapters[].hook` 若产则 ≤20 字。`pillar` 合法性(∈ [1,5] 或 `null`)一并由 verify 机拦(不单列 G 号)。三条均机械可判。原 **G8-G18 判定不变**。
 > **v4 批次 B-2 门禁(2026-07-05,餐巾纸四件套)**:**G4 扩展 a** 查 `napkin.formula_read` 存在 + ≤80 字 + 含运算符/语义词(书/视频必产);**G4 扩展 b** 查 `napkin.sketch` 若产则 `type/caption/nodes/edges` 齐全、`nodes` ∈ [6,12]、node.label 集合 ≠ 公式右侧项(sketch 可降级,缺失不拦)。两扩展均并入 G4、机械可判(见 §7.3)。原 **G8-G21 判定不变**。
+> **v6.1 门禁 G22(2026-07-15,高后果书确定性)**:`stakes=high`(§1.5)时,`decision_rules[]` + `core_ideas[]` 每条可执行建议必带 `certainty`(§4.5.16 三枚举)。**这是独立 stakes 闸,不随 `render_profile.active_gates`**(后果轴与形态轴正交)—— verify 按 `distill.stakes=="high"` 单独激活、不登记进 archetype 注册表(避免污染 profile 完整性校验 `_lint_profile_integrity`)。`stakes=normal` 书 certainty 可选、不检。事实抽检(SKILL 铁律「不编造」)与 G22 配套:G22 机拦「有没有标 certainty」,抽检管「标得对不对 + 数字真不真」。原 **G1-G21 判定不变**。
 > **v4 批次 C 门禁 / 自查(2026-07-05,逐章交互 + UI 精修)**:
 >   - **破折号统一(Q7-12,机检)**:verify 机拦「页面可见转述正文出现全角 `——`/`—`」(原文照录 blockquote/qw-card 豁免);写 narrative/summary/卡片文案时破折号一律 `--`(§3.5.2 Pass 2 文风约束)。
 >   - **cs-badge 死徽标(Q7-9,机检)**:`chain_step` 关联做法数为 0 → **不渲染 `.cs-badge`**;verify 拦页面出现「0 条…做法」的 `.cs-badge`。

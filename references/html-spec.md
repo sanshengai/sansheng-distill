@@ -186,12 +186,12 @@
 | `chapters[].narrative` | ②手风琴 `.bd-chapter` 正文 | 多段 `<p>`,800-1500 字/章 |
 | `chapters[].excerpts` | ②手风琴章内 `.excerpt` | 书每章 ≥1;**章内唯一原文块**(金句不入章内) |
 | `core_ideas[]`(idea/layman_analogy/primary/pillar) | ①核心观点卡 `.bd-coreideas` **+ 传送门回②** | primary→`.ci-primary` 放大;`pillar`(v4)按脑图一级分支分组渲染(组头=分支名,null 入「贯穿全书」组);与 soul 同源的条降 primary + `.ci-portal` 传送门到 `.soul-block`(Q1-4) |
-| `core_ideas[].explain/evidence/evidence_level` | **①核心观点卡展开态 `.ci-explain`/`.ci-evidence`/`.ci-evlevel`** | **必渲三件**(硬约束 3,T8) |
+| `core_ideas[].explain/evidence/evidence_level` | **①核心观点卡展开态 `.ci-explain`/`.ci-evidence`/`.ci-evlevel`** | **必渲三件**(硬约束 3,T8);高后果书(stakes=high)可另加 `.rc-certainty` 同款色点标来源硬度(v6.1,可选) |
 | `arguments.chain` | **③立论复述 `.arg-restate`** | 从 v2 头部 thesis 移来;头部不再有总论框 |
 | `arguments.chain_steps`(v4) | **③立论复述 `.arg-steps` 胶囊链(散文段之上)** | 4-8 步阶梯,每步 ≤14 字;散文保留作展开(Q4-7) |
 | `arguments.hidden_assumptions` | ③批判四区·没证明的前提 | 与 `unproven_assumptions` 合并渲染 |
 | `arguments.counter_examples` | ③批判四区·最强反对(附其下) | |
-| `decision_rules[]`(when/do/because/chain_step) | ④情境决策卡 `.rule-card` **+ 传送门回②** | 按 `chain_step` 分组(null→通用),遇事速查 chip 从 `when` 提炼 |
+| `decision_rules[]`(when/do/because/chain_step/**certainty**) | ④情境决策卡 `.rule-card` **+ 传送门回②** | 按 `chain_step` 分组(null→通用),遇事速查 chip 从 `when` 提炼;**`certainty`(v6.1,仅 stakes=high)渲 `.rc-certainty` 色点徽标** -- book_explicit/cross_book_synthesis/general_knowledge → 绿/金/灰 = 书中明确/跨书合成/编者通识(复用 `.ci-evlevel` 模式,Zero-Hex;normal 书整删不渲) |
 | `mental_models[]`(model/how_to_apply/evidence/boundary/chain_step) | ④模型抽屉卡 `.model-drawer` | boundary 必渲(什么时候失效) |
 | `tensions[]`(a/b/note) | ③内在张力 `.tn-row` | A⇄B 窄行 |
 | `critique.blind_spots` | ③批判四区·作者盲点 | |

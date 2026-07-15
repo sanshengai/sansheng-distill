@@ -480,6 +480,12 @@ main{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:0 0 60px;isolatio
 .rc-do b{color:var(--green)}
 .rc-because b{color:var(--muted)}
 .rc-teleport{display:inline-block;margin-top:8px;color:var(--blue);font:700 .8125rem/1.3 var(--font-display);text-decoration:none}
+/* certainty 徽标(v6.1,仅 stakes=high 高后果书):复用 .ci-evlevel 色点+token 模式,Zero-Hex */
+.rc-certainty{display:inline-flex;align-items:center;gap:5px;margin:8px 12px 0 0;font:600 .75rem/1.3 var(--font-display);color:var(--ink-soft-2);vertical-align:middle}
+.rc-certainty::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.rc-certainty[data-certainty="book_explicit"]::before{background:var(--green)}          /* 书里白纸黑字 */
+.rc-certainty[data-certainty="cross_book_synthesis"]::before{background:var(--gold)}    /* 跨书合成 */
+.rc-certainty[data-certainty="general_knowledge"]::before{background:var(--muted)}      /* 编者通识 */
 
 /* ===== (4) 心智模型抽屉卡 .models / .model-drawer(含 boundary) ===== */
 .models{margin-top:12px}
@@ -1318,6 +1324,8 @@ body[data-theme="dark"] .eyebrow,body[data-theme="brand-dark"] .eyebrow{color:va
           <p class="rc-when"><b>当</b> 市价大幅波动而基本面未变(dummy)</p>
           <p class="rc-do"><b>做</b> 把报价当情绪不当指令(dummy)</p>
           <p class="rc-because"><b>因为</b> 价格是指示计,不是向导(dummy)</p>
+          <!-- rc-certainty:仅 stakes=high 高后果书填(§4.5.16 / G22);data-certainty ∈ book_explicit|cross_book_synthesis|general_knowledge;文案对应 书中明确 / 跨书合成 / 编者通识;normal 书整行删 -->
+          <span class="rc-certainty" data-certainty="book_explicit">来源 · 书中明确</span>
           <a class="rc-teleport" href="#ch-2">第 2 章 →</a>
         </article>
         <article class="rule-card" data-step="2" data-situ="拿不准" data-source="第3章 · 约第52-58页(示例)">

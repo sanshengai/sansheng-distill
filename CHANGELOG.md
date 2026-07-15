@@ -4,6 +4,23 @@
 
 ## [未发布]
 
+## [0.3.0] -- 2026-07-15
+
+给「读者会照着做」的高后果书（育儿 / 医疗 / 理财…）加一层**数字可信度标注**，并把蒸馏产物的清理与验证边界写清楚。缘起是一次婴幼儿睡眠 13 本蒸馏 → 合成专题文的复盘：蒸馏本身很忠实，但下游引用时分不清哪些数字是「书里白纸黑字」、哪些是「编者补的通识」。
+
+**新增**
+- **后果轴 `stakes`（`high` / `normal`）**：与书型 / render_profile 正交的第三根轴，标记「读者照做、数字错会误导」的高后果书（育儿 / 医疗 / 用药 / 投资仓位 / 法律…）。缺省 `normal`，旧蒸馏无需回填。
+- **可执行数字确定性 `certainty`**：`decision_rules[]` 与 `core_ideas[]` 元素级新字段，三值 `book_explicit`（书里白纸黑字）/ `cross_book_synthesis`（跨书合成）/ `general_knowledge`（编者通识），让下游一眼分清数字来源硬度；与 `evidence_level`（转述忠实度）正交共存。
+- **门禁 G22**：`stakes=high` 时 `decision_rules` / `core_ideas` 每条必带合法 `certainty`（独立 stakes 闸，不随 render_profile；`normal` 书不检）。渲染侧复用 `.ci-evlevel` 色点，为决策卡加 `.rc-certainty` 来源硬度徽标。
+- **G7 `evidence_level` 机检补齐**：`core_ideas` 必带 `evidence_level` 从「蒸馏自查」升为「verify 机检」。
+
+**改进**
+- **Pass2 中间态自动清理**：合并完整性门禁通过后删 `_pass2_g*.json`（已 gitignore、已回填 distill），治历史残留污染目录。
+- **verify 边界澄清**：文档写清 `verify_page.py exit 0 ≠ 事实正确` -- 只保结构 / 契约 / 版权长度；内容真伪靠蒸馏自查 + 高后果书人工回原书抽检数字。
+
+**修复**
+- SKILL.md 硬门禁②的门禁编号从陈旧的 G1-G15 校正到 G1-G22。
+
 ## [0.2.0] -- 2026-07-12
 
 这一版让蒸馏**按书型走不同形态**，并把批量蒸馏的成本压在编排上、而非砍内容深度。
@@ -32,4 +49,5 @@
 
 装法与网页演示见 README。这是叁笙自己每天在用、清洗脱敏后开源的 Claude Code 技能。
 
+[0.3.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.3.0
 [0.1.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.1.0
