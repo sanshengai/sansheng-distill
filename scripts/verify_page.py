@@ -102,6 +102,17 @@ AUTHOR_DASH_EXEMPT_KEYS = {"external", "_provenance", "sources", "source", "time
 # 深链 slug 坏字符(会破坏 ../{slug}/{slug}.html 内链;不强求目标文件存在,只验格式)
 SLUG_BAD_RE = re.compile(r'[\s/\\<>"\']')
 
+# ---- 主题聚合页(topic-page-skeleton)独立门禁(references/topic-craft.md §0 铁律)----
+# 主题页与蒸馏页/作者页结构均不同:检测到 topic 页则走 lint_topic_html,不套蒸馏页 REQUIRED_CLASSES。
+TOPIC_DATA_RE = re.compile(r'<script[^>]*\bid="topic-data"[^>]*>(.*?)</script>', re.S)
+# 4 视图容器签名 class(分类地图/分歧矩阵/维度对照表/书目导航);静态骨架恒在(JS 只 unhide section)
+TOPIC_VIEW_CLASSES = [("tp-schools", "分类地图"), ("tp-disputes", "分歧矩阵"),
+                      ("tp-dims", "维度对照表"), ("tp-books", "书目导航")]
+TOPIC_INDEX_RELATIONS = {"CONTRADICTS", "curated", "parallel"}
+TOPIC_CERTAINTY_VALUES = {"book_explicit", "cross_book_synthesis", "general_knowledge"}
+# 破折号扫描豁免子树(quote=原文照录;external_debate 外证/来源 URL 非转述文字)
+TOPIC_DASH_EXEMPT_KEYS = {"external_debate", "_provenance", "sources", "source", "quote"}
+
 # ---- render_profile 书型自适应注册表(2026-07-12 B-1/B-2;method §1.4 契约镜像)----
 # 门禁分两层,防「灵活」变成绕过反注水检查的洞:
 #   Tier-0 底线(**不列入 active_gates,永远校验**):§5.1 六类 anchor / excerpts≤150 版权(G14 长度)/
@@ -958,6 +969,149 @@ def author_smoke(path: Path, screenshot: str | None, author: dict | None = None)
     return v
 
 
+# ================================================================ 主题聚合页门禁(独立路径)
+def is_topic_page(html: str, topic_json_flag: bool = False) -> bool:
+    """主题聚合页识别:传 --topic-json / 含内联 #topic-data / .topic-page 标记 任一即是。"""
+    return bool(topic_json_flag) or ('id="topic-data"' in html) or _has_class(html, "topic-page")
+
+
+def _load_topic_json(html: str, topic_json_path: str | None):
+    """取 topic.json:优先 --topic-json 文件,否则取内联 #topic-data(先剥 HTML 注释,防骨架注释里示例被误命中)。
+    返回 (topic dict|None, 解析错误列表)。"""
+    if topic_json_path:
+        try:
+            return json.loads(Path(topic_json_path).read_text(encoding="utf-8")), []
+        except Exception as e:
+            return None, [f"[topic] --topic-json 解析失败: {e}"]
+    m = TOPIC_DATA_RE.search(_strip_html_comments(html))
+    if not m:
+        return None, []
+    try:
+        return json.loads(m.group(1)), []
+    except Exception as e:
+        return None, [f"[topic] 内联 #topic-data JSON 解析失败: {e}"]
+
+
+def lint_topic_html(html: str, topic: dict | None) -> list:
+    """主题聚合页出厂门禁(独立于蒸馏页 REQUIRED_CLASSES;照 topic-craft.md §0 铁律):
+    4 视图容器齐(分类地图/分歧矩阵/维度对照表/书目导航)/ 零外链(仅 external_debate 出处 <a href> 可外链)/
+    Zero-Hex / lang=zh + ≤3MB / 破折号 --(quote 原文·external 外证豁免)/ 深链 slug 格式 /
+    成员 ≥3 触发门槛 / index_relation + certainty 枚举 / 分歧可回指(≥2 派 + 有 stance)。"""
+    v = []
+    # 体积 ≤3MB
+    if len(html.encode("utf-8")) > SIZE_LIMIT:
+        v.append("[topic] 体积超 3MB 预算")
+    # lang="zh"
+    if 'lang="zh"' not in html:
+        v.append('[topic] html 缺 lang="zh"')
+    # 4 视图容器齐
+    for cls, name in TOPIC_VIEW_CLASSES:
+        if not _has_class(html, cls):
+            v.append(f"[topic] 缺 {name}视图容器 .{cls}")
+    # 零外链(script/link/img 禁 http(s);external_debate 出处 <a href> 放行)
+    if re.search(r'<script[^>]+src=["\']https?://', html) or re.search(r'<link[^>]+href=["\']https?://', html) \
+       or re.search(r'<img[^>]+src=["\']https?://', html):
+        v.append("[topic] 存在外链资源(script/link/img),违反零 CDN(仅 external_debate 出处 <a href> 可外链)")
+    # Zero-Hex:剥 vendor <style> + token 块 + color-mix 内层后,token 块外禁字面 hex
+    html_scan = VENDOR_STYLE_RE.sub("", html)
+    css = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", html_scan, re.S))
+    css_no_tokens = _strip_color_mix(TOKEN_BLOCK_RE.sub("", css))
+    hexes = HEX_RE.findall(css_no_tokens)
+    if hexes:
+        v.append(f"[topic] token 块外硬编码色 {len(hexes)} 处: {sorted(set(hexes))[:5]}…")
+    # 以下门禁需 topic.json 数据
+    if topic is None:
+        v.append("[topic] 取不到 topic.json(未传 --topic-json 且无内联 #topic-data),数据类门禁跳过")
+        return v
+    # 触发门槛:成员 <3 不该生成主题页(topic-craft §0)
+    books = topic.get("books", []) or []
+    if len(books) < 3:
+        v.append(f"[topic] 成员书仅 {len(books)} 本(<3),不满足主题聚合触发门槛")
+    # 深链 slug 格式(成员书 + 各视图引用皆走 ../{slug}/{slug}.html)
+    for b in books:
+        s = b.get("slug")
+        if not s:
+            v.append("[topic] books[] 有条目缺 slug(深链无法生成)")
+        elif not _slug_ok(s):
+            v.append(f"[topic] 书 slug {s!r} 非法(会破坏深链 ../{{slug}}/{{slug}}.html)")
+    ref_slugs = []
+    for sc in topic.get("schools", []) or []:
+        ref_slugs.extend(sc.get("members", []) or [])
+        if sc.get("anchor_book"):
+            ref_slugs.append(sc["anchor_book"])
+    for d in topic.get("disputes", []) or []:
+        for pos in d.get("positions", []) or []:
+            for b in pos.get("books", []) or []:
+                ref_slugs.append(b.get("slug"))
+    for dim in topic.get("dimensions", []) or []:
+        for c in dim.get("cells", []) or []:
+            ref_slugs.append(c.get("slug"))
+    for g in topic.get("reading_guide", []) or []:
+        ref_slugs.append(g.get("slug"))
+    for row in (topic.get("verdict") or {}).get("guidance", []) or []:
+        ref_slugs.extend(row.get("books", []) or [])
+    for s in ref_slugs:
+        if s and not _slug_ok(s):
+            v.append(f"[topic] 引用 slug {s!r} 非法(会破坏深链)")
+    # 分歧矩阵:index_relation 枚举 + 可回指(≥2 立场列有 books,books 有 stance;禁空对立)
+    for d in topic.get("disputes", []) or []:
+        did = d.get("id", "?")
+        rel = d.get("index_relation")
+        if rel not in TOPIC_INDEX_RELATIONS:
+            v.append(f"[topic] 分歧 {did} index_relation {rel!r} ∉ {{CONTRADICTS,curated,parallel}}")
+        filled = [pos for pos in (d.get("positions") or []) if (pos.get("books") or [])]
+        if len(filled) < 2:
+            v.append(f"[topic] 分歧 {did} 立场列 <2(需 ≥2 派对照才算分歧,topic-craft §4.3)")
+        for pos in filled:
+            for b in pos.get("books", []) or []:
+                if not b.get("stance"):
+                    v.append(f"[topic] 分歧 {did} 的 {b.get('slug')} 缺 stance(禁无可回指立场的空对立)")
+    # 维度对照表:certainty 枚举
+    for dim in topic.get("dimensions", []) or []:
+        for c in dim.get("cells", []) or []:
+            cert = c.get("certainty")
+            if cert not in TOPIC_CERTAINTY_VALUES:
+                v.append(f"[topic] 维度「{dim.get('name')}」cell {c.get('slug')} certainty {cert!r} ∉ 三枚举")
+    # 破折号:转述文字禁全角 —/―(quote 原文·external 外证照录豁免)
+    n_dash = sum(len(FULLWIDTH_DASH_RE.findall(s))
+                 for s in _collect_author_strings(topic, TOPIC_DASH_EXEMPT_KEYS))
+    if n_dash:
+        v.append(f"[topic] 转述文字含全角破折号 —/― {n_dash} 处(应统一 --;quote/external 照录豁免)")
+    return v
+
+
+def topic_smoke(path: Path, screenshot: str | None, topic: dict | None = None) -> list:
+    """主题聚合页渲染冒烟:4 视图出内容 + 无 JS 错误 + 渲染器跑完。
+    数据门控(对称 author_smoke):某视图仅当 topic.json 有对应数据时才要求其卡片出现,避免对缺该视图的主题误报。"""
+    from playwright.sync_api import sync_playwright
+    v, errors = [], []
+    with sync_playwright() as pw:
+        b = pw.chromium.launch()
+        pg = b.new_page(viewport={"width": 1280, "height": 900}, device_scale_factor=2)
+        pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+        pg.goto(path.resolve().as_uri())
+        pg.wait_for_timeout(700)
+        if errors:
+            v.append(f"[topic渲染] console 错误: {errors[:3]}")
+        if not pg.evaluate("() => window.__topicReady === true"):
+            v.append("[topic渲染] 渲染器未跑完(window.__topicReady 未置真)")
+        t = topic or {}
+        if (t.get("schools") or []) and pg.locator("#schools-host .sch-card").count() < 1:
+            v.append("[topic渲染] 分类地图未出流派卡(.sch-card)")
+        renderable_disp = [d for d in (t.get("disputes") or [])
+                           if any((pos.get("books") or []) for pos in (d.get("positions") or []))]
+        if renderable_disp and pg.locator("#disputes-host .dsp-card").count() < 1:
+            v.append("[topic渲染] 分歧矩阵未出分歧卡(.dsp-card;数据有可渲染分歧却未渲染)")
+        if (t.get("dimensions") or []) and pg.locator("#dims-host .dim-card").count() < 1:
+            v.append("[topic渲染] 维度对照表未出维度卡(.dim-card)")
+        if (t.get("books") or []) and pg.locator("#books-host .book-row").count() < 1:
+            v.append("[topic渲染] 书目导航未出书目行(.book-row)")
+        if screenshot:
+            pg.screenshot(path=screenshot, full_page=True)
+        b.close()
+    return v
+
+
 def smoke(path: Path, screenshot: str | None) -> list:
     from playwright.sync_api import sync_playwright
     v, errors = [], []
@@ -1148,6 +1302,8 @@ def main():
     ap.add_argument("--enrich", help="enrich.json 路径:传入则校验降级一致性;缺省自动探测同目录 enrich.json")
     ap.add_argument("--author-json", dest="author_json",
                     help="author.json 路径:传入即按作者演变页门禁校验;缺省时若页面含内联 #author-data 自动识别")
+    ap.add_argument("--topic-json", dest="topic_json",
+                    help="topic.json 路径:传入即按主题聚合页门禁校验;缺省时若页面含内联 #topic-data 自动识别")
     ap.add_argument("--screenshot")
     ap.add_argument("--skip-interact", action="store_true")
     a = ap.parse_args()
@@ -1158,6 +1314,14 @@ def main():
         v = perr + lint_author_html(html, author)
         if not a.skip_interact:
             v += author_smoke(Path(a.page), a.screenshot, author)
+        print("\n".join(v) if v else "全部通过")
+        return 1 if v else 0
+    # 主题聚合页(结构不同)走独立门禁,不套蒸馏页 REQUIRED_CLASSES
+    if is_topic_page(html, a.topic_json):
+        topic, terr = _load_topic_json(html, a.topic_json)
+        v = terr + lint_topic_html(html, topic)
+        if not a.skip_interact:
+            v += topic_smoke(Path(a.page), a.screenshot, topic)
         print("\n".join(v) if v else "全部通过")
         return 1 if v else 0
     # 蒸馏页(默认路径)

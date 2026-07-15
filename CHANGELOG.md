@@ -4,6 +4,21 @@
 
 ## [未发布]
 
+## [0.4.0] -- 2026-07-15
+
+新增 **StepB 主题聚合** -- 把同一主题下 ≥3 本已蒸作品横向重组成一张「分类地图 + 分歧矩阵 + 维度对照表 + 书目导航」的主题聚合页。这是继 StepA 作者演变(时间轴)之后的空间轴对称能力:StepA 看「一个作者怎么变」,StepB 看「一群书在同一议题上站哪边」。缘起是婴幼儿睡眠 13 本蒸馏 → 合成专题文的复盘 -- 手工把 13 本归成 7 派、挖出 3 条真分歧的活,值得沉淀成可复用的一步。
+
+**新增**
+- **StepB 管线 + `build_topic.py` 聚合器**:只读各书 distill.json + knowledge-index.json 做确定性集合运算(禁 LLM/联网),合并人工 `topic.manual.json`(流派归类/分歧分组/维度定义/怎么选)聚合成 topic.json。成员靠 `members:[slug]` 显式圈定;有效成员 <3 → exit 3 触发门槛;manual 缺失且 out 已存在 → 防覆盖栏 exit 2。
+- **主题聚合页 4 视图**:分类地图(流派分区卡)/ 分歧矩阵(多列立场对照)/ 维度对照表(各书可执行数字并排、每格标 certainty 来源硬度)/ 书目导航。纯 HTML+CSS 表格卡片,不套 StepA 的坐标系 SVG,复用蒸馏页同源 token 与 Zero-Hex 铁律。
+- **分歧诚实三档 `index_relation`**:`CONTRADICTS`(knowledge-index 已登记真对立,红旗)/ `curated`(编者从各书立场归纳、index 未登记,金标,须给依据)/ `parallel`(松散并列,聚合器剔除不渲)。把「index 往往只登记了少数 CONTRADICTS,但一个主题常有多条真分歧」这个现实如实呈现,而非硬造对立;编者归纳出 index 未登记的分歧应回补进 knowledge-index(顺带修 Step4 跨书分歧判定偏保守)。
+- **每书页「主题入口卡」`SLOT:TOPIC-ENTRY`**:成员书蒸馏页顶部链到主题全景,<3 本或无 topic.json 生成时整卡删(可与作者演变入口卡并存)。
+- **verify 独立门禁**:`is_topic_page` / `lint_topic_html` / `topic_smoke`(4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / 深链格式 / 成员 ≥3 / index_relation + certainty 枚举 / 分歧可回指 / 渲染冒烟),照作者页那套对称加,走 main 短路分支绕开蒸馏页 REQUIRED_CLASSES。
+- **契约 `references/topic-craft.md`**:topic.json schema / 4 视图数据契约 / 事实 vs 归纳分层铁律 / 成员圈定 / enrich 外部争议 / 入口卡,作为 build_topic + skeleton + verify 三者的单一权威。SKILL.md 管线表补 StepB 段(对称 StepA)。
+
+**测试**
+- 新增 26 个单测(15 topic 门禁 + 11 build_topic 聚合),覆盖 index_relation 三档判定、certainty 拉取/校验、门槛/防覆盖、破折号 quote 豁免、骨架静态门禁。clean-env pytest 全绿(238 passed)。
+
 ## [0.3.0] -- 2026-07-15
 
 给「读者会照着做」的高后果书（育儿 / 医疗 / 理财…）加一层**数字可信度标注**，并把蒸馏产物的清理与验证边界写清楚。缘起是一次婴幼儿睡眠 13 本蒸馏 → 合成专题文的复盘：蒸馏本身很忠实，但下游引用时分不清哪些数字是「书里白纸黑字」、哪些是「编者补的通识」。
@@ -49,5 +64,6 @@
 
 装法与网页演示见 README。这是叁笙自己每天在用、清洗脱敏后开源的 Claude Code 技能。
 
+[0.4.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.4.0
 [0.3.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.3.0
 [0.1.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.1.0

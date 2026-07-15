@@ -5,7 +5,8 @@ import pytest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_mindmap,
-                         lint_author_html, is_author_page)  # 纯函数:-> list[str] 违规
+                         lint_author_html, is_author_page,
+                         lint_topic_html, is_topic_page)  # 纯函数:-> list[str] 违规
 
 SKILL_ROOT = Path(__file__).resolve().parents[2]  # tests -> scripts -> 仓根
 SKELETON = SKILL_ROOT / "templates" / "page-skeleton.html"
@@ -1216,3 +1217,149 @@ def test_author_skeleton_static_gate_clean():
     assert author is not None, "作者骨架应含可解析的内联 #author-data"
     v = lint_author_html(html, author)
     assert v == [], f"作者骨架静态门禁应全过,实际违规: {v}"
+
+
+# ================================================================ 主题聚合页门禁(StepB)
+T_TOKENS = ':root{--ink:#171411;--blue:#245f73;--green:#177A5C;--gold:#B8892F}body[data-theme="brand-dark"]{--ink:#CBD4E0}'
+TOPIC_VIEWS = ("tp-schools", "tp-disputes", "tp-dims", "tp-books")
+TOPIC_SKELETON = SKILL_ROOT / "templates" / "topic-page-skeleton.html"
+
+
+def topic_html(*, views=TOPIC_VIEWS, lang='lang="zh"', css="", extra=""):
+    vh = "".join(f'<div class="{c}"></div>' for c in views)
+    return (f'<html {lang}><head><style>{T_TOKENS}{css}</style></head>'
+            f'<body><main class="topic-page">{vh}{extra}</main></body></html>')
+
+
+def tjson(**over):
+    d = {
+        "topic": "测试主题", "slug": "__fixture__", "intro": "三本合成书演示主题聚合。",
+        "books": [
+            {"slug": "a-book", "title": "甲", "book_type": "工具", "pub_year": 2010, "stakes": "high", "school_id": "s1"},
+            {"slug": "b-book", "title": "乙", "book_type": "工具", "pub_year": 2015, "stakes": "high", "school_id": "s2"},
+            {"slug": "c-book", "title": "丙", "book_type": "论说", "pub_year": 2020, "stakes": "high", "school_id": "s2"},
+        ],
+        "schools": [
+            {"id": "s1", "name": "训练派", "claim": "能力可训练。", "members": ["a-book"], "anchor_book": "a-book", "color_idx": 0},
+            {"id": "s2", "name": "温和派", "claim": "能力要等成熟。", "members": ["b-book", "c-book"], "anchor_book": "b-book", "color_idx": 1},
+        ],
+        "disputes": [
+            {"id": "d1", "question": "能力能否训练?", "axis": "训练 vs 温和", "concept": "自我塑形",
+             "index_relation": "CONTRADICTS",
+             "positions": [
+                 {"label": "可训练", "books": [{"slug": "a-book", "stance": "可练出来", "quote": "练出来的", "anchor": "第3章"}]},
+                 {"label": "不可训练", "books": [{"slug": "b-book", "stance": "等成熟", "quote": "教不会花提前开", "anchor": "第5章"}]},
+             ], "note": "index 已登记对立。"},
+        ],
+        "dimensions": [
+            {"id": "dim1", "name": "起始时机", "cells": [
+                {"slug": "a-book", "value": "满3月", "certainty": "book_explicit", "anchor": "第3章"},
+                {"slug": "b-book", "value": "不设起点", "certainty": "book_explicit", "anchor": "第5章"},
+            ]},
+        ],
+        "reading_guide": [{"slug": "c-book", "why": "先读《丙》建立框架"}],
+        "verdict": {"headline": "按强度选派。", "guidance": [{"when": "温和", "recommend": "选温和派", "books": ["b-book"]}]},
+    }
+    d.update(over)
+    return d
+
+
+def test_topic_clean_passes():
+    assert lint_topic_html(topic_html(), tjson()) == []
+
+
+def test_topic_detect():
+    assert is_topic_page(topic_html())                              # .topic-page 标记
+    assert is_topic_page('<script id="topic-data">{}</script>')     # 内联数据槽
+    assert is_topic_page("<x>", topic_json_flag=True)               # 传 --topic-json
+    assert not is_topic_page(page())                                # 蒸馏页不误判
+    assert not is_topic_page(author_html())                         # 作者页不误判(topic-entry≠topic-page)
+
+
+def test_topic_missing_view_flagged():
+    v = lint_topic_html(topic_html(views=("tp-schools", "tp-disputes", "tp-dims")), tjson())
+    assert any("书目导航" in x for x in v)
+
+
+def test_topic_external_img_flagged():
+    v = lint_topic_html(topic_html(extra='<img src="https://x/y.png">'), tjson())
+    assert any("外链" in x for x in v)
+
+
+def test_topic_hex_outside_token_flagged():
+    v = lint_topic_html(topic_html(css=".sch-card{color:#ff0000}"), tjson())
+    assert any("硬编码色" in x for x in v)
+
+
+def test_topic_missing_lang_flagged():
+    v = lint_topic_html(topic_html(lang=""), tjson())
+    assert any("lang" in x for x in v)
+
+
+def test_topic_under_min_members_flagged():
+    v = lint_topic_html(topic_html(), tjson(books=[
+        {"slug": "a-book", "title": "甲", "pub_year": 2010},
+        {"slug": "b-book", "title": "乙", "pub_year": 2015},
+    ]))
+    assert any("触发门槛" in x for x in v)
+
+
+def test_topic_bad_book_slug_flagged():
+    v = lint_topic_html(topic_html(), tjson(books=[
+        {"slug": "../evil", "title": "x", "pub_year": 2010},
+        {"slug": "b-book", "title": "乙", "pub_year": 2015},
+        {"slug": "c-book", "title": "丙", "pub_year": 2020},
+    ]))
+    assert any("slug" in x and "非法" in x for x in v)
+
+
+def test_topic_bad_index_relation_flagged():
+    d = tjson()
+    d["disputes"][0]["index_relation"] = "SUPPORTS"
+    v = lint_topic_html(topic_html(), d)
+    assert any("index_relation" in x for x in v)
+
+
+def test_topic_single_position_flagged():
+    d = tjson()
+    d["disputes"][0]["positions"] = [d["disputes"][0]["positions"][0]]  # 只留一派
+    v = lint_topic_html(topic_html(), d)
+    assert any("立场列 <2" in x for x in v)
+
+
+def test_topic_dispute_missing_stance_flagged():
+    d = tjson()
+    d["disputes"][0]["positions"][0]["books"][0]["stance"] = ""
+    v = lint_topic_html(topic_html(), d)
+    assert any("stance" in x for x in v)
+
+
+def test_topic_bad_certainty_flagged():
+    d = tjson()
+    d["dimensions"][0]["cells"][0]["certainty"] = "guess"
+    v = lint_topic_html(topic_html(), d)
+    assert any("certainty" in x for x in v)
+
+
+def test_topic_fullwidth_dash_flagged():
+    v = lint_topic_html(topic_html(), tjson(intro="从甲到乙——这是断裂"))
+    assert any("破折号" in x for x in v)
+
+
+def test_topic_quote_dash_exempt():
+    # quote 是原文照录,含全角破折号应豁免(不报破折号)
+    d = tjson()
+    d["disputes"][0]["positions"][0]["books"][0]["quote"] = "原文——照录不改"
+    assert not any("破折号" in x for x in lint_topic_html(topic_html(), d))
+
+
+def test_topic_skeleton_static_gate_clean():
+    if not TOPIC_SKELETON.exists():
+        pytest.skip(f"主题骨架不存在: {TOPIC_SKELETON}")
+    html = TOPIC_SKELETON.read_text(encoding="utf-8")
+    no_comments = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+    m = re.search(r'<script[^>]*\bid="topic-data"[^>]*>(.*?)</script>', no_comments, re.S)
+    topic = json.loads(m.group(1)) if m else None
+    assert topic is not None, "主题骨架应含可解析的内联 #topic-data"
+    v = lint_topic_html(html, topic)
+    assert v == [], f"主题骨架静态门禁应全过,实际违规: {v}"

@@ -97,6 +97,19 @@ $DATA\
 - **触发门槛 / 降级**:该作者 <2 部已蒸 → `build_author.py` exit 3 不生成、连网搜(enrich)不启、每书页入口卡整卡删。
 - **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\authors\{author_slug}\author.html"; echo "退出码=$?"`(自动识别作者页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / 深链格式 / 转向 verdict 一致;exit 0 才算完成)。
 
+## StepB · 主题聚合(可选,同主题 ≥3 本已蒸时)
+
+同一主题下已蒸 **≥3 本**作品时,可选做「主题聚合专题」页 -- 把各书按流派归类、把分歧摆上台面、把可执行数字并排对照。单书/双书不涉及,**<3 本不生成**。StepA 聚合「同一**作者**的思想**演变**」(时间轴);StepB 聚合「同一**主题**下各书的**立场光谱与分歧**」(空间轴),对称迁移非照搬四视图。
+
+- **做什么**:只读各书 `distill.json` + `knowledge-index.json`(**绝不重蒸**)聚合成 `topic.json` → 渲染主题聚合页 `topic.html`(4 视图:分类地图 / 分歧矩阵 / 维度对照表 / 书目导航)。每成员书蒸馏页顶部「主题入口卡」(SLOT:TOPIC-ENTRY)链到它。
+- **读哪个 reference**:`topic-craft.md`(§0 事实 vs 归纳分层铁律 + 成员圈定 / §2 topic.json schema / §4 四视图数据契约 / §5 板块骨架 / §6 外部争议 enrich / §7 入口卡)。
+- **跑哪条命令**:先手写 `$DATA\topics\{topic_slug}\topic.manual.json`(圈定 `members:[slug]` + schools 流派归类 + disputes 分歧分组 + dimensions 维度对照 + verdict 怎么选);再 `python $SKILL\scripts\build_topic.py --topic "<主题名>" --data-root "$DATA" --manual "$DATA\topics\{topic_slug}\topic.manual.json" --out "$DATA\topics\{topic_slug}\topic.json"`(已有 topic.json 且 manual 缺失时防覆盖栏拒跑,确需重建加 `--force`;<3 本 exit 3 不生成);再复制 `templates\topic-page-skeleton.html`、把 `#topic-data` 槽替换为该 `topic.json` 生成 `topic.html`。
+- **产物**:`$DATA\topics\{topic_slug}\topic.json` + `topic.html`。
+- **成员圈定 = manual 显式列 slugs**:主题边界是编辑判断,不改 distill schema、不自动按 tag 归堆(见 topic-craft §0)。
+- **分歧诚实分档**:分歧矩阵的 `index_relation` 三档 -- `CONTRADICTS`(knowledge-index 已登记真对立,红旗)/ `curated`(编者从各书立场归纳、index 未登记,金标,`note` 须给依据)/ `parallel`(松散并列,聚合器剔除不渲)。**编者归纳出 index 未登记的分歧轴时,应回补进 knowledge-index**(顺带修 Step4 跨书分歧判定偏保守的欠充分)。
+- **触发门槛 / 降级**:有效成员 <3 → `build_topic.py` exit 3 不生成、每书页入口卡整卡删;`external_debate` 整块搜空 → 该板块隐藏,分类/分歧/维度作书内事实照发。
+- **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\topics\{topic_slug}\topic.html"; echo "退出码=$?"`(自动识别主题页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / 深链格式 / index_relation + certainty 枚举 / 分歧可回指;exit 0 才算完成)。
+
 ---
 
 ## 硬门禁(三处,不过不许往下走)
