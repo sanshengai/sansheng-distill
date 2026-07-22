@@ -1,6 +1,6 @@
 ---
 name: sansheng-distill
-description: Use when 用户要把一本书全文或 YouTube/B站视频系列做成深度蒸馏资料；触发词：蒸馏这本书、拆书、视频系列蒸馏、蒸馏 UP 主。只要字幕摘要、单篇文章写作或「一页」世界史专项时不用此 Skill。
+description: Use when 用户要把一本书全文、单个视频（按 1 集）或 YouTube/B站视频系列做成深度蒸馏资料；触发词：蒸馏这本书、拆书、蒸馏视频、视频系列蒸馏、蒸馏 UP 主。只要字幕摘要、单篇文章写作或「一页」世界史专项时不用此 Skill。
 ---
 
 # sansheng-distill -- 书籍/视频蒸馏引擎(v2 浏览型)
