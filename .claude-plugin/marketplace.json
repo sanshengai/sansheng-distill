@@ -9,7 +9,7 @@
     {
       "name": "sansheng-distill",
       "description": "Turn a book (or a video series) into a single-file, interactive HTML distillation page.",
-      "version": "0.2.0",
+      "version": "0.4.1",
       "source": "./",
       "author": {
         "name": "叁笙 (sansheng)",
