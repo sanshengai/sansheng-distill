@@ -16,12 +16,13 @@
 - **T0-C 真封面门禁**:占位 SVG(`data:image/svg+xml`)不再算合格封面。旧检查只查 `src^="data:image"`,占位 SVG 天然满足、形同虚设(全库正常蒸馏封面均为 jpeg/png/webp)。确实联网拿不到,须在 distill.json 顶层显式写 `"cover_fallback": true`,不许静默降级。
 - **`scripts/verify_batch.py` 批量交付闸**(硬门禁④):上站前把**预期名单显式**交给它核对 —— 逐本核产物齐备 / `verify_page.py` 退出码 / 交付卫生(enrich 缺失、`_pass2_g*.json` 中间态残留),exit 0 才许上站。单本 verify 只回答「这一本合不合格」,回答不了「这一批该有的都在吗」;靠人肉数「应该都蒸完了吧」正是漏掉 2 本仍上站的病因。
 - **`references/flash-mode.md` 轻量模型执行卡**:不降低任何质量标准,只把「靠自觉」的环节换成「可自检的判据」,逐步给完成判据与自检命令,并钉死六个最易滑落点(跳 Step7 / 槽没填完 / schema 少产 / 章数归并 / narrative 写到 300 字就收 / 少蒸的书仍进名单)。SKILL.md 顶部加指引。
-- **Step0 目录识别门**(硬门禁①补充):`toc_detected: false` / `chapters_detected: 1` 也要停下问用户。**一本书 = 一个独立电子书文件,禁用套装合集切书** —— 上述 6 本全切自同一个「套装共5册」合订 epub,目录结构没识别出来,模型手里没有原书章节划分,产出章数一律被压成 6 章。
+- **Step0 目录识别门**(硬门禁①补充):`toc_detected: false` / `chapters_detected: 1` 也要停下问用户 —— 目录没识别出来 = 模型手里没有原书章节划分,章数只能自由发挥。
+- **`convert_book.py` 支持套装/合集 epub 切分册**(`--list-volumes` / `--volume`):这正是上述「章数一律 6 章」的根因 —— 6 本全切自同一个「套装共5册」epub,而旧 `extract_epub` **完全不读 TOC**(把所有 ITEM_DOCUMENT 一股脑拼起来)、`diagnose` 又只用正文启发式正则猜章节。现改为:按 TOC 顶层定分册、按 **spine 区间**取正文(未列入目录的正文续页也收进来 —— 只取 TOC 列出的篇目会静默丢正文)、`title` 自动取分册名;`diagnose` 章数改**两路取大**(正文正则 vs TOC 声明)并新增 `chapters_source` 字段标明来源。真实套装 epub 实测:5 个分册全部正确识别与切分,标志词高频命中(盖蒂 29 / 薄片分析 33 / 肯纳 72)、跨书串扰零命中(一万小时 0 / 披头士 0)。
 
 **测试**
-- 新增 37 个单测(`scripts/tests/test_flash_gates.py`):三道门禁的正反用例、omit_blocks / 视频豁免、别名纠错、注释豁免边界,以及一条复刻实测事故形态的回归断言。
+- 新增 47 个单测(`scripts/tests/test_flash_gates.py` 37 + `test_convert_volume.py` 10):三道门禁的正反用例、omit_blocks / 视频豁免、别名纠错、注释豁免边界,以及一条复刻实测事故形态的回归断言。
 - 全库回归:51 本已交付蒸馏页扫描,新门禁**零误报** —— 精确命中且仅命中 4 本问题产物。
-- 测试基线 238 → **275 passed**。
+- 测试基线 238 → **285 passed**。
 
 **兼容性**
 - `[schema]` 项对 2026-07-27 之前蒸的旧书会报 `render_profile`/`cover_intro` 等缺失,**属预期,旧书不必重蒸**(与既有 legacy 向后兼容策略一致)。T0-P / T0-C 两道对旧书零影响(实测 47 本全过)。

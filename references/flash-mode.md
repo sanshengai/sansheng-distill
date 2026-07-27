@@ -28,17 +28,29 @@
 
 ## 1. 开工前提(不满足就别开始)
 
-### 1.1 一本书 = 一个独立电子书文件
+### 1.1 套装 / 合集 epub 必须用 `--volume` 切,不许整本硬蒸
 
-**禁用「套装合集」epub 切书。** 上述事故里 6 本全部切自同一个「经典系列(套装共5册)」epub,
-`diagnose.json` 因此报 `toc_detected: false, chapters_detected: 1` --
+上述事故里 6 本全部切自同一个「经典系列(套装共5册)」epub,`diagnose.json` 因此报
+`toc_detected: false, chapters_detected: 1` --
 **模型手里根本没有目录结构,只能自由发挥,这就是「章数一律 6 章」的直接来源。**
 
-开工前先看 `diagnose.json`:
+**正确做法**:
+
+```bash
+# ① 先看这个 epub 是不是套装,有哪些分册
+python $SKILL/scripts/convert_book.py "<套装.epub>" --list-volumes
+
+# ② 逐本切(分册名用上一步输出的原文)
+python $SKILL/scripts/convert_book.py "<套装.epub>" --outdir "$DATA/{slug}" --volume "眨眼之间"
+```
+
+切分按 TOC 顶层定分册、按 spine 区间取正文(未列入目录的续页也收进来),`title` 自动取分册名。
+
+**判据**:切完看 `diagnose.json`:
 
 ```
 toc_detected: true   → 正常开工
-toc_detected: false  → 停下。换单本电子书文件,或人工确认章节划分后再走 Step1
+toc_detected: false  → 停下问用户。别硬蒸,章数会失控
 ```
 
 ### 1.2 一本书 = 一个会话
