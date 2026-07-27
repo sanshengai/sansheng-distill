@@ -76,6 +76,15 @@ CONTAINER_WORDS = {"章节脉络", "全书脉络", "内容概要", "核心内容
 ANCHOR_RE = re.compile(r"第\d+章|约全书\d+%处|视频\d+")
 EXCERPT_MAX = 150  # 版权红线:单段引用去空白 ≤150 字
 DUP_RUN = 12       # 查重:cover_intro/hero 与 napkin.one_liner 的 ≥12 字连续重叠片段
+# T0-P 未填槽门禁(v0.5,2026-07-27):骨架 dummy/占位符残留即交付。
+#   病因:旧门禁只查「填得够不够好」,默认「一定会填」-- 弱模型直接把模板原样交付时 174 项检查全绿。
+#   实测:Antigravity/Gemini-3.6-Flash 蒸的 4 本各残留 36 处 {{…}} + 39 处 dummy,verify 仍 exit 0。
+PLACEHOLDER_RE = re.compile(r"\{\{[^{}\n]{1,120}\}\}")
+DUMMY_RE = re.compile(r"dummy", re.I)
+# T0-C 真封面门禁:占位 SVG 也满足 src^="data:image",旧检查形同虚设(全库正常蒸馏均为 jpeg/png/webp)
+PLACEHOLDER_COVER_RE = re.compile(r"data:image/svg\+xml", re.I)
+COVER_IMG_RE = re.compile(r'<img[^>]*\bclass="[^"]*\bcb-cover\b[^"]*"[^>]*>|'
+                          r'<img[^>]*\bsrc="data:image[^"]*"[^>]*\bclass="[^"]*\bcb-cover\b[^"]*"[^>]*>')
 # Q7-12 破折号统一:可见转述正文禁全角破折号 —(U+2014)/―(U+2015);原文照录豁免区(blockquote/qw-card)剔除
 FULLWIDTH_DASH_RE = re.compile(r"[—―]")
 # Q7-9:chain_step 关联做法数为 0 → .cs-badge 整个不渲染;拦「0 条…做法」死徽标
@@ -149,6 +158,34 @@ LEGACY_ARCHETYPES = frozenset({"论说", "叙事", "人物", "工具"})
 # dense-card 档 narrative 字数下限(考点/知识点卡本应短密,不套 800)
 DENSE_CARD_FLOOR = 300
 
+# ---------------------------------------------------------------- T0-S distill schema 完整性(v0.5,2026-07-27)
+# 病因:旧门禁只校验「已存在字段的取值」,字段整个缺失时全部 for 循环空转 → 0 违规。
+#   实测 Antigravity 产物缺 8 个顶层键(concepts/critique/quotes/tensions/render_profile/cross_domain/slug/title),
+#   对应板块在 HTML 里只能留 {{…}} 空槽,而 verify 一条都报不出来。
+# 契约单一来源 = method.md §6 schema。
+REQUIRED_TOP_KEYS_CORE = (
+    "slug", "title", "author", "book_type", "render_profile",
+    "chapters", "core_ideas", "core_question", "cover_intro",
+)
+# 条件必需:archetype 的 omit_blocks 声明省略该板块时豁免(语录/书单/课程/考试型不套五段漏斗)
+OMIT_BLOCK_TO_KEY = {
+    "bd-napkin": "napkin", "soul-block": "soul_module", "arg-restate": "arguments",
+    "rules": "decision_rules", "models": "mental_models", "questions": "self_check",
+    "verdict-bar": "credibility_verdict",
+}
+REQUIRED_TOP_KEYS_COND = (
+    "napkin", "soul_module", "arguments", "decision_rules", "mental_models",
+    "self_check", "credibility_verdict", "action_chain",
+    # 下列无 omit_blocks 映射 = 任何 archetype 都必产(对应 REQUIRED_CLASSES 的 tensions/crit-quad/quote-wall)
+    "tensions", "critique", "quotes",
+    "concepts",   # 无 HTML 区块,但 Step4 跨书索引登记的唯一输入;缺则 index-merge 无支撑
+)
+# 视频系列(source_type=video_series)豁免:概念表走 §V 变体;裁决条对视频可选(与 G18 一致)
+VIDEO_EXEMPT_TOP_KEYS = frozenset({"concepts", "credibility_verdict"})
+# 顶层键别名纠错:弱模型易自造近义键名,报错时直接点名「你写成了 X」
+TOP_KEY_ALIASES = {"book_title": "title", "book_name": "title", "name": "title",
+                   "author_name": "author", "book_slug": "slug", "type": "book_type"}
+
 
 def _resolve_active_gates(prof):
     """按 render_profile.archetype 取注册表**权威** active_gates。
@@ -175,6 +212,66 @@ def _lint_profile_integrity(prof) -> list:
         v.append(f"[profile] archetype={arch} 的 active_gates 与注册表不一致(禁逐书篡改绕门禁;应为 {sorted(reg['active_gates'])})")
     if "narrative_mode" in prof and prof.get("narrative_mode") != reg["narrative_mode"]:
         v.append(f"[profile] archetype={arch} 的 narrative_mode 应为 {reg['narrative_mode']!r}")
+    return v
+
+
+def lint_no_placeholder(html: str) -> list:
+    """T0-P 未填槽门禁(恒校验,任何 archetype 不可关):骨架占位符 / dummy 示例文案残留即违规。
+
+    Step6 要求「删干净 dummy」,但旧门禁无一项机检 -- 弱模型不填槽直接交付时全绿放行。
+    全库 48 本正常蒸馏实测残留恒为 0,故本门禁零误报风险。"""
+    v = []
+    # {{槽}}:全文查,不豁免注释 -- 全库 51 本已交付页实测命中恒为 0(仅 4 本未填槽产物命中),零误报
+    holes = PLACEHOLDER_RE.findall(html)
+    if holes:
+        uniq = sorted(set(holes))
+        shown = ", ".join(uniq[:6]) + ("…" if len(uniq) > 6 else "")
+        v.append(f"[占位] 残留模板占位符 {len(holes)} 处 / {len(uniq)} 种(Step6 未填槽即交付): {shown}")
+    # dummy:**先剥 HTML 注释再查**。骨架顶部那条固定的用法说明注释本身含「删 dummy/占位」字样,
+    #   正常交付页普遍保留它(51 本里 47 本有,不渲染、无危害) -- 不剥注释会 100% 误报。
+    #   实测剥注释后:47 本正常页命中 0,4 本未填槽产物各命中 36 处(可见文案里的「(dummy 示例)」),干净分离。
+    n_dummy = len(DUMMY_RE.findall(_strip_html_comments(html)))
+    if n_dummy:
+        v.append(f"[占位] 残留 dummy 示例文案 {n_dummy} 处(骨架示例未替换成真内容,Step6)")
+    return v
+
+
+def lint_distill_schema(data: dict) -> list:
+    """T0-S schema 完整性门禁(恒校验):method.md §6 顶层必需键缺失即违规。
+
+    旧门禁全是「遍历已有字段校验取值」,字段整个缺失时循环空转 0 违规 --
+    弱模型少产半个 schema 也能过关。条件必需键按 render_profile.omit_blocks 豁免。
+    ⚠ 2026-07-27 前蒸的旧书缺 render_profile/cover_intro 等属预期,老书无须重蒸(见 CHANGELOG v0.5.0)。"""
+    if not isinstance(data, dict):
+        return ["[schema] distill.json 顶层非对象"]
+    v = []
+    is_video = data.get("source_type") == "video_series"
+    prof = data.get("render_profile")
+    reg = RENDER_PROFILES.get((prof or {}).get("archetype")) if isinstance(prof, dict) else None
+    omitted = {OMIT_BLOCK_TO_KEY[b] for b in (reg["omit_blocks"] if reg else ()) if b in OMIT_BLOCK_TO_KEY}
+
+    def _missing(k):
+        # 键缺失、或值为 None / 空容器 / 空串 均判缺(弱模型常产 "quotes": [] 充数)
+        if k not in data:
+            return True
+        val = data[k]
+        return val is None or (isinstance(val, (list, dict, str)) and len(val) == 0)
+
+    for k in REQUIRED_TOP_KEYS_CORE:
+        if _missing(k):
+            hint = ""
+            for alias, canon in TOP_KEY_ALIASES.items():
+                if canon == k and alias in data:
+                    hint = f"(你写成了 {alias!r};契约键名以 method.md §6 为准)"
+                    break
+            v.append(f"[schema] 缺顶层必需键 {k!r}{hint}")
+    for k in REQUIRED_TOP_KEYS_COND:
+        if k in omitted:
+            continue
+        if is_video and k in VIDEO_EXEMPT_TOP_KEYS:
+            continue
+        if _missing(k):
+            v.append(f"[schema] 缺顶层必需键 {k!r}(archetype={((prof or {}).get('archetype')) or 'legacy'} 未声明省略)")
     return v
 
 
@@ -278,8 +375,14 @@ def anchor_ok(s) -> bool:
     return bool(s) and bool(ANCHOR_RE.search(str(s)))
 
 
-def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None) -> list:
+def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None,
+              allow_placeholder: bool = False) -> list:
+    """allow_placeholder=True 仅供校验 templates/ 下的**骨架模板**(天然含 {{槽}}/dummy 示例)时使用;
+    校验成品页一律用默认 False -- 成品残留占位符 = Step6 没填槽就交付。"""
     v = []
+    # T0-P 未填槽(恒校验,先于一切形态检查:模板原样交付时后续检查全部无意义)
+    if not allow_placeholder:
+        v += lint_no_placeholder(html)
     # render_profile(2026-07-12 B-1/B-2):非 legacy 书型可按 omit_blocks/tabs 省略部分区块与 tab;
     #   无 profile / 未知 archetype → 全量必检(向后兼容,现有 legacy 页与 196 测试不受影响)。
     #   profile 完整性校验由 lint_distill 统一做(此处不重复,避免重复报 [profile])。
@@ -345,9 +448,16 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
             if gon_h("G8") and is_bad_title(title):  # 论点式标题门禁(语录/考试等 profile 可关,见 render_profile)
                 v.append(f"[lint] 章标题非论点式(G8): {title!r}")
     # 书籍封面 img.cb-cover[src^="data:image"]
-    if not (re.search(r'<img[^>]*\bclass="[^"]*\bcb-cover\b[^"]*"[^>]*\bsrc="data:image', html)
-            or re.search(r'<img[^>]*\bsrc="data:image[^"]*"[^>]*\bclass="[^"]*\bcb-cover\b', html)):
+    _cover_m = (re.search(r'<img[^>]*\bclass="[^"]*\bcb-cover\b[^"]*"[^>]*\bsrc="(data:image[^"]*)"', html)
+                or re.search(r'<img[^>]*\bsrc="(data:image[^"]*)"[^>]*\bclass="[^"]*\bcb-cover\b', html))
+    if not _cover_m:
         v.append('[lint] 缺书籍封面 img.cb-cover[src^="data:image"](禁外链/占位 div)')
+    elif (not allow_placeholder) and PLACEHOLDER_COVER_RE.search(_cover_m.group(1)) and not (
+            isinstance(distill, dict) and distill.get("cover_fallback") is True):
+        # T0-C:占位 SVG 天然满足 src^="data:image",旧检查放行 -- 全库正常蒸馏封面均为 jpeg/png/webp。
+        # 铁律「真封面」要求联网取真书影,拿不到才退占位;退占位须在 distill 显式声明,不许静默降级。
+        v.append('[lint] 书籍封面是占位 SVG(data:image/svg+xml),非真封面 base64'
+                 '(铁律「真封面」;确实联网拿不到须在 distill.json 顶层写 "cover_fallback": true 显式声明)')
     # 子视图一致性(可降级 §1.5):每个存在的 .subpage 须有入口链 + 返回按钮;禁死链入口
     present_subs = {sid: body for sid, body in SUBPAGE_SECTION_RE.findall(html)}
     entry_targets = set(SUBPAGE_ENTRY_RE.findall(html))
@@ -571,6 +681,8 @@ def lint_distill(data: dict) -> list:
     action_chain(G13)/ cover_intro(G16)/ detail(G17)/ credibility_verdict(G18)/ core_question(G19)/ chain_steps(G20)/
     hook(G21)/ chain_step 合法性 / certainty(G22,仅 stakes=high 激活)。"""
     v = []
+    # T0-S schema 完整性(恒校验,先于取值校验:字段整个缺失时下面的 for 循环全部空转)
+    v += lint_distill_schema(data)
     is_video = data.get("source_type") == "video_series"
     # render_profile(2026-07-12 B-1/B-2):无 profile → active=None = legacy 全 Tier-1(向后兼容,旧书不必重蒸)
     prof = data.get("render_profile")

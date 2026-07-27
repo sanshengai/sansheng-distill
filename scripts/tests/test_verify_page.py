@@ -17,7 +17,9 @@ TOKENS = ':root{--ink:#171411;--red:#c0392b;--gold:#b8860b}body[data-theme="dark
 # v3 五 tab:(panel id, A 套名词式主名)
 TABS = [("panel-glance", "全书速览"), ("panel-full", "逐章精读"), ("panel-judge", "批判与评价"),
         ("panel-action", "行动清单"), ("panel-extend", "延伸阅读")]
-COVER = '<img class="cb-cover" alt="封面" src="data:image/svg+xml,%3Csvg/%3E">'
+# 真封面 base64(jpeg):T0-C 门禁起后占位 SVG 不再算合格封面,fixture 随之改真图字节头
+COVER = '<img class="cb-cover" alt="封面" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD">'
+COVER_SVG_PLACEHOLDER = '<img class="cb-cover" alt="封面" src="data:image/svg+xml,%3Csvg/%3E">'
 NAPKIN_ONE_LINER = "投资成功靠的是纪律而非聪明,少犯错胜过多正确"
 FORMULA_READ = "为什么是减法:买价越低于价值,安全垫越厚;二者相等就毫无缓冲,这份余地是减出来的。"
 GOOD_TITLE = "先估价值再看价格才不会追涨杀跌"
@@ -504,6 +506,15 @@ def dch(no=1, title="先估价值再看价格才不会追涨杀跌", narr=900, e
 
 def distill(**over):
     d = {
+        # T0-S 顶层必需键(method.md §6 契约);render_profile 只写 archetype,
+        # active_gates/narrative_mode 省略以免与注册表校验重复维护
+        "slug": "touzi-zui-zhongyao-de-shi", "title": "投资最重要的事", "author": "霍华德·马克斯",
+        "book_type": "论说", "render_profile": {"archetype": "论说"},
+        "tensions": [{"a": "要逆向", "b": "又要止损", "note": "书里未给出切换判据"}],
+        "critique": {"blind_spots": ["幸存者偏差"], "era_limits": ["样本集中在美股"],
+                     "unproven_assumptions": ["市场长期均值回归"], "strongest_objection": "择时不可行"},
+        "concepts": [{"concept": "安全边际", "one_liner": "买价远低于价值的缓冲垫",
+                      "stance": "作者视为唯一可靠护城河", "anchor": "第3章"}],
         "chapters": [dch()],
         "napkin": {"formula": "价值 − 价格 = 安全边际", "formula_read": FORMULA_READ, "one_liner": NAPKIN_ONE_LINER},
         "core_question": "为什么聪明人也常常在市场里亏钱?",
@@ -1093,7 +1104,8 @@ def test_cs_badge_positive_ok():
 def test_skeleton_static_lint_clean():
     if not SKELETON.exists():
         pytest.skip(f"骨架不存在: {SKELETON}")
-    v = lint_html(SKELETON.read_text(encoding="utf-8"))
+    # 骨架是**模板**,天然含 {{槽}} 与 dummy 示例 → 豁免 T0-P;其余结构契约照检
+    v = lint_html(SKELETON.read_text(encoding="utf-8"), allow_placeholder=True)
     assert v == [], f"骨架静态 lint 应全过,实际违规: {v}"
 
 

@@ -4,6 +4,28 @@
 
 ## [未发布]
 
+补三道**未填槽门禁**、一道**批量交付闸**,并新增轻量模型执行卡 -- 让 Gemini Flash 级模型 / 弱 agent 客户端也能按本 skill 的标准产出合格蒸馏页。
+
+缘起是 2026-07-26 一次用 Antigravity(Gemini 3.6 Flash)蒸 6 本书的实测事故:5 分钟跑完、全部上站,事后核查发现 2 本只跑到 Step0 就停了(线上 404)、4 本 HTML 各残留 68 处 `{{槽}}` + 36 处 dummy、封面全是占位 SVG、distill.json 缺 8 个顶层键 —— **其中 1 本 `verify_page.py` 报 exit 0「全部通过」**。
+
+根因不是模型写不出好内容(同批《异类》narrative 写到 824-1119 字,达标),而是**旧门禁 174 项全部是「遍历已有字段校验取值」**,默认「一定会填槽、一定会产全 schema」。模型把模板原样交付或少产半个 schema 时,循环空转 = 零违规放行。这三道补盲门与模型强弱无关,对所有模型同等生效。
+
+**新增**
+- **T0-P 未填槽门禁**(`lint_no_placeholder`,恒校验):成品页残留 `{{槽}}` 或 dummy 示例文案即 exit 1。`{{槽}}` 全文查;dummy **先剥 HTML 注释再查** —— 骨架顶部那条用法说明注释本身含「删 dummy/占位」字样、正常交付页普遍保留(全库 51 本里 47 本有,不渲染无危害),不剥会 100% 误报。校验 `templates/` 下的骨架模板时传 `lint_html(..., allow_placeholder=True)` 豁免。
+- **T0-S schema 完整性门禁**(`lint_distill_schema`,恒校验):`method.md §6` 的 21 个顶层必需键缺失即 exit 1。空容器(`"quotes": []`)等同缺失;条件必需键按 `render_profile.omit_blocks` 豁免(语录/书单/课程/考试型);视频系列豁免 `concepts`/`credibility_verdict`。自造近义键名会被点名纠错(实测出现过把 `title` 写成 `book_title`)。**门禁在 `verify_pass1.py` 同样生效 —— 问题在 Pass1 就被拦下,不会一路带到 HTML。**
+- **T0-C 真封面门禁**:占位 SVG(`data:image/svg+xml`)不再算合格封面。旧检查只查 `src^="data:image"`,占位 SVG 天然满足、形同虚设(全库正常蒸馏封面均为 jpeg/png/webp)。确实联网拿不到,须在 distill.json 顶层显式写 `"cover_fallback": true`,不许静默降级。
+- **`scripts/verify_batch.py` 批量交付闸**(硬门禁④):上站前把**预期名单显式**交给它核对 —— 逐本核产物齐备 / `verify_page.py` 退出码 / 交付卫生(enrich 缺失、`_pass2_g*.json` 中间态残留),exit 0 才许上站。单本 verify 只回答「这一本合不合格」,回答不了「这一批该有的都在吗」;靠人肉数「应该都蒸完了吧」正是漏掉 2 本仍上站的病因。
+- **`references/flash-mode.md` 轻量模型执行卡**:不降低任何质量标准,只把「靠自觉」的环节换成「可自检的判据」,逐步给完成判据与自检命令,并钉死六个最易滑落点(跳 Step7 / 槽没填完 / schema 少产 / 章数归并 / narrative 写到 300 字就收 / 少蒸的书仍进名单)。SKILL.md 顶部加指引。
+- **Step0 目录识别门**(硬门禁①补充):`toc_detected: false` / `chapters_detected: 1` 也要停下问用户。**一本书 = 一个独立电子书文件,禁用套装合集切书** —— 上述 6 本全切自同一个「套装共5册」合订 epub,目录结构没识别出来,模型手里没有原书章节划分,产出章数一律被压成 6 章。
+
+**测试**
+- 新增 37 个单测(`scripts/tests/test_flash_gates.py`):三道门禁的正反用例、omit_blocks / 视频豁免、别名纠错、注释豁免边界,以及一条复刻实测事故形态的回归断言。
+- 全库回归:51 本已交付蒸馏页扫描,新门禁**零误报** —— 精确命中且仅命中 4 本问题产物。
+- 测试基线 238 → **275 passed**。
+
+**兼容性**
+- `[schema]` 项对 2026-07-27 之前蒸的旧书会报 `render_profile`/`cover_intro` 等缺失,**属预期,旧书不必重蒸**(与既有 legacy 向后兼容策略一致)。T0-P / T0-C 两道对旧书零影响(实测 47 本全过)。
+
 ## [0.4.1] -- 2026-07-22
 
 ### 改进

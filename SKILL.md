@@ -21,6 +21,10 @@ description: Use when 用户要把一本书全文、单个视频（按 1 集）�
 
 **这是入口编排文件。** 先读本文对齐管线,再在每一步按下表**读对应 reference / 跑对应 script**;references 是各步的执行细则,不要凭记忆做。
 
+> 🪶 **用轻量模型 / 弱 agent 跑本 skill(如 Gemini Flash 级、Antigravity 客户端)→ 先读 `references\flash-mode.md`。**
+> 那份卡不降低任何质量标准,只把「靠自觉」的环节换成「可自检的判据」,并钉死六个最容易滑落的点。
+> Opus / Sonnet 级模型照本文主管线走即可,不必读。
+
 ## 路径与变量约定(全文只定义一次)
 
 | 占位符 | 展开为 |
@@ -71,7 +75,7 @@ $DATA\
 | **Step4** 跨书索引登记 + 互链 | `distill.concepts` 逐个与现有索引语义匹配,赋 5-tag(SUPPORTS/REFINES/CONTRADICTS/NEW_SUB_ASPECT/NEW_CONCEPT),登记本书 entry + 渲染 ⑤ M11 已蒸书互链 | `cross-book.md`(§2 精确四步 + §3 tag 判定) | ① `python $SKILL\scripts\update_index.py query --index "$DATA\knowledge-index.json" --names-only` → ② 写 `index-merge.json` → ③ `... register --index "$DATA\knowledge-index.json" --merge "$DATA\{书目录}\index-merge.json" --dry-run`(exit 0)→ ④ 去 `--dry-run` 真跑 | `index-merge.json` / 更新 `knowledge-index.json`(+.bak) / M11 互链数据 | register exit 1 = 校验错 → 按 stderr 逐条修 `index-merge.json` 回 ③ 重校验(**禁用 `--force` 绕 exit 1**);exit 2 = 同书 slug 冲突 → 确为重蒸才加 `--force`,slug 撞车则换唯一 slug |
 | **Step5** 设计两遍工作法 | 为这本书出 token plan + signature 决策,过对抗自审;品牌锁八成、书魂放两成 | `design-craft.md`(两遍工作法)+ `brand-tokens.md`(主题 token 契约) | 无(设计决策,内化到 Step6 填槽) | token/signature 定调(不落独立文件,直接指导 Step6) | signature 命中反 slop 黑名单(蓝紫渐变/emoji 图标/圆角+左边框卡滥用/凑数数据)→ 改;衬线模式必配 CJK 衬线兜底 |
 | **Step6** 生成单文件 HTML | 复制骨架填**五 tab + 17 区块 + 3 页内子视图(SUB01-03)**的槽,删干净 dummy,可降级区块(M10/M11/子视图)整块删 | `html-spec.md`(§1 五 tab + 区块规格表 / §3 生成流程 / §4 脑图 md / §5 体积 / §6 extract 兼容) | 复制 `$SKILL\templates\page-skeleton.html` 到 `$DATA\{书目录}\{slug}.html` 后逐槽填充(vendor 已内联,勿动) | `$DATA\{书目录}\{slug}.html`(单文件,**≤3MB**) | 超体积预算按 `html-spec.md §5` 先删 dummy 再压 excerpts 再压封面(WebP data URI/降尺寸);禁删 vendor/必需区块/data-source,禁压 narrative 跌破 G9 |
-| **Step7** 出厂验证 v2 | 静态 lint + 契约门禁 + Playwright 冒烟:体积≤3MB / 必需区块齐 / 五 tab 文案+panel id 对 / `panel-full` 章节均非 details 且 narrative 字数达标(书≥800·视频≥400)/ 章标题论点式(黑名单+长度)/ 书籍真封面 `img[src^="data:image"]` / 3 子视图与入口·返回一致 / 无「显示出处」开关且 `.src-note` 常显 / 无独立金句墙 / 零外链 / lang="zh" / data-source≥20 / token 块外零 hex / 主题切换 body 背景变化 | `html-spec.md §3`(违规修复优先级) | `python $SKILL\scripts\verify_page.py "$DATA\{书目录}\{slug}.html" --distill "$DATA\{书目录}\distill.json" --screenshot "$DATA\{书目录}\_verify.png"; echo "退出码=$?"` | 退出码 + `_verify.png` 全页截图 | **exit 1 = 有违规,按输出逐条修后重跑;exit 0 才算 Step7 / 本书完成(见硬门禁③)。绝不放宽 verify 或删检查项来「过关」** |
+| **Step7** 出厂验证 v2 | 静态 lint + 契约门禁 + Playwright 冒烟:**零占位符残留(`{{槽}}`/dummy,T0-P)/ distill 顶层必需键齐(T0-S)/ 封面非占位 SVG(T0-C)** / 体积≤3MB / 必需区块齐 / 五 tab 文案+panel id 对 / `panel-full` 章节均非 details 且 narrative 字数达标(书≥800·视频≥400)/ 章标题论点式(黑名单+长度)/ 书籍真封面 `img[src^="data:image"]` / 3 子视图与入口·返回一致 / 无「显示出处」开关且 `.src-note` 常显 / 无独立金句墙 / 零外链 / lang="zh" / data-source≥20 / token 块外零 hex / 主题切换 body 背景变化 | `html-spec.md §3`(违规修复优先级) | `python $SKILL\scripts\verify_page.py "$DATA\{书目录}\{slug}.html" --distill "$DATA\{书目录}\distill.json" --screenshot "$DATA\{书目录}\_verify.png"; echo "退出码=$?"` | 退出码 + `_verify.png` 全页截图 | **exit 1 = 有违规,按输出逐条修后重跑;exit 0 才算 Step7 / 本书完成(见硬门禁③)。绝不放宽 verify 或删检查项来「过关」** |
 
 > ⚠ **视频路径 v2 尚未跑 E2E 验证**:骨架 / `method.md §V` / `html-spec.md §V` / `enrich.md §V` / `verify_page.py` 的视频分支已随 v2 更新到位,但尚未用视频样本完整重蒸验收(书样本《金钱心理学》已 E2E 通过)。蒸视频系列时按 §V 照做,遇到骨架/门禁与视频不吻合的坑先记录再修。
 > 跑判成败的脚本别用 `\| tail` / `\| head` 取摘要(管道退出码取最后一段,`tail` 永远成功会吞失败);看完整结尾行或补 `; echo "退出码=$?"`。
@@ -105,8 +109,18 @@ $DATA\
 ## 硬门禁(三处,不过不许往下走)
 
 1. **Step0 exit 3 → 停下问用户**:诊断判「需OCR」(扫描版纯图)或「需人工确认」(gb18030 疑似假字/乱码率>2%)时,**不启动蒸馏、不硬读、不编内容**,把 diagnose 结论报给用户定夺(补 OCR / 换文件 / 人工核编码)。**视频系列同理**:`build_series.py` exit 3(全部视频都缺转写,一个都没抓到)→ 停下问用户(补转写 / 换视频 / 核 manifest),不拿空语料硬蒸。
+   > **`toc_detected: false` / `chapters_detected: 1` 也要停**(v0.5 补):目录结构没识别出来 = 蒸馏时手里**没有原书章节划分**,章数只能靠模型自由发挥(2026-07-26 实测:6 本全切自同一个「套装共5册」合订 epub,`toc_detected` 全 false,产出的章数一律被压成 6 章)。**一本书 = 一个独立电子书文件,禁用套装合集切书**;确实只有合订本,须人工确认章节划分后再进 Step1。
 2. **Step2 两遍质量门禁自查(G1-G22)**:Pass1 骨架 + Pass2 详实转述产出后,按 `method.md §7` 逐条自查(通用 G1-G7 + 书型专项 + v2 详实/浏览层 G8-G21 + 高后果 stakes 门 G22)。空洞夸赞 / 无锚点论断 / 硬门槛未达 / 公式含糊 / 叙事压成标签 / **章标题非论点式(G8)/ narrative 详实度不足(书<800·视频<400 字·G9)/ layman_analogy 有空(G10)/ soul_module 不合规(G11)/ self_check·action_chain 越界(G12/G13)/ excerpts 缺或超 150 字版权红线(G14)/ primary·featured 越界(G15)/ cover_intro·裁决·core_question·论证链结构越界(G16-G21)/ 高后果书(stakes=high)可执行数字缺 certainty(G22)** = 打回重蒸 / 回补,不带病进 Step6。
-3. **Step7 verify v2 exit 0 才算完成**:`verify_page.py`(v2,传 `--distill` 追加契约门禁)退出码非 0 就不是成品。按输出修数据/样式后重跑,直到 exit 0。**绝不放宽验证阈值或删检查项来假过关**。⚠ **verify 只查「结构 / 契约 / 版权长度 / 防注水」,不保证事实正确**:narrative 是否忠于原书、数字 / 人名 / 案例是否真实、excerpts 是否真原文·是否真出现在所标 anchor,**全部无机检** -- 事实正确性靠硬门禁②的蒸馏自查 + 铁律「不编造」,**exit 0 ≠ 内容属实**(高后果书另做人工抽检,见铁律「不编造」)。
+3. **Step7 verify v2 exit 0 才算完成**:`verify_page.py`(v2,传 `--distill` 追加契约门禁)退出码非 0 就不是成品。按输出修数据/样式后重跑,直到 exit 0。**绝不放宽验证阈值或删检查项来假过关**。
+   > **T0 三道补盲门(v0.5,2026-07-27 加)**:`[占位]` 模板槽 / dummy 残留、`[schema]` 顶层必需键缺失、`[lint]` 封面是占位 SVG -- 三者**恒校验、任何 render_profile 不可关**。立法起因见 `flash-mode.md §0`(旧门禁 174 项全是「校验已有字段的取值」,默认「一定会填槽、一定产全 schema」;模型把模板原样交付或少产半个 schema 时,循环空转 = 零违规放行)。**`[schema]` 项对 2026-07-27 前蒸的旧书会报 render_profile/cover_intro 等缺失,属预期,旧书不必重蒸。**⚠ **verify 只查「结构 / 契约 / 版权长度 / 防注水」,不保证事实正确**:narrative 是否忠于原书、数字 / 人名 / 案例是否真实、excerpts 是否真原文·是否真出现在所标 anchor,**全部无机检** -- 事实正确性靠硬门禁②的蒸馏自查 + 铁律「不编造」,**exit 0 ≠ 内容属实**(高后果书另做人工抽检,见铁律「不编造」)。
+
+4. **批量交付闸 exit 0 才许上站**(v0.5,蒸多本时):单本 verify 只回答「这一本合不合格」,回答不了「**这一批该有的都在吗**」。上站前把**预期名单显式**交给批量闸核对:
+
+   ```
+   python $SKILL\scripts\verify_batch.py --data-root "$DATA" --slugs slug1,slug2,slug3; echo "退出码=$?"
+   ```
+
+   它逐本核 ①产物齐备(缺 distill/html = 这本根本没蒸完)②`verify_page.py` 退出码 ③交付卫生(enrich 缺失 / `_pass2_g*.json` 中间态残留)。**退出码 0 才允许上站**;非 0 时二选一 -- 补完管线,或**把这本从上站名单里摘掉**。⚠ **名单留着而产物不存在 = 线上 404**(2026-07-26 实测:6 本里 2 本只跑到 Step0,仍被挂上作品集页)。
 
 ## 铁律(每步都守)
 
@@ -124,6 +138,7 @@ $DATA\
 > **成本大头在编排层,不在 Pass2 分块数**:逐章命名 ≠ 逐章派 agent,各 subagent 仍守「≤5 章/组」,砍分块数省不到 token 且掉详实度。真正吃 token/时长的四项:①并发撞 529 风暴 ②会话碎片化 re-grounding ③同作者重复联网 ④失败假重跑。以下按此立规,**优化编排、不砍生成深度**。
 
 - **先抽样 1 本人工验收再铺量**:多本任务先完整跑通 1 本(Step0-7 + 浏览器过一遍),你/审校者确认质量与 signature 成立,**通过才铺其余**;通过后**错峰**铺,不齐发。
+- **上站前必过批量交付闸**(见硬门禁④):`verify_batch.py --slugs <预期名单>` exit 0 才许上站。**预期名单必须显式声明**,靠人肉数「应该都蒸完了吧」正是 2026-07-26 漏掉 2 本仍上站的病因。
 - **跨会话并发闸**:**全局在飞的 Pass2 subagent ≤ 6-8 个**,不论开了几个会话 / 几个作者批次并行。**多作者批次禁同时段并跑 Pass2** —— 多作者通宵并发会直接引爆服务端 529 风暴(大量 agent 撞 529、大量 retry、墙钟拖到 8-9 小时)。批次之间**错峰发起**,别十分钟内齐发。
 - **1 本书 = 1 会话(或每会话 ≤2-3 本)**:避免单会话塞多本反复 compact(实测单会话曾 compact 8 次)。会话续接**只重读小的 `distill.json` checkpoint,禁重读 `book.txt` 全文**(实测 book.txt 曾被重复引用 60-198 次/会话)。
 - **批前估 token 预算**:铺量前粗估「N 本 × 每本约 X = 总量」,对照账户周/日用量上限;超则分日/分批跑,**预留撞用量上限的余量**(实测批量铺量曾把账户用量跑爆、被迫中途暂停)。全程用高能力模型、不做 token 节流仍成立,但要预判总量别中途断粮。
