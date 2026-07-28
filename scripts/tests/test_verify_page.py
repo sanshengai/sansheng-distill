@@ -562,9 +562,46 @@ def test_source_grounding_rejects_repeated_long_narrative():
     assert any("≥120字重复正文" in x for x in v)
 
 
+def test_source_grounding_rejects_repeated_sentence_within_chapter():
+    repeated = "这一条足够长的陈述被错误地连续复制到同一章的叙事正文中，用来凑字数而非提供新的证据。"
+    d = distill(chapters=[dch(narr=0) | {"narrative": repeated + repeated}])
+    v = lint_source_grounding(d, "原文短段q")
+    assert any("重复句" in x for x in v)
+
+
+def test_source_grounding_rejects_editor_process_language():
+    d = distill(chapters=[dch(narr=0) | {"narrative": "蒸馏时应保留这个案例，但这不是给读者看的章节叙述。"}])
+    v = lint_source_grounding(d, "原文短段q")
+    assert any("编辑流程语" in x for x in v)
+
+
+def test_source_grounding_requires_top_level_quote_verbatim_hit():
+    d = distill(quotes=[{"text": "这句不在原书", "anchor": "第1章"}])
+    v = lint_source_grounding(d, "原文短段")
+    assert any("quote[1] 未在原文命中" in x for x in v)
+
+
+def test_source_grounding_requires_collection_source_title():
+    d = distill(book_type="文章选编/文集")
+    v = lint_source_grounding(d, "原文短段q")
+    assert any("缺 source_title" in x for x in v)
+    d["chapters"][0]["source_title"] = "原文短段"
+    assert not any("source_title" in x for x in lint_source_grounding(d, "原文短段q"))
+
+
+def test_anchor_allows_epilogue():
+    d = distill(quotes=[{"text": "q", "anchor": "尾声·收束"}])
+    assert not any("quote 缺 anchor" in x for x in lint_distill(d))
+
+
 def test_distill_via_lint_html_integrates():
     v = lint_html(page(), distill=distill(chapters=[dch(narr=100)]))
     assert any("G9" in x for x in v)
+
+
+def test_distill_page_rejects_minimal_shell():
+    v = lint_html(page(), distill=distill())
+    assert any("富交互壳" in x for x in v)
 
 
 def test_narrative_floor_book_800():

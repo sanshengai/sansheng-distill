@@ -73,7 +73,7 @@ TITLE_NUM_RE = re.compile(r"^(第?\d+[章节讲集]?|视频\d+)$")
 CONTAINER_WORDS = {"章节脉络", "全书脉络", "内容概要", "核心内容", "主要观点",
                    "金句墙", "金句", "总结", "概述", "前言", "结语"}
 # §5.1/§V.3 合法 anchor:第N章 / 后记 / 约全书XX%处 / 视频N
-ANCHOR_RE = re.compile(r"第\d+章|后记|约全书\d+%处|视频\d+")
+ANCHOR_RE = re.compile(r"第\d+章|尾声|后记|约全书\d+%处|视频\d+")
 EXCERPT_MAX = 150  # 版权红线:单段引用去空白 ≤150 字
 DUP_RUN = 12       # 查重:cover_intro/hero 与 napkin.one_liner 的 ≥12 字连续重叠片段
 # T0-P 未填槽门禁(v0.5,2026-07-27):骨架 dummy/占位符残留即交付。
@@ -137,6 +137,8 @@ RENDER_PROFILES = {
     "叙事": {"narrative_mode": "full-800", "active_gates": _ALL_T1, "omit_blocks": ()},
     "人物": {"narrative_mode": "full-800", "active_gates": _ALL_T1, "omit_blocks": ()},
     "工具": {"narrative_mode": "full-800", "active_gates": _ALL_T1, "omit_blocks": ()},
+    # 文章选编:各篇是独立报道/随笔而非一条单线论证，要求完整案例与限定，但不强迫凑到 800 字。
+    "文章选编": {"narrative_mode": "dense-card", "active_gates": _ALL_T1, "omit_blocks": ()},
     # 语录/箴言:原文 excerpt 为主 + 逐条点评,砍讲书稿字数下限/公式/soul/行动链/论证链(治抽象密集书注水)
     "语录": {"narrative_mode": "list", "active_gates": frozenset({"G16"}),
              "primitives": ("语录墙",), "tabs": ("glance", "full", "extend"),
@@ -458,6 +460,19 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
         # 铁律「真封面」要求联网取真书影,拿不到才退占位;退占位须在 distill 显式声明,不许静默降级。
         v.append('[lint] 书籍封面是占位 SVG(data:image/svg+xml),非真封面 base64'
                  '(铁律「真封面」;确实联网拿不到须在 distill.json 顶层写 "cover_fallback": true 显式声明)')
+    # 正式单书页必须保留 page-skeleton 的富交互壳。此前极简重写器仍能通过数据 lint，
+    # 却悄悄丢掉主题切换、SVG 脑图 viewer 与 hash 路由，导致“数据正确、阅读体验退化”。
+    # 只在传入 distill.json 的单书页上启用，作者页/主题聚合页不受此门禁影响。
+    if distill is not None:
+        rich_shell = {
+            'class="theme-picker"': "主题切换器 .theme-picker",
+            "function initMindmap": "自绘脑图初始化 initMindmap()",
+            "function initHashRouter": "章节/子视图 hash 路由 initHashRouter()",
+            'data-mm="fit"': "脑图缩放控制 data-mm",
+        }
+        for needle, label in rich_shell.items():
+            if needle not in html:
+                v.append(f"[lint] 缺正式富交互壳：{label}(禁用极简重写器)")
     # 子视图一致性(可降级 §1.5):每个存在的 .subpage 须有入口链 + 返回按钮;禁死链入口
     present_subs = {sid: body for sid, body in SUBPAGE_SECTION_RE.findall(html)}
     entry_targets = set(SUBPAGE_ENTRY_RE.findall(html))
@@ -680,13 +695,21 @@ def _norm_source_text(value: str) -> str:
 
 
 def lint_source_grounding(data: dict, source_text: str) -> list:
-    """事实底线：原文摘录必须能逐字定位，章节不能指向不存在的章，且不得用同段正文灌水。"""
+    """事实底线：摘录能逐字定位、章节锚点存在，且正文没有重复或编辑流程注水。"""
     v, source = [], _norm_source_text(source_text)
     chapter_nos = {str(ch.get("no")) for ch in (data.get("chapters", []) or [])}
+    is_collection = "文章选编" in str(data.get("book_type", "")) or "文集" in str(data.get("book_type", ""))
     narratives = []
     for ch in data.get("chapters", []) or []:
         no = str(ch.get("no"))
-        narratives.append((no, _norm_source_text(ch.get("narrative", ""))))
+        narrative = _norm_source_text(ch.get("narrative", ""))
+        narratives.append((no, narrative))
+        if is_collection:
+            source_title = _norm_source_text(ch.get("source_title", ""))
+            if len(source_title) < 2:
+                v.append(f"[source] 第{no}篇缺 source_title（文章选编须标明原始篇名）")
+            elif source_title not in source:
+                v.append(f"[source] 第{no}篇 source_title 未在原文命中: {ch.get('source_title', '')}")
         for ex in ch.get("excerpts", []) or []:
             quote = _norm_source_text(ex.get("text", ""))
             if quote and quote not in source:
@@ -695,6 +718,28 @@ def lint_source_grounding(data: dict, source_text: str) -> list:
             m = re.search(r"第\s*(\d+)\s*章", anchor)
             if m and m.group(1) not in chapter_nos:
                 v.append(f"[source] excerpt anchor 指向不存在章节: {anchor}")
+        # 同章反复粘贴长句通常是为凑叙事字数；正文里只应保留一次，原文摘录另放 excerpts。
+        seen_sentences = set()
+        for sentence in re.split(r"(?<=[。！？!?])", narrative):
+            if len(sentence) < 40:
+                continue
+            if sentence in seen_sentences:
+                v.append(f"[source] 第{no}章 narrative 存在≥40字重复句")
+                break
+            seen_sentences.add(sentence)
+        editor_terms = (
+            "蒸馏时", "蒸馏应", "后续蒸馏", "后续转述", "对于蒸馏",
+            "审计时", "审计上", "审计中", "审计结论", "可安全提炼",
+            "本文件", "后续出版", "后续使用本章",
+        )
+        for term in editor_terms:
+            if term in narrative:
+                v.append(f"[source] 第{no}章 narrative 含编辑流程语“{term}”")
+                break
+    for index, quote_data in enumerate(data.get("quotes", []) or [], start=1):
+        quote = _norm_source_text(quote_data.get("text", ""))
+        if quote and quote not in source:
+            v.append(f"[source] quote[{index}] 未在原文命中")
     # 同一段连续 120 字出现在两个章节，几乎必然是拼接注水；短的通用术语不拦。
     for i, (left_no, left) in enumerate(narratives):
         if len(left) < 120:
@@ -719,11 +764,13 @@ def lint_distill(data: dict, source_text: str | None = None) -> list:
     is_video = data.get("source_type") == "video_series"
     # render_profile(2026-07-12 B-1/B-2):无 profile → active=None = legacy 全 Tier-1(向后兼容,旧书不必重蒸)
     prof = data.get("render_profile")
+    reg = RENDER_PROFILES.get((prof or {}).get("archetype")) if isinstance(prof, dict) else None
     active = _resolve_active_gates(prof)
 
     def gon(g):  # Tier-1 形态门禁是否生效(Tier-0 底线不走此闸,恒校验)
         return active is None or g in active
-    nmode = (prof or {}).get("narrative_mode") or "full-800"
+    # profile 声明可只写 archetype；运行时模式必须从注册表补全，不能误退回 full-800。
+    nmode = (prof or {}).get("narrative_mode") or (reg or {}).get("narrative_mode") or "full-800"
     v += _lint_profile_integrity(prof)  # profile 完整性(防逐书篡改绕门禁)
     # G9 字数档:dense-card(考点/知识点卡)300 / 视频 400 / 详实逐章 800
     floor = DENSE_CARD_FLOOR if nmode == "dense-card" else (400 if is_video else 800)
