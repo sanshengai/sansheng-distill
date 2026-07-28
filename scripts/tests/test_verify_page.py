@@ -130,6 +130,11 @@ def test_clean_page_passes():
     assert lint_html(page()) == []
 
 
+def test_public_html_rejects_internal_book_txt_locator():
+    v = lint_html(page().replace("脚注", "第1章·book.txt:1"))
+    assert any("book.txt" in x for x in v)
+
+
 def test_size_budget_3mb_flagged():
     v = lint_html(page(size_pad=3 * 1024 * 1024 + 10))
     assert any("3MB" in x for x in v)

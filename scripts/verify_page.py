@@ -399,6 +399,10 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
     # 体积上限 3MB
     if len(html.encode("utf-8")) > SIZE_LIMIT:
         v.append("[lint] 体积超 3MB 预算")
+    # book.txt 是蒸馏阶段的内部输入名，不是读者需要看到的出处。
+    # JSON 可保留 raw anchor 供原文门禁追溯；公开 HTML 必须渲染为章节/原文位置。
+    if re.search(r"(?i)\bbook\.txt\b", html):
+        v.append("[lint] 公开 HTML 含 book.txt 内部定位(应渲染为读者可读的章节/原文位置)")
     # 必需签名 class 齐(render_profile.omit_blocks 声明省略的块不检)+ 禁存在 v2 遗留金句结构(T7)
     for cls in REQUIRED_CLASSES:
         if cls in omit_blocks:
