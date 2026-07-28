@@ -63,6 +63,13 @@ def test_registry_legacy_four_are_full():
         assert set(RENDER_PROFILES[arch]["active_gates"]) == set(TIER1_GATES)
 
 
+def test_article_collection_profile_uses_dense_card_floor():
+    d = distill(render_profile={"archetype": "文章选编"}, chapters=[dch(narr=300)])
+    assert not any("narrative" in x and "G9" in x for x in lint_distill(d))
+    d["chapters"][0]["narrative"] = "字" * 299
+    assert any("narrative" in x and "G9" in x for x in lint_distill(d))
+
+
 def test_lint_html_quote_profile_omits_soul_block():
     d = _quote_distill()
     # 语录页省略 soul-block:传 profile 后不报「缺必需区块 .soul-block」
