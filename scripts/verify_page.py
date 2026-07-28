@@ -72,8 +72,8 @@ MIN_SVG_TEXT = 6  # smoke:脑图 SVG 内 <text> 至少这么多(root + 一级 + 
 TITLE_NUM_RE = re.compile(r"^(第?\d+[章节讲集]?|视频\d+)$")
 CONTAINER_WORDS = {"章节脉络", "全书脉络", "内容概要", "核心内容", "主要观点",
                    "金句墙", "金句", "总结", "概述", "前言", "结语"}
-# §5.1/§V.3 合法 anchor:第N章 / 约全书XX%处 / 视频N
-ANCHOR_RE = re.compile(r"第\d+章|约全书\d+%处|视频\d+")
+# §5.1/§V.3 合法 anchor:第N章 / 后记 / 约全书XX%处 / 视频N
+ANCHOR_RE = re.compile(r"第\d+章|后记|约全书\d+%处|视频\d+")
 EXCERPT_MAX = 150  # 版权红线:单段引用去空白 ≤150 字
 DUP_RUN = 12       # 查重:cover_intro/hero 与 napkin.one_liner 的 ≥12 字连续重叠片段
 # T0-P 未填槽门禁(v0.5,2026-07-27):骨架 dummy/占位符残留即交付。
@@ -675,12 +675,45 @@ def _check_certainty(items: list, kind: str) -> list:
     return v
 
 
-def lint_distill(data: dict) -> list:
+def _norm_source_text(value: str) -> str:
+    return re.sub(r"\s+", "", value or "")
+
+
+def lint_source_grounding(data: dict, source_text: str) -> list:
+    """事实底线：原文摘录必须能逐字定位，章节不能指向不存在的章，且不得用同段正文灌水。"""
+    v, source = [], _norm_source_text(source_text)
+    chapter_nos = {str(ch.get("no")) for ch in (data.get("chapters", []) or [])}
+    narratives = []
+    for ch in data.get("chapters", []) or []:
+        no = str(ch.get("no"))
+        narratives.append((no, _norm_source_text(ch.get("narrative", ""))))
+        for ex in ch.get("excerpts", []) or []:
+            quote = _norm_source_text(ex.get("text", ""))
+            if quote and quote not in source:
+                v.append(f"[source] 第{no}章 excerpt 未在原文命中")
+            anchor = str(ex.get("anchor", ""))
+            m = re.search(r"第\s*(\d+)\s*章", anchor)
+            if m and m.group(1) not in chapter_nos:
+                v.append(f"[source] excerpt anchor 指向不存在章节: {anchor}")
+    # 同一段连续 120 字出现在两个章节，几乎必然是拼接注水；短的通用术语不拦。
+    for i, (left_no, left) in enumerate(narratives):
+        if len(left) < 120:
+            continue
+        chunks = {left[p:p + 120] for p in range(0, len(left) - 119, 30)}
+        for right_no, right in narratives[i + 1:]:
+            if any(chunk in right for chunk in chunks):
+                v.append(f"[source] 第{left_no}章与第{right_no}章存在≥120字重复正文")
+    return v
+
+
+def lint_distill(data: dict, source_text: str | None = None) -> list:
     """distill.json 契约门禁(§7 可机拦部分 G7-G22):evidence_level(G7)/ 章标题(G8)/ narrative(G9)/ §5.1 六类 anchor /
     excerpts(G14)/ primary·featured(G15)/ layman_analogy(G10)/ soul_module(G11)/ self_check(G12)/
     action_chain(G13)/ cover_intro(G16)/ detail(G17)/ credibility_verdict(G18)/ core_question(G19)/ chain_steps(G20)/
     hook(G21)/ chain_step 合法性 / certainty(G22,仅 stakes=high 激活)。"""
     v = []
+    if source_text is not None:
+        v += lint_source_grounding(data, source_text)
     # T0-S schema 完整性(恒校验,先于取值校验:字段整个缺失时下面的 for 循环全部空转)
     v += lint_distill_schema(data)
     is_video = data.get("source_type") == "video_series"
@@ -1411,6 +1444,7 @@ def main():
     ap = argparse.ArgumentParser(description="蒸馏页出厂验证 v3:静态 lint + 契约门禁 + Playwright 渲染冒烟")
     ap.add_argument("page")
     ap.add_argument("--distill", help="distill.json 路径:传入则追加契约门禁(G8-G18)+ 渲染侧查重")
+    ap.add_argument("--source", help="book.txt 路径:传入则追加事实门禁（摘录原文命中、章节锚点、跨章重复）")
     ap.add_argument("--enrich", help="enrich.json 路径:传入则校验降级一致性;缺省自动探测同目录 enrich.json")
     ap.add_argument("--author-json", dest="author_json",
                     help="author.json 路径:传入即按作者演变页门禁校验;缺省时若页面含内联 #author-data 自动识别")
@@ -1446,6 +1480,11 @@ def main():
         if sib.exists():
             enrich = json.loads(sib.read_text(encoding="utf-8"))
     v = lint_html(html, distill, enrich)
+    if a.source:
+        if not distill:
+            v.append("[source] --source 必须与 --distill 同时使用")
+        else:
+            v += lint_source_grounding(distill, Path(a.source).read_text(encoding="utf-8"))
     if not a.skip_interact:
         v += smoke(Path(a.page), a.screenshot)
     print("\n".join(v) if v else "全部通过")

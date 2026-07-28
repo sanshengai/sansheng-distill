@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_mindmap,
                          lint_author_html, is_author_page,
-                         lint_topic_html, is_topic_page)  # 纯函数:-> list[str] 违规
+                         lint_topic_html, is_topic_page, lint_source_grounding)  # 纯函数:-> list[str] 违规
 
 SKILL_ROOT = Path(__file__).resolve().parents[2]  # tests -> scripts -> 仓根
 SKELETON = SKILL_ROOT / "templates" / "page-skeleton.html"
@@ -540,6 +540,26 @@ def distill(**over):
 
 def test_distill_clean_passes():
     assert lint_distill(distill()) == []
+
+
+def test_source_grounding_requires_excerpt_verbatim_hit():
+    d = distill(chapters=[dch(excerpts=[{"text": "原文短段", "anchor": "第1章·book.txt:1"}])])
+    v = lint_source_grounding(d, "这里没有那段摘录")
+    assert any("excerpt 未在原文命中" in x for x in v)
+
+
+def test_source_grounding_rejects_unknown_chapter_anchor():
+    d = distill(chapters=[dch(excerpts=[{"text": "原文短段", "anchor": "第9章·book.txt:1"}])])
+    v = lint_source_grounding(d, "原文短段")
+    assert any("指向不存在章节" in x for x in v)
+
+
+def test_source_grounding_rejects_repeated_long_narrative():
+    repeated = "甲" * 120
+    d = distill(chapters=[dch(no=1, narr=0) | {"narrative": repeated},
+                          dch(no=2, narr=0) | {"narrative": repeated}])
+    v = lint_source_grounding(d, "原文短段")
+    assert any("≥120字重复正文" in x for x in v)
 
 
 def test_distill_via_lint_html_integrates():
