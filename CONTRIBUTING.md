@@ -6,7 +6,7 @@ per subdirectory under `skills/`.
 ## Setup
 
 ```bash
-git clone https://github.com/sandypoli-boop/sansheng-skills.git
+git clone https://github.com/sanshengai/sansheng-distill.git
 cd sansheng-skills
 git config core.hooksPath .githooks   # enable the redact-guard pre-commit hook
 ```

@@ -62,14 +62,14 @@
 作为 Claude Code plugin(推荐):
 
 ```bash
-claude plugin marketplace add sandypoli-boop/sansheng-distill
+claude plugin marketplace add sanshengai/sansheng-distill
 claude plugin install sansheng-distill
 ```
 
 或手动:clone 后软链进 `~/.claude/skills/`:
 
 ```bash
-git clone https://github.com/sandypoli-boop/sansheng-distill.git
+git clone https://github.com/sanshengai/sansheng-distill.git
 ln -s "$PWD/sansheng-distill" ~/.claude/skills/sansheng-distill
 ```
 
@@ -81,7 +81,7 @@ GitHub 直连不畅时，给 clone 地址前面加一层公共镜像即可（下
 
 ```bash
 # 加速 clone（把 gh-proxy.com 换成 ghfast.top 即备用镜像）
-git clone https://gh-proxy.com/https://github.com/sandypoli-boop/sansheng-distill.git
+git clone https://gh-proxy.com/https://github.com/sanshengai/sansheng-distill.git
 ```
 
 插件市场方式暂无稳定国内镜像；网络不畅时用上面的加速 clone + 软链。
@@ -153,7 +153,7 @@ cp .env.example .env        # 然后填 DISTILL_DATA_DIR(蒸视频再填视频�
 | `calibre`(`ebook-convert`)| 转 `.azw3` / `.mobi` | 仅这两种格式输入时 |
 | `yt-dlp` | 抓字幕 / 评论 | 仅视频系列路径 |
 | 一个字幕 / ASR 工具 | 转写无字幕视频 | 仅蒸"非 YouTube 且无字幕"的视频系列时 |
-| 姊妹 skill [`sansheng-gemini-video`](https://github.com/sandypoli-boop/sansheng-gemini-video) | 看懂视频画面 / 音频 | 仅蒸需要视觉理解的视频系列(蒸书不需要) |
+| 姊妹 skill [`sansheng-gemini-video`](https://github.com/sanshengai/sansheng-gemini-video) | 看懂视频画面 / 音频 | 仅蒸需要视觉理解的视频系列(蒸书不需要) |
 
 **许可说明**:本仓以 MIT 分发,不捆绑第三方代码。上述运行依赖由你自行安装,各自保留其许可。
 

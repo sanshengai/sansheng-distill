@@ -62,14 +62,14 @@ Say *"distill this book"*, *"拆这本书"*, *"distill this video series"*, or j
 As a Claude Code plugin (recommended):
 
 ```bash
-claude plugin marketplace add sandypoli-boop/sansheng-distill
+claude plugin marketplace add sanshengai/sansheng-distill
 claude plugin install sansheng-distill
 ```
 
 Or manually: clone and symlink into `~/.claude/skills/`:
 
 ```bash
-git clone https://github.com/sandypoli-boop/sansheng-distill.git
+git clone https://github.com/sanshengai/sansheng-distill.git
 ln -s "$PWD/sansheng-distill" ~/.claude/skills/sansheng-distill
 ```
 
@@ -142,7 +142,7 @@ This distillation approach didn't come from nowhere; we studied and blended less
 | `calibre` (`ebook-convert`) | Convert `.azw3` / `.mobi` | Only for those input formats |
 | `yt-dlp` | Fetch subtitles / comments | Video-series path only |
 | A subtitle / ASR tool | Transcribe subtitle-less video | Only for non-YouTube, subtitle-less video series |
-| Sibling skill [`sansheng-gemini-video`](https://github.com/sandypoli-boop/sansheng-gemini-video) | Understand video frames / audio | Only for video series needing visual understanding (not for books) |
+| Sibling skill [`sansheng-gemini-video`](https://github.com/sanshengai/sansheng-gemini-video) | Understand video frames / audio | Only for video series needing visual understanding (not for books) |
 
 **License note.** This repo ships under MIT and bundles no third-party code. The runtime dependencies above are installed by you and keep their own licenses.
 

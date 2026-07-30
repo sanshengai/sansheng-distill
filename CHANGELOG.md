@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+- 安装命令、插件元数据、姊妹 Skill 与版本链接已统一到当前公开仓地址，避免继续跳转到失效地址。
+
 补三道**未填槽门禁**、一道**批量交付闸**,并新增轻量模型执行卡 -- 让 Gemini Flash 级模型 / 弱 agent 客户端也能按本 skill 的标准产出合格蒸馏页。
 
 ### 追加：公开出处脱敏门禁（2026-07-28）
@@ -124,6 +126,6 @@
 
 装法与网页演示见 README。这是叁笙自己每天在用、清洗脱敏后开源的 Claude Code 技能。
 
-[0.4.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.4.0
-[0.3.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.3.0
-[0.1.0]: https://github.com/sandypoli-boop/sansheng-distill/releases/tag/v0.1.0
+[0.4.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.4.0
+[0.3.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.3.0
+[0.1.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.1.0
