@@ -51,9 +51,17 @@ On top of that, three interactive layers: a **clickable mind-map** (hand-drawn S
 
 When you distill a whole set (like Harari's four), it also synthesizes an **author collection page**: a thought-evolution timeline, how concepts drift across books, the themes that run through all of them, and a "where to start reading" route -- that's the page in the demo above.
 
+## It can also distill *a person*, not just a work (v0.5.0)
+
+Everything above turns **one work** into one page. Since v0.5.0 there is a second path: turn **everything one creator has published across media** -- hundreds of videos + a newsletter + books + podcasts -- into a map of their thinking.
+
+The unit of analysis is different. The first asks "what does this book say"; the second asks "what is this person's system of ideas, and how did it change." So it doesn't distill each work separately and staple the results together: it collects everything, builds an evidence base entry by entry, clusters across media into **idea families** (a point he made in a video and again in a newsletter counts once), then distills the systems, action models, thought trajectory and internal tensions -- with a cross-check pass against third-party commentary in both English and Chinese.
+
+First case study, Dan Koe: 162 videos + 212 letters + 25 book chapters, synthesized into 399 sources, 1,836 pieces of evidence, 299 idea families.
+
 ## When to use
 
-Say *"distill this book"*, *"拆这本书"*, *"distill this video series"*, or just drop an ebook file and ask for a distillation page -- Claude picks up this skill and runs the whole pipeline.
+Say *"distill this book"*, *"拆这本书"*, *"distill this video series"*, *"distill this creator"*, or just drop an ebook file and ask for a distillation page -- Claude picks up this skill and runs the whole pipeline.
 
 **Not** for: writing an article, editing a video, or just wanting subtitles or a plain summary.
 
