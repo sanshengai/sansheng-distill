@@ -812,9 +812,41 @@ main{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:0 0 60px;isolatio
 
 /* Q7-7 暗色主题眉题对比:深底暗红 13px 小字不过 AA → 改金(金在深底天然达标,仍零 hex) */
 body[data-theme="dark"] .eyebrow,body[data-theme="brand-dark"] .eyebrow{color:var(--gold)}
+
+/* ===== 品牌浮标 .bd-brandbar(可降级:未配 brand → 连同 SLOT 注释整块删) =====
+   两个去向,不是一个:logo → 母品牌首页(整站的家),右侧系列名 → 本系列列表页。
+   logo 在所有人的认知里就是「回首页」,接到别处就是把人人都会做的动作接错地方。
+   配色全走 brand-tokens.md 那 21 个 token,故 6 套主题自动协调,不必每主题写一遍。 */
+.bd-brandbar{position:fixed;top:12px;left:12px;z-index:99999;display:flex;align-items:center;gap:10px;padding:7px 14px 7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--bar-bg,var(--paper));box-shadow:0 2px 10px rgba(0,0,0,.10)}
+.bd-brandbar a{text-decoration:none}
+.bd-brandbar__home{display:flex;align-items:center}
+.bd-brandbar__logo{display:block;height:17px;width:auto}
+.bd-brandbar__logo.is-dark{display:none}
+body[data-theme="dark"] .bd-brandbar__logo.is-light,body[data-theme="brand-dark"] .bd-brandbar__logo.is-light{display:none}
+body[data-theme="dark"] .bd-brandbar__logo.is-dark,body[data-theme="brand-dark"] .bd-brandbar__logo.is-dark{display:block}
+.bd-brandbar__div{width:1px;height:14px;background:var(--line)}
+.bd-brandbar__series{color:var(--ink);font:600 13px/1 var(--font-display)}
+.bd-brandbar__series:hover{color:var(--green)}
+@media(max-width:680px){
+  .bd-brandbar{top:8px;left:8px;gap:8px;padding:6px 12px 6px 10px}
+  .bd-brandbar__logo{height:15px}
+  .bd-brandbar__series{font-size:12px}
+}
 </style>
 </head>
 <body>
+
+  <!-- SLOT:BRANDBAR 品牌浮标(**可降级,默认删**)。只有交付方配了品牌才保留,否则连同本注释整块删 —— 公开使用者不该继承别人的 logo。
+       填槽: {{brand.logo_light}}/{{brand.logo_dark}} 必须是 data:image base64(单文件自包含,与封面同规矩,禁外链 http(s));
+             暗主题没有专门反色版时,删掉 is-dark 那张 img,保留 is-light 一张即可;
+             {{brand.home_url}} = 母品牌首页,{{brand.series_url}} = 本系列列表页,两者必须是不同去向(同一个就失去拆分意义);
+             {{brand.series_label}} = 系列名(如「读书蒸馏」)。 -->
+  <div class="bd-brandbar">
+    <a class="bd-brandbar__home" href="{{brand.home_url}}" aria-label="回{{brand.home_label}}"><img class="bd-brandbar__logo is-light" src="{{brand.logo_light}}" alt="{{brand.home_label}}"><img class="bd-brandbar__logo is-dark" src="{{brand.logo_dark}}" alt="" aria-hidden="true"></a>
+    <span class="bd-brandbar__div" aria-hidden="true"></span>
+    <a class="bd-brandbar__series" href="{{brand.series_url}}">{{brand.series_label}}</a>
+  </div>
+
 <main data-book-slug="SLUG_PLACEHOLDER">
 
   <!-- SLOT:HEADER 头部两层(纸底+森林绿粗色带刊头 + 封面简介 + hero 标语降级;导读条已删,导航唯一入口 = 下方 sticky nav.tabs) -->

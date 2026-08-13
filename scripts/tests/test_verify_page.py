@@ -4,7 +4,7 @@ import json
 import pytest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_mindmap,
+from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_mindmap, lint_brandbar,
                          lint_author_html, is_author_page,
                          lint_topic_html, is_topic_page, lint_source_grounding)  # 纯函数:-> list[str] 违规
 
@@ -1437,3 +1437,64 @@ def test_topic_skeleton_static_gate_clean():
     assert topic is not None, "主题骨架应含可解析的内联 #topic-data"
     v = lint_topic_html(html, topic)
     assert v == [], f"主题骨架静态门禁应全过,实际违规: {v}"
+
+
+# ================================================================ 品牌浮标 .bd-brandbar(可降级,默认删)
+# 2026-08-13:线上出过「挂着母品牌 logo,点下去还在同一个工具里」的事故。
+# 这块**默认不存在**(公开使用者不该继承交付方的 logo),但一旦留下就必须真的能回去。
+LOGO = "data:image/png;base64,iVBORw0KGgo="
+
+def brandbar(home="/", series="/series", light=LOGO, dark=LOGO, label="系列名"):
+    return (f'<div class="bd-brandbar">'
+            f'<a class="bd-brandbar__home" href="{home}" aria-label="回品牌首页">'
+            f'<img class="bd-brandbar__logo is-light" src="{light}" alt="品牌名">'
+            f'<img class="bd-brandbar__logo is-dark" src="{dark}" alt="" aria-hidden="true"></a>'
+            f'<span class="bd-brandbar__div" aria-hidden="true"></span>'
+            f'<a class="bd-brandbar__series" href="{series}">{label}</a>'
+            f'</div><main>')
+
+
+def test_brandbar_absent_is_legal():
+    """没有品牌浮标是合法的,而且是默认状态 —— 公开使用者拿到的就该是干净页面。"""
+    assert lint_brandbar(page()) == []
+
+
+def test_brandbar_complete_passes():
+    assert lint_brandbar(page().replace("<body>", "<body>" + brandbar(), 1)) == []
+
+
+def test_brandbar_same_target_flagged():
+    """🔴 两个热区指向同一处 = 那次线上事故的形态,必须报。"""
+    v = lint_brandbar(page().replace("<body>", "<body>" + brandbar(home="/series"), 1))
+    assert any("同一处" in x for x in v), v
+
+
+def test_brandbar_external_logo_flagged():
+    """单文件产物不许依赖别人服务器上的图。"""
+    v = lint_brandbar(page().replace("<body>", "<body>" + brandbar(light="/brand/logo.png"), 1))
+    assert any("data:image" in x for x in v), v
+
+
+def test_brandbar_unfilled_slot_flagged():
+    v = lint_brandbar(page().replace("<body>", "<body>" + brandbar(home="{{brand.home_url}}"), 1))
+    assert any("{{brand" in x for x in v), v
+
+
+def test_brandbar_missing_home_link_flagged():
+    bar = brandbar().replace('class="bd-brandbar__home" href="/"', 'class="bd-brandbar__home"')
+    v = lint_brandbar(page().replace("<body>", "<body>" + bar, 1))
+    assert any("回首页" in x for x in v), v
+
+
+def test_brandbar_duplicated_flagged():
+    v = lint_brandbar(page().replace("<body>", "<body>" + brandbar() + brandbar(), 1))
+    assert any("多次" in x for x in v), v
+
+
+def test_skeleton_ships_brandbar_slot():
+    """骨架里必须带这个可降级槽,且槽位说明写明默认删。"""
+    sk = SKELETON.read_text(encoding="utf-8")
+    assert "SLOT:BRANDBAR" in sk
+    assert "可降级" in sk[sk.find("SLOT:BRANDBAR"):sk.find("SLOT:BRANDBAR") + 400]
+    assert "{{brand.home_url}}" in sk and "{{brand.series_url}}" in sk
+    assert ".bd-brandbar{position:fixed" in sk

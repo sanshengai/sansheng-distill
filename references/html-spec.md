@@ -218,11 +218,32 @@
 ### 1.5 可降级区块与 tab 名(判定规则,沿用 v2 降级一致性)
 
 - **必含区块(verify 硬拦存在)**:头部两层(`.cb-banner` / `.cb-intro` / `.hero`;`.reading-guide` v3.1 已移除,不再必含)+ 板块①(`.bd-napkin` / `.bd-mindmap-wrap` / `.bd-coreideas` / `.soul-block`)+ 板块②(`.concept-chips` 见下 / `.chapter-toc` / `.bd-chapter` / `.quote-wall`)+ 板块③(`.verdict-bar` / `.arg-restate` / `.tensions` / `.crit-quad`)+ 板块④(`.chain` / `.rules` / `.models` / `.questions`)+ 每板 `.next-cta`(①-④)+ footer。
-- **可降级区块**(对应 enrich / distill 数据 `null`/空 → 整块删,含 SLOT 注释对,不留空壳):`.concept-chips`(concepts 空)/ ③`.reviews`(reviews null)/ ③观点对照入口 + `#sub-views`(views_page null)/ ⑤`.similar` / `.reading-path` / `.author-shelf` / `.crossbook`(对应源 null)/ `#sub-author` + 全部入口(author_page null)。
+- **可降级区块**(对应 enrich / distill 数据 `null`/空 → 整块删,含 SLOT 注释对,不留空壳):`.concept-chips`(concepts 空)/ ③`.reviews`(reviews null)/ ③观点对照入口 + `#sub-views`(views_page null)/ ⑤`.similar` / `.reading-path` / `.author-shelf` / `.crossbook`(对应源 null)/ `#sub-author` + 全部入口(author_page null)/ **`.bd-brandbar` 品牌浮标(未配 `brand` → 整块删,见 §1.6)**。
 - **板块⑤ 整体降级**:若 similar_page / author_page / cross_book_external **全 null**,`#panel-extend` 整块隐藏、其 tab 从 `nav.tabs` 撤除、④`.next-cta` 改指 footer 或删。tab 降到 4 个不报错(verify 只校验存在的 tab 文案 / panel id 对齐)。
 - **删除动作**:该区块 `<!-- SLOT:XXX -->` 到 `<!-- /SLOT:XXX -->` 连同注释对整段删;删子视图连同其入口(hero 作者名链外壳→纯文本、⑤书架栏头链、③观点入口卡)。
 - **删可降级块后 data-source 可能跌破 20**:删完复跑 verify;不足 20 说明蒸得薄,回补①核心观点 / ②章节 / ③批判 / ④规则的 anchor,**别为凑数塞空 `data-source`**。
 - 单区块内部条目偏少但整块不该删的(如 quotes 只 2 条),据实少给,不硬凑、不编造。
+
+### 1.6 品牌浮标 `.bd-brandbar`(可降级,**默认删**)
+
+产物是新标签页打开的单文件 HTML,天然脱离站点布局 —— 读者进来后没有任何出口。这枚左上角浮标就是出口。
+
+**默认状态是没有它。** 不配 `brand` 就连同 `<!-- SLOT:BRANDBAR -->` 注释整块删,产出干净页面 —— 使用者不该继承交付方的 logo。
+
+配了才渲染,契约如下:
+
+| 槽 | 含义 | 硬约束 |
+|---|---|---|
+| `brand.home_url` | 母品牌首页 | 与 `series_url` **必须不同** |
+| `brand.home_label` | logo 的 alt / aria-label | 无障碍必需 |
+| `brand.logo_light` | 浅色主题 logo | **必须 `data:image` 内联**,与封面同规矩 |
+| `brand.logo_dark` | 暗色主题 logo | 同上;没有反色版就删掉 `is-dark` 那张 img |
+| `brand.series_label` | 系列名(如「读书蒸馏」) | |
+| `brand.series_url` | 本系列列表页 | |
+
+🔴 **两个去向不许合并成一个**。2026-08-13 线上出过这个事故:一个挂着母品牌 logo 的按钮,点下去还停在同一个工具里 —— logo 在所有人的认知里就是「回首页」,接到别处等于把人人都会做的动作接错了地方。`verify_page.py` 的 `lint_brandbar()` 会拦。
+
+配色全部走 §brand-tokens 那 21 个 token(`--line` / `--bar-bg` / `--paper` / `--ink` / `--font-display` / `--green`),所以 6 套主题下自动协调,不必每主题写一遍;暗主题靠两张 logo 显隐切换,比 `content:url()` 兼容。
 
 ### 1.6 render_profile 变体化区块 / tab + 新结构原语(v6,2026-07-12 B-1/B-5/B-7)
 

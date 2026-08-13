@@ -507,6 +507,8 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
     if re.search(r'<script[^>]+src=["\']https?://', html) or re.search(r'<link[^>]+href=["\']https?://', html) \
        or re.search(r'<img[^>]+src=["\']https?://', html):
         v.append("[lint] 存在外链资源(script/link/img),违反零 CDN")
+    # 品牌浮标 .bd-brandbar(可降级,默认删):留下了就必须是完整的两个去向,且 logo 自包含
+    v += lint_brandbar(html, allow_placeholder=allow_placeholder)
     # 禁内嵌播放器
     if re.search(r"<(iframe|video|embed)\b", html, re.I):
         v.append("[lint] 存在内嵌播放器标签(iframe/video/embed),违反跳转不内嵌铁律")
@@ -583,6 +585,47 @@ def _sum_topic_chars(node: dict) -> int:
     """全图 topic 总字数(有效长:CJK/字母/数字,不计 emoji/标点/空格/序号;Q3-5 ≤900 的度量)。"""
     return _effective_len(str(node.get("topic") or "")) + \
         sum(_sum_topic_chars(c) for c in node.get("children") or [])
+
+
+def lint_brandbar(html: str, allow_placeholder: bool = False) -> list:
+    """品牌浮标 .bd-brandbar 门禁(可降级区块,默认删)。
+
+    这个区块**不存在是完全合法的**,而且是默认状态 —— 公开使用者不该继承交付方的 logo。
+    但一旦留下,它就是读者认知里的「回首页」按钮,必须真的能回去:
+
+      · 两个去向必须都在且**互不相同**(logo → 母品牌首页;系列名 → 本系列列表页)。
+        合并成一个去向正是 2026-08-13 那次线上事故的形态:挂着母品牌 logo,点下去还在同一个工具里。
+      · logo 必须 data:image 内联,与封面同规矩 —— 这是单文件产物,指向别人服务器的图迟早会碎。
+      · 槽位必须填完,残留 {{brand.*}} 说明这块该删没删。
+
+    allow_placeholder=True 只用于校验 templates/ 下的骨架模板 —— 骨架里 {{brand.*}} 是槽本身,
+    此时跳过「槽填完」与「logo 已内联」两项(它们要等填槽后才有意义),其余结构契约照检。
+    """
+    v = []
+    if 'class="bd-brandbar"' not in html:
+        return v  # 未配品牌,合法
+    if html.count('class="bd-brandbar"') > 1:
+        v.append("[lint] 品牌浮标 .bd-brandbar 出现多次,应只有一处")
+    if not allow_placeholder and re.search(r"\{\{\s*brand\.", html):
+        v.append("[lint] 品牌浮标残留 {{brand.*}} 未填槽(不需要品牌就连同 SLOT:BRANDBAR 注释整块删)")
+    bar = re.search(r'<div class="bd-brandbar">.*?</div>\s*(?=<)', html, re.S)
+    seg = bar.group(0) if bar else ""
+    home = re.search(r'class="bd-brandbar__home"[^>]*href="([^"]+)"', seg)
+    series = re.search(r'class="bd-brandbar__series"[^>]*href="([^"]+)"', seg)
+    if not home:
+        v.append("[lint] 品牌浮标缺 logo 回首页链接 .bd-brandbar__home[href]")
+    if not series:
+        v.append("[lint] 品牌浮标缺系列链接 .bd-brandbar__series[href]")
+    if home and series and home.group(1).rstrip("/") == series.group(1).rstrip("/"):
+        v.append("[lint] 品牌浮标两个热区指向同一处(%s);logo 必须回母品牌首页,系列名才回列表页" % home.group(1))
+    if not allow_placeholder:
+        for m in re.finditer(r'class="bd-brandbar__logo[^"]*"[^>]*src="([^"]*)"', seg):
+            src = m.group(1)
+            if not src.startswith("data:image"):
+                v.append("[lint] 品牌浮标 logo 须内联为 data:image(当前 %s),单文件产物不许外部依赖" % src[:48])
+    if seg and not re.search(r'class="bd-brandbar__logo', seg):
+        v.append("[lint] 品牌浮标没有 logo 图")
+    return v
 
 
 def lint_mindmap(html: str) -> list:
