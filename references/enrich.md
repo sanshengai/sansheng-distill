@@ -197,7 +197,15 @@
 
 ### 3.4 搜索工具链降级(全局规范,取「搜索引擎摘要」这一档时用)
 
-`AnySearch`(`mcp__anysearch__search` / `batch_search`,中文广搜首选)→ `Tavily`(`tavily_search` / `tavily_research`,英文深搜/定向域/时间窗)→ 内置 `WebSearch`(兜底)。取具体页面正文用 `WebFetch`;某一引擎报限流/质量差即降级下一个,不在同一引擎上反复重试。
+**按任务类型选一个引擎,不是固定顺序链**(同题并行撒网只烧上下文):
+
+| 本 skill 的典型场景 | 引擎 |
+|---|---|
+| 作者生平/访谈/中文书评/人物公司 | `AnySearch`(`mcp__anysearch__search` / `batch_search`),**条数压 3–5** |
+| 要可引用的**原文段落**(书评正反、观点原话) | `doubao_search`(`mcp__doubao_search__web_search`),直接返正文,`Count` 压 3–5 |
+| 英文深搜 / 定向域 / 时间窗 / 技术类 | `Tavily`(`tavily_search` / `tavily_research`) |
+
+内置 `WebSearch` 是**末位回退**,不是链条一环:用前须先按上表选定引擎并实际尝试,回退时说明试了哪个、失败在哪一层。取具体页面正文用 `WebFetch`;某一引擎报限流/质量差即换下一个,不在同一引擎上反复重试。完整路由与硬约束见 `AGENTS.global.md`「工具使用」节。
 
 ---
 

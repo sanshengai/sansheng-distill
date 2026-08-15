@@ -131,7 +131,7 @@
   "open_questions":[ {"q":"…","camps":[{"who":"…","say":"含立场原话≤80字","source":"url"}]} ],
   "sources":["url"] }
 ```
-- **降级**:<3 部→不生成;整块搜空→ `external_debate` null(该板块整块隐藏,但分类地图/分歧矩阵/维度对照表作书内事实照发)。工具链 AnySearch→Tavily→WebSearch,一次失败即降级、禁重试轰炸,外证须可点击 URL。
+- **降级**:<3 部→不生成;整块搜空→ `external_debate` null(该板块整块隐藏,但分类地图/分歧矩阵/维度对照表作书内事实照发)。工具链按 `enrich.md §3.4` 路由表选一个引擎(中文观点→AnySearch;要原话段落→doubao_search;英文→Tavily;内置 WebSearch 仅末位回退),一次失败即换、禁重试轰炸,外证须可点击 URL。
 
 ## 7. 每书页「主题入口卡」(page-skeleton)
 
