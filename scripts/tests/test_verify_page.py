@@ -1211,6 +1211,26 @@ def test_author_clean_passes():
     assert lint_author_html(author_html(), ajson()) == []
 
 
+def test_author_reserved_fact_label_flagged():
+    bio = {"birth_year": 1909, "death_year": 2005,
+           "facts": [{"label": "生卒", "value": "1909--2005"}]}
+    v = lint_author_html(author_html(), ajson(bio=bio))
+    assert any("模板保留字段" in x and "生卒" in x for x in v)
+
+
+def test_author_duplicate_fact_label_flagged():
+    bio = {"birth_year": 1963, "facts": [
+        {"label": "职业", "value": "作家"}, {"label": "职业", "value": "记者"},
+    ]}
+    v = lint_author_html(author_html(), ajson(bio=bio))
+    assert any("facts label" in x and "重复" in x for x in v)
+
+
+def test_author_inverted_lifespan_flagged():
+    v = lint_author_html(author_html(), ajson(bio={"birth_year": 2005, "death_year": 1909}))
+    assert any("生卒年份倒置" in x for x in v)
+
+
 def test_author_detect():
     assert is_author_page(author_html())                         # .author-page 标记
     assert is_author_page('<script id="author-data">{}</script>')  # 内联数据槽

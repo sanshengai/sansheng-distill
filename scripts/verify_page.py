@@ -108,6 +108,9 @@ AUTHOR_VERDICTS = {"confirmed", "apparent", "refuted"}
 EVOLUTION_VERDICT_STANCES = {"continuous", "segmented", "mixed"}
 # 破折号扫描豁免的子树键(external=外证 blockquote 照录;_provenance/来源 URL 非转述文字)
 AUTHOR_DASH_EXEMPT_KEYS = {"external", "_provenance", "sources", "source", "timeline_anchors"}
+AUTHOR_BIO_RESERVED_FACT_LABELS = {
+    "生卒", "出生", "逝世", "代表作", "代表作品", "核心关切", "代表概念",
+}
 # 深链 slug 坏字符(会破坏 ../{slug}/{slug}.html 内链;不强求目标文件存在,只验格式)
 SLUG_BAD_RE = re.compile(r'[\s/\\<>"\']')
 
@@ -1118,6 +1121,38 @@ def lint_author_html(html: str, author: dict | None) -> list:
     if author is None:
         v.append("[author] 取不到 author.json(未传 --author-json 且无内联 #author-data),数据类门禁跳过")
         return v
+    # 作者身份卡字段契约:生卒由 birth_year/death_year 唯一生成,facts 不得再造同义字段。
+    bio = author.get("bio") or {}
+    if not isinstance(bio, dict):
+        v.append("[author] bio 必须是对象")
+        bio = {}
+    birth_year = bio.get("birth_year")
+    death_year = bio.get("death_year")
+    if birth_year is not None and (not isinstance(birth_year, int) or isinstance(birth_year, bool)):
+        v.append(f"[author] bio.birth_year {birth_year!r} 必须是整数年份")
+    if death_year is not None and (not isinstance(death_year, int) or isinstance(death_year, bool)):
+        v.append(f"[author] bio.death_year {death_year!r} 必须是整数年份")
+    if isinstance(death_year, int) and not isinstance(death_year, bool):
+        if not isinstance(birth_year, int) or isinstance(birth_year, bool):
+            v.append("[author] bio.death_year 存在但缺合法 birth_year")
+        elif death_year < birth_year:
+            v.append(f"[author] 生卒年份倒置: {birth_year}--{death_year}")
+    seen_fact_labels = set()
+    facts = bio.get("facts") or []
+    if not isinstance(facts, list):
+        v.append("[author] bio.facts 必须是数组")
+        facts = []
+    for i, fact in enumerate(facts):
+        if not isinstance(fact, dict):
+            continue
+        label = str(fact.get("label") or "").strip()
+        if not label:
+            continue
+        if label in AUTHOR_BIO_RESERVED_FACT_LABELS:
+            v.append(f"[author] bio.facts[{i}].label={label!r} 是模板保留字段,会造成作者卡重复")
+        if label in seen_fact_labels:
+            v.append(f"[author] bio.facts label {label!r} 重复")
+        seen_fact_labels.add(label)
     # 深链 slug 格式合法(代表作导航 + 时间线书圆 + 各引用皆走 ../{slug}/{slug}.html)
     for b in author.get("books", []) or []:
         s = b.get("slug")
@@ -1185,6 +1220,25 @@ def author_smoke(path: Path, screenshot: str | None, author: dict | None = None)
             v.append(f"[author渲染] console 错误: {errors[:3]}")
         if not pg.evaluate("() => window.__authorReady === true"):
             v.append("[author渲染] 渲染器未跑完(window.__authorReady 未置真)")
+        # 身份卡运行时契约:保留字段只出现一次,生卒/出生值必须与结构化年份一致。
+        card_fields = pg.locator("#ap-card .c-field").evaluate_all(
+            "els => els.map(el => ({label: (el.querySelector('dt')?.textContent || '').trim(), "
+            "value: (el.querySelector('dd')?.textContent || '').trim()}))"
+        )
+        card_labels = [x.get("label") for x in card_fields if x.get("label")]
+        duplicate_labels = sorted({x for x in card_labels if card_labels.count(x) > 1})
+        if duplicate_labels:
+            v.append(f"[author渲染] 身份卡字段重复: {duplicate_labels}")
+        bio = (author or {}).get("bio") or {}
+        birth_year, death_year = bio.get("birth_year"), bio.get("death_year")
+        if isinstance(birth_year, int) and not isinstance(birth_year, bool):
+            expected_label = "生卒" if isinstance(death_year, int) and not isinstance(death_year, bool) else "出生"
+            expected_value = f"{birth_year}--{death_year}" if expected_label == "生卒" else str(birth_year)
+            life_fields = [x for x in card_fields if x.get("label") == expected_label]
+            if len(life_fields) != 1 or life_fields[0].get("value") != expected_value:
+                v.append(
+                    f"[author渲染] {expected_label}字段应唯一且为 {expected_value!r},实际 {life_fields}"
+                )
         if pg.locator("#tl-host svg").count() < 1:
             v.append("[author渲染] 时间线未出 SVG(#tl-host 内无 <svg>)")
         if pg.locator("#rb-host svg").count() < 1:

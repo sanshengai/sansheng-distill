@@ -603,8 +603,11 @@ a.ap-chip.chip-book:hover{background:var(--tint-accent)}
     const nodes = ((A.concept_graph && A.concept_graph.nodes) || []).slice()
       .sort((a, b) => (b.appearances || []).length - (a.appearances || []).length);
     const topNodes = nodes.slice(0, 3);
-    // 生卒
-    const life = bio.birth_year ? (bio.birth_year + ' --') : '待补';
+    // 生卒:已故作者显示完整区间;在世作者只显示出生年,不留误导性的悬空破折号。
+    const hasBirth = Number.isInteger(bio.birth_year);
+    const hasDeath = Number.isInteger(bio.death_year);
+    const lifeLabel = hasDeath ? '生卒' : '出生';
+    const life = hasBirth ? (hasDeath ? (bio.birth_year + '--' + bio.death_year) : String(bio.birth_year)) : '待补';
 
     const L = el('div', { class: 'cardL' });
     const idRow = el('div', { class: 'c-id' });
@@ -641,7 +644,7 @@ a.ap-chip.chip-book:hover{background:var(--tint-accent)}
 
     const R = el('div', { class: 'cardR' });
     const field = (k, valNode) => { const d = el('dl', { class: 'c-field' }); d.appendChild(el('dt', null, k)); const dd = el('dd'); dd.appendChild(valNode); d.appendChild(dd); return d; };
-    R.appendChild(field('生卒', document.createTextNode(life)));
+    R.appendChild(field(lifeLabel, document.createTextNode(life)));
     // bio.facts:可选的信息框身份字段(维基/百度惯例:职业/毕业院校/研究领域/国籍…),渲染在生卒下方、代表作之前。
     //   纯文本值(多值用「 · 」分隔),不成 chip -- 与「生卒」同为身份速览字段。缺则不渲染,右栏退化回原 4 字段。
     (Array.isArray(bio.facts) ? bio.facts : []).forEach(f => {
