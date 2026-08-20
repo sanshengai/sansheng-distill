@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Mapping
@@ -21,7 +22,11 @@ from typing import Any, Mapping
 SCHEMA_VERSION = "psychology-source-audit-v1"
 CLAIM_MAP_SCHEMA_VERSION = "psychology-claim-coverage-v1"
 INPUT_ROLES = ("source", "distill", "claim_map", "enrich")
-SEGMENT_KINDS = frozenset({"chapter", "frontmatter", "backmatter"})
+SEGMENT_KINDS = frozenset({
+    "acknowledgments", "appendix", "backmatter", "chapter", "conclusion",
+    "epilogue", "front_matter", "frontmatter", "index", "notes", "part",
+    "preface", "references",
+})
 TARGET_KINDS = frozenset({"claim", "chapter_narrative", "quote", "excerpt", "audit_flag"})
 FACETS = frozenset({"claim", "mechanism", "case", "experiment", "number", "boundary", "verbatim"})
 SUPPORT_VALUES = frozenset({"direct", "partial", "contradicted"})
@@ -44,6 +49,28 @@ def _positive_int(value: Any) -> bool:
 
 def _compact(value: Any) -> str:
     return re.sub(r"\s+", "", str(value or ""))
+
+
+def _heading_key(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).lower()
+    normalized = normalized.replace("\u00ad", "").replace("’", "'").replace("‘", "'")
+    normalized = normalized.replace("—", "-").replace("–", "-")
+    return re.sub(r"\s+", "", normalized)
+
+
+def _chapter_marker(line: str, chapter_no: int) -> bool:
+    value = _heading_key(line)
+    return value in {str(chapter_no), f"chapter{chapter_no}", f"第{chapter_no}章"}
+
+
+def _heading_occurs_near_start(
+    source_lines: list[str], start: int, end: int, heading: str,
+    chapter_no: int | None,
+) -> bool:
+    window = list(source_lines[start - 1:min(end, start + 63)])
+    if chapter_no is not None:
+        window = [line for line in window if not _chapter_marker(line, chapter_no)]
+    return _heading_key(heading) in _heading_key("\n".join(window))
 
 
 def _parse_line_range(value: Any, label: str, errors: list[str]) -> tuple[int, int] | None:
@@ -223,6 +250,7 @@ def _validate_segments(audit: dict[str, Any], source_text: str,
             errors.append(_error(f"segment id={segment_id!r} 重复"))
         raw_kind = raw.get("kind")
         kind = raw_kind if isinstance(raw_kind, str) else "<invalid-kind>"
+        chapter_no = raw.get("chapter_no")
         if kind not in SEGMENT_KINDS:
             errors.append(_error(f"{label}.kind={raw_kind!r} 非法，应为 {sorted(SEGMENT_KINDS)}"))
         parsed_range = _parse_line_range(raw.get("line_range"), f"{label}.line_range", errors)
@@ -238,11 +266,16 @@ def _validate_segments(audit: dict[str, Any], source_text: str,
             heading = raw.get("heading_excerpt")
             if not _nonempty(heading):
                 errors.append(_error(f"{label}.heading_excerpt 缺失或为空"))
-            elif start <= len(source_lines) and heading not in source_lines[start - 1]:
+            elif start <= len(source_lines) and not _heading_occurs_near_start(
+                source_lines,
+                start,
+                min(end, len(source_lines)),
+                heading,
+                chapter_no if kind == "chapter" and _positive_int(chapter_no) else None,
+            ):
                 errors.append(_error(
-                    f"{label}.heading_excerpt 未在分段起始行 L{start:06d} 逐字命中"
+                    f"{label}.heading_excerpt 未在分段起始 64 行内规范化命中"
                 ))
-        chapter_no = raw.get("chapter_no")
         if kind == "chapter":
             if not _positive_int(chapter_no):
                 errors.append(_error(f"{label}.chapter_no 必须是正整数"))

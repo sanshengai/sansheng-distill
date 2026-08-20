@@ -17,7 +17,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 # Windows 管道默认 cp936,打中文 JSON 前必须强制 UTF-8(本仓库跨脚本契约)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -64,28 +64,56 @@ def is_http_url(value) -> bool:
     return parsed.scheme.lower() in {"http", "https"} and bool(host and host.strip("."))
 
 
+def normalize_web_url(value):
+    """只接受站内根相对深链；非法值 fail-closed。"""
+    if not isinstance(value, str):
+        return None
+    raw = value
+    if (not raw or raw != raw.strip() or not raw.startswith("/") or raw.startswith("//") or "\\" in raw
+            or any(ch.isspace() or ord(ch) < 32 for ch in raw)):
+        return None
+    path_only = raw.split("?", 1)[0].split("#", 1)[0]
+    for _ in range(3):
+        decoded = unquote(path_only)
+        if decoded == path_only:
+            break
+        path_only = decoded
+    if (path_only.startswith("//") or "\\" in path_only
+            or any(ch.isspace() or ord(ch) < 32 for ch in path_only)
+            or any(part in {".", ".."} for part in path_only.split("/"))):
+        return None
+    return raw
+
+
 # --------------------------------------------------------------------------- 收集
 
 def collect_members(manual, data_root, warnings):
-    """按 manual.members(显式 slug)逐个加载 distill.json;缺失剔除 + warning。返回 [(slug, distill_dict)]。"""
+    """按 manual.members 逐个加载 distill.json；显式成员异常一律 fail-closed。"""
     members = manual.get("members") or []
     if not isinstance(members, list):
-        print("manual.members 必须是 slug 列表", file=sys.stderr)
-        sys.exit(2)
+        raise ValueError("manual.members 必须是 slug 列表")
     out = []
     seen = set()
     for slug in members:
-        if not slug or slug in seen:
+        if (not isinstance(slug, str) or not slug or slug.strip() != slug
+                or slug in {".", ".."} or "/" in slug or "\\" in slug
+                or any(ch.isspace() or ord(ch) < 32 for ch in slug)):
+            raise ValueError(f"manual.members 含非法 slug: {slug!r}")
+        if slug in seen:
             continue
         seen.add(slug)
-        p = Path(data_root) / str(slug) / "distill.json"
+        p = Path(data_root) / slug / "distill.json"
         if not p.is_file():
-            warnings.append(f"成员 {slug} 的 distill.json 缺失({p}),已剔除")
-            continue
+            raise ValueError(f"成员 {slug} 的 distill.json 缺失({p})")
         try:
-            out.append((slug, load_json(p)))
+            distill = load_json(p)
         except (json.JSONDecodeError, OSError) as e:
-            warnings.append(f"成员 {slug} 的 distill.json 解析失败({e}),已剔除")
+            raise ValueError(f"成员 {slug} 的 distill.json 解析失败({e})") from e
+        if distill.get("slug") != slug:
+            raise ValueError(
+                f"成员路径 {slug} 内 distill.slug={distill.get('slug')!r} 不一致"
+            )
+        out.append((slug, distill))
     return out
 
 
@@ -205,11 +233,12 @@ def validate_school_contract(manual, member_set):
     return errors
 
 
-def derive_books(members, manual, schools=None):
+def derive_books(members, manual, schools=None, warnings=None):
     """🤖 直取 distill 元数据 + 合并 manual.book_meta(one_liner/role_in_topic)
     + 从**已解析** schools 反推 school_ids(按 schools 顺序有序去重)。
     ``schools=None`` 只保留给纯函数旧调用；正式 build 必须传 resolve_schools 产物。"""
     book_meta = manual.get("book_meta") or {}
+    warnings = warnings if warnings is not None else []
     # slug -> school_ids(同一本书可属于多个研究传统/分析镜头)
     school_of = {}
     source_schools = (manual.get("schools", []) or []) if schools is None else schools
@@ -226,7 +255,7 @@ def derive_books(members, manual, schools=None):
         if not one_liner:  # 回退 distill 的餐巾纸/核心问句
             napkin = d.get("napkin") or {}
             one_liner = napkin.get("one_liner") or d.get("core_question") or ""
-        out.append({
+        row = {
             "slug": slug,
             "title": d.get("title"),
             "book_type": d.get("book_type"),
@@ -235,7 +264,14 @@ def derive_books(members, manual, schools=None):
             "school_ids": school_of.get(slug, []),
             "one_liner": one_liner,
             "role_in_topic": meta.get("role_in_topic"),
-        })
+        }
+        raw_url = meta.get("web_url")
+        web_url = normalize_web_url(raw_url)
+        if web_url:
+            row["web_url"] = web_url
+        elif raw_url is not None:
+            warnings.append(f"book_meta.{slug}.web_url 非法,已剔除")
+        out.append(row)
     return out
 
 
@@ -382,6 +418,8 @@ def resolve_disputes(manual, index_concepts, member_set, warnings):
     """
     out = []
     for i, d in enumerate(manual.get("disputes", []) or []):
+        if d.get("parallel") is True:
+            continue  # 显式平行对照由 resolve_parallel_comparisons 单独承载
         q = d.get("question")
         if not q:
             warnings.append(f"dispute[{i}] 缺 question,已跳过")
@@ -450,6 +488,45 @@ def resolve_disputes(manual, index_concepts, member_set, warnings):
             "adjudication": adjudication,
             "sources": sources,
         })
+    return out
+
+
+def resolve_parallel_comparisons(manual, index_concepts, member_set, warnings):
+    """解析显式平行对照；复用立场/外证归一化，但绝不进入 disputes。
+
+    可从 parallel_comparisons[] 声明，也可把旧 disputes[] 项标记 parallel:true 后迁移。
+    每项至少须有两个非空立场列，否则 fail-closed 跳过。
+    """
+    specs = list(manual.get("parallel_comparisons", []) or [])
+    specs.extend(d for d in (manual.get("disputes", []) or []) if d.get("parallel") is True)
+    out = []
+    seen_ids = set()
+    for i, spec in enumerate(specs):
+        clone = dict(spec)
+        clone.pop("parallel", None)
+        clone["curated"] = True
+        clone["id"] = clone.get("id") or f"p{i + 1}"
+        if clone["id"] in seen_ids:
+            warnings.append(f"parallel_comparison id「{clone['id']}」重复,已跳过后项")
+            continue
+        seen_ids.add(clone["id"])
+        resolved = resolve_disputes(
+            {"disputes": [clone]}, index_concepts, member_set, warnings
+        )
+        if not resolved:
+            continue
+        item = resolved[0]
+        populated = sum(
+            1 for pos in item.get("positions", [])
+            if any(book.get("stance") for book in (pos.get("books") or []))
+        )
+        if populated < 2:
+            warnings.append(
+                f"parallel_comparison「{item.get('question')}」有效立场不足 2 列,已跳过"
+            )
+            continue
+        item["index_relation"] = "parallel"
+        out.append(item)
     return out
 
 
@@ -541,8 +618,15 @@ def build_topic_json(members, manual, enrich, index_concepts):
         raise ValueError("; ".join(school_errors))
     title_of = {slug: data.get("title") for slug, data in members}
     schools = resolve_schools(manual, member_set, title_of, warnings)
-    books = derive_books(members, manual, schools=schools)
+    books = derive_books(members, manual, schools=schools, warnings=warnings)
     disputes = resolve_disputes(manual, index_concepts, member_set, warnings)
+    parallel_declared = ("parallel_comparisons" in manual or any(
+        d.get("parallel") is True for d in (manual.get("disputes", []) or [])
+    ))
+    parallel_comparisons = (
+        resolve_parallel_comparisons(manual, index_concepts, member_set, warnings)
+        if parallel_declared else []
+    )
     dimensions = resolve_dimensions(manual, member_set, members_by_slug, warnings)
     consensus = resolve_consensus(manual, member_set, warnings)
     reading_guide = resolve_reading_guide(manual, member_set, warnings)
@@ -584,6 +668,9 @@ def build_topic_json(members, manual, enrich, index_concepts):
             "warnings": warnings,
         },
     }
+    if parallel_declared:
+        doc["parallel_comparisons"] = parallel_comparisons
+        doc["_provenance"]["parallel_comparison_count"] = len(parallel_comparisons)
     return doc, warnings
 
 
@@ -592,7 +679,7 @@ def summarize(doc):
     rc = {}
     for d in disp:
         rc[d["index_relation"]] = rc.get(d["index_relation"], 0) + 1
-    return {
+    summary = {
         "topic": doc["topic"],
         "books": len(doc["books"]),
         "schools": len(doc["schools"]),
@@ -605,6 +692,9 @@ def summarize(doc):
         "external_debate": bool(doc["external_debate"]),
         "_warnings": doc["_provenance"]["warnings"],
     }
+    if "parallel_comparisons" in doc:
+        summary["parallel_comparisons"] = len(doc["parallel_comparisons"])
+    return summary
 
 
 def main():
@@ -630,7 +720,11 @@ def main():
 
     manual = load_json(manual_path) if manual_present else {}
     warnings0 = []
-    members = collect_members(manual, a.data_root, warnings0)
+    try:
+        members = collect_members(manual, a.data_root, warnings0)
+    except ValueError as exc:
+        print(f"manual schema 错误:{exc}", file=sys.stderr)
+        return 2
 
     # 触发门槛(§3②):有效成员 <3 → 不生成
     if len(members) < MIN_MEMBERS:

@@ -102,8 +102,9 @@ $DATA\
 - **读哪个 reference**:`author-craft.md`(§0 事实 vs 叙事铁律 / §2 author.json schema / §4 四视图数据契约 / §5 板块骨架 / §6 转向证伪层 / §7 入口卡)。
 - **跑哪条命令**:`python $SKILL\scripts\build_author.py --author "<作者名>" --data-root "$DATA" --manual "$DATA\authors\{author_slug}\author.manual.json" --enrich "$DATA\authors\{author_slug}\author.enrich.json" --out "$DATA\authors\{author_slug}\author.json"`(已有 author.json 且 manual 缺失时防覆盖栏拒跑,确需重建加 `--force`;<2 部 exit 3 不生成);再复制 `templates\author-page-skeleton.html`、把 `#author-data` 槽替换为该 `author.json` 生成 `author.html`。
 - **产物**:`$DATA\authors\{author_slug}\author.json` + `author.html`。
+- **显式成员与站内书页**:需纳入合著作品或固定策展边界时,在 manual 写 `member_slugs:[slug]`;清单中任一成员缺失、损坏或内部 slug 不一致即 exit 2,不得静默缩小集合。可在 `book_meta.{slug}.web_url` 写站内根相对书页路径(如 `/library/work-a.html`);只接受安全的单 `/` 起始路径,非法值不进入产物。
 - **触发门槛 / 降级**:该作者 <2 部已蒸 → `build_author.py` exit 3 不生成、连网搜(enrich)不启、每书页入口卡整卡删。
-- **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\authors\{author_slug}\author.html"; echo "退出码=$?"`(自动识别作者页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / 深链格式 / 转向 verdict 一致;exit 0 才算完成)。
+- **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\authors\{author_slug}\author.html"; echo "退出码=$?"`(自动识别作者页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / slug 与 `web_url` 安全 / 转向 verdict 一致;exit 0 才算完成)。
 
 ## StepB · 主题聚合(可选,同主题 ≥3 本已蒸时)
 
@@ -113,10 +114,10 @@ $DATA\
 - **读哪个 reference**:`topic-craft.md`(§0 事实 vs 归纳分层铁律 + 成员圈定 / §2 topic.json schema / §4 四视图数据契约 / §5 板块骨架 / §6 外部争议 enrich / §7 入口卡)。
 - **跑哪条命令**:先手写 `$DATA\topics\{topic_slug}\topic.manual.json`(圈定 `members:[slug]` + schools 流派归类 + disputes 分歧分组 + dimensions 维度对照 + verdict 怎么选);再 `python $SKILL\scripts\build_topic.py --topic "<主题名>" --data-root "$DATA" --manual "$DATA\topics\{topic_slug}\topic.manual.json" --out "$DATA\topics\{topic_slug}\topic.json"`(已有 topic.json 且 manual 缺失时防覆盖栏拒跑,确需重建加 `--force`;<3 本 exit 3 不生成);再复制 `templates\topic-page-skeleton.html`、把 `#topic-data` 槽替换为该 `topic.json` 生成 `topic.html`。
 - **产物**:`$DATA\topics\{topic_slug}\topic.json` + `topic.html`。
-- **成员圈定 = manual 显式列 slugs**:主题边界是编辑判断,不改 distill schema、不自动按 tag 归堆(见 topic-craft §0)。
-- **分歧诚实分档**:分歧矩阵的 `index_relation` 三档 -- `CONTRADICTS`(knowledge-index 已登记真对立,红旗)/ `curated`(编者从各书立场归纳、index 未登记,金标,`note` 须给依据)/ `parallel`(松散并列,聚合器剔除不渲)。**编者归纳出 index 未登记的分歧轴时,应回补进 knowledge-index**(顺带修 Step4 跨书分歧判定偏保守的欠充分)。
+- **成员圈定 = manual 显式列 slugs**:主题边界是编辑判断,不改 distill schema、不自动按 tag 归堆(见 topic-craft §0);清单中任一成员缺失、损坏或内部 slug 不一致即 exit 2,不得静默缩小集合。`book_meta.{slug}.web_url` 与 StepA 同样只允许安全的站内根相对路径。
+- **分歧与平行对照分流**:分歧矩阵只渲 `CONTRADICTS`(knowledge-index 已登记真对立,红旗)和 `curated`(编者归纳、金标,`note` 须给依据)。相关但不互斥、回答不同层次问题的材料写入独立 `parallel_comparisons[]`,至少两列且每列均有可回指成员与非空 `stance`,渲染为 `.cmp-card`,不计入分歧数;旧 manual 的 `disputes[].parallel:true` 会迁移到该独立数组。未显式声明、仅被算法判为 `parallel` 的松散并列仍剔除不渲。**编者归纳出 index 未登记的真分歧轴时,应回补进 knowledge-index**。
 - **触发门槛 / 降级**:有效成员 <3 → `build_topic.py` exit 3 不生成、每书页入口卡整卡删;`external_debate` 整块搜空 → 该板块隐藏,分类/分歧/维度作书内事实照发。
-- **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\topics\{topic_slug}\topic.html"; echo "退出码=$?"`(自动识别主题页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / 深链格式 / index_relation + certainty 枚举 / 分歧可回指;exit 0 才算完成)。
+- **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\topics\{topic_slug}\topic.html"; echo "退出码=$?"`(自动识别主题页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / slug 与 `web_url` 安全 / index_relation + certainty 枚举 / 分歧与平行对照可回指 / `.dsp-card`、`.cmp-card` 数量精确;exit 0 才算完成)。
 
 ## StepC · 人物/博主蒸馏(creator_corpus 路径)
 
@@ -138,7 +139,7 @@ $DATA\
    > **`toc_detected: false` / `chapters_detected: 1` 也要停**(v0.5 补):目录结构没识别出来 = 蒸馏时手里**没有原书章节划分**,章数只能靠模型自由发挥(2026-07-26 实测:6 本全切自同一个「套装共5册」合订 epub,`toc_detected` 全 false,产出的章数一律被压成 6 章)。
    > **套装/合集 epub 走 `--volume` 切,别整本硬蒸、也别手工切**:`convert_book.py --list-volumes` 列出顶层分册与各自章数 → 逐本 `--volume "<分册名>"`。切分按 TOC 顶层定分册、按 **spine 区间**取正文(未列入目录的正文续页也收进来,只取 TOC 篇目会静默丢正文),`diagnose.title` 自动取分册名。`chapters_source` 字段标明章数来自 `epub_toc` 还是 `body_regex`。
 2. **Step2 两遍质量门禁自查(G1-G23)**:Pass1 骨架 + Pass2 详实转述产出后,按 `method.md §7` 逐条自查。通用/书型/详实门 G1-G21 不变;`stakes=high` 条件激活 G22;`domain_profile.domain=psychology` 条件激活 G23,要求每条 core_idea/decision_rule 有唯一 claim_id + 合法 claim_type。命中即打回重蒸/回补,不带病进 Step3/Step6。
-3. **Step7 verify v2 exit 0 才算完成**:`verify_page.py`(v2,传 `--distill` 追加契约门禁)退出码非 0 就不是成品。**已知心理学项目必须传 `--require-domain psychology`**,否则一本漏写 `domain_profile` 的书无法仅凭文件内容被通用验证器识别;默认不传则保持旧书兼容。心理学严格域另要求同书目录 `source-audit.json`,核四输入 hash、原文章界、逐项原文命中、全部 audit flags 账本覆盖、evidence 对最终 claims 的精确覆盖及 HTML 三栏映射(见 `source-audit.md`)。按输出修数据/样式后重跑,直到 exit 0。**绝不放宽验证阈值或删检查项来假过关**。
+3. **Step7 verify v2 exit 0 才算完成**:`verify_page.py`(v2,传 `--distill` 追加契约门禁)退出码非 0 就不是成品。**已知心理学项目必须同时传 `--require-domain psychology --distill ... --source ...`**,否则严格验证直接失败;默认不传严格域则保持旧书兼容。心理学严格域另要求同书目录 `source-audit.json`,其中 claim map 必须绑定该目录固定文件名 `claim-coverage.json`,并核四输入 hash、原文章界、逐项原文命中、全部 audit flags 账本覆盖、evidence 对最终 claims 的精确覆盖及 HTML 三栏映射(见 `source-audit.md`)。按输出修数据/样式后重跑,直到 exit 0。**绝不放宽验证阈值或删检查项来假过关**。
    > **T0 三道补盲门(v0.5,2026-07-27 加)**:`[占位]` 模板槽 / dummy 残留、`[schema]` 顶层必需键缺失、`[lint]` 封面是占位 SVG -- 三者**恒校验、任何 render_profile 不可关**。立法起因见 `flash-mode.md §0`(旧门禁 174 项全是「校验已有字段的取值」,默认「一定会填槽、一定产全 schema」;模型把模板原样交付或少产半个 schema 时,循环空转 = 零违规放行)。**`[schema]` 项对 2026-07-27 前蒸的旧书会报 render_profile/cover_intro 等缺失,属预期,旧书不必重蒸。**⚠ 默认/普通书 verify 仍主要查「结构 / 契约 / 版权长度 / 防注水」,不保证事实正确；心理学严格域会额外机检 source-audit 中声明的原文片段与行号、覆盖和输入 hash,但仍不能替代对「是否遗漏关键反例 / 是否误解语境」的人工语义复审。**exit 0 ≠ 内容绝对属实**(高后果书另做人工抽检,见铁律「不编造」)。
 
 4. **批量交付闸 exit 0 才许上站**(v0.5,蒸多本时):单本 verify 只回答「这一本合不合格」,回答不了「**这一批该有的都在吗**」。上站前把**预期名单显式**交给批量闸核对:

@@ -7,6 +7,9 @@
 
 - **绝不重蒸**:聚合只读各书 `distill.json`,不碰 book.txt/raw。
 - **事实 vs 叙事分层(最高铁律)**:时间线 / 母题 / 概念演化图 = **书内派生的事实**,照发;**思想转向(turns)= 跨书推断的叙事,高幻觉区**,单条无 `author.enrich.json` 外证不强渲染(见 §5 verdict)。
+- **成员契约两种模式**:旧作者页默认按 `distill.author == --author` 精确扫描,行为不变;需要固定作品集合、排除同名误收或纳入作者字段不等于焦点作者名的合著作品时,用 `author.manual.json.member_slugs:[slug]` 声明精确成员。显式成员是编辑契约而非候选池,任一项非法/缺失/损坏/自报 slug 不一致即 exit 2,不得缩成残缺作者页。
+- **合著限定**:`member_slugs` 允许纳入合著作品,但只代表「这本书属于本专题」,不证明书中每个观点都出自焦点作者。manual 应明确 `author`,只提炼可归因给该作者的内容;跨书 `derive_edges[]` 涉及合著书时须用 `note` 标出归属范围/不确定性(显式成员模式会保留该 note),禁止把共著内容整包归给单一作者。
+- **书页路由 fail-closed**:`manual.book_meta.{slug}.web_url` 只允许同站根相对路径(单 `/` 开头,禁 `//`、反斜杠、空白/控制字符及明文或多重 URL 编码后的 `.`/`..` 穿越);非法值剔除并 warning,模板/verify 再防守。字段缺失时保留旧路由 `../{slug}/{slug}.html`,旧作者页零行为变化。
 - **触发门槛**:作者 <2 部已蒸 → 不生成,连网搜不启。
 - **可视化**:坐标**生成时预算写死** → 静态 `<svg>` + <2KB vanilla JS(hover / 点击展开 / `location.hash` 深链)。零库零 CDN;不实现 force-directed / Sankey solver / Reingold-Tilford。
 
@@ -14,20 +17,20 @@
 
 ```
 读书蒸馏/authors/{author_slug}/
-  author.manual.json    # ✍️人工:bio / 时期名与主题 / 每书 role / 转向 note / derive 边 / 内核句 / 演变总结 / 入门路径。重建永不动。
+  author.manual.json    # ✍️人工:member_slugs(可选精确成员/合著纳入) / book_meta(安全深链) / bio / 时期名与主题 / 每书 role / 转向 note / derive 边(合著须 note) / 内核句 / 演变总结 / 入门路径。重建永不动。
   author.enrich.json    # 网搜外证:thought_evolution(转向证伪层,§6)。enrich 步产。
   author.json           # 🤖 build_author.py 合并三源的产物(下游只读它)。可重建。
   author.html           # 演变页(Step 渲染产物)
-  (books 的 distill.json 仍在各自 读书蒸馏/{slug}/,按 author 字段分组;fixture 用 authors/__fixture__/books/)
+  (books 的 distill.json 仍在各自 读书蒸馏/{slug}/;默认按 author 字段精确分组,member_slugs 存在时改按精确路径取;fixture 用 authors/__fixture__/books/)
 ```
 
-**重建语义**:新蒸一本 → 重跑 build_author.py,🤖 字段全刷新、manual/enrich 零丢失。**防覆盖栏**:已有 author.json 且 `author.manual.json` 缺失 → 拒跑(需 `--force`)。
+**重建语义**:新蒸一本 → 默认扫描模式直接重跑;显式成员模式先把 slug 加入 `manual.member_slugs`,再重跑 build_author.py。🤖 字段全刷新、manual/enrich 零丢失。**防覆盖栏**:已有 author.json 且 `author.manual.json` 缺失 → 拒跑(需 `--force`)。
 
 ## 2. author.json schema(🤖自动聚合 / ✍️人工 / 🔶自动播种+人工确认)
 
 ```jsonc
 {
-  "author": "…",            // 🤖 各 distill.json.author 分组键(需归一化同名异写)
+  "author": "…",            // 🤖 默认取成员 distill.author;显式 member_slugs 时优先 manual.author(专题焦点作者)
   "slug": "…",              // ✍️ (manual)
   "aliases": [],            // ✍️
   "bio": { "birth_year": 0, "death_year": 0, "one_liner": "…",
@@ -45,9 +48,10 @@
            //   给结构化左栏配平右栏、补齐信息框标准条目。缺则右栏退化回「生卒/代表作/核心关切/代表概念」四字段。事实以官网核实,禁编造;别与 background 正文机械重复到冗余,选能一眼扫读的身份锚点。
   "core_sentence": "…",     // ✍️ I1:30 字思想内核概括句(我们的编辑论点,非作者原话)。v5.1 起渲染在 ③ 演变总结板块开头(绿左边线大字),不再当页顶大字 hero
   "books": [ { "slug":"…","title":"…","book_type":"…",  // 🤖 直取各 distill
-              "pub_year": 0,          // 🤖 取 distill.pub_year(缺则该书不进时间线,记 _warnings)
-              "period_id": "p1",      // 🔶 落入哪个时期
-              "role_in_evolution": "…" } ],  // ✍️ 该书在思想线的位置(喂入口卡 + timeline tooltip)
+               "pub_year": 0,          // 🤖 取 distill.pub_year(缺则该书不进时间线,记 _warnings)
+               "period_id": "p1",      // 🔶 落入哪个时期
+               "role_in_evolution": "…", // ✍️ 该书在思想线的位置(喂入口卡 + timeline tooltip)
+               "web_url":"/library/work-a.html" } ], // ✍️ 可选;只允许安全同站根相对路径,缺则旧路由
   "periods": [ /* §4.1 */ ],          // 🔶 year_range/books/boundary_signal 🤖;name/theme ✍️(manual.period_names/period_themes)
   "motifs": [ /* §4.2 */ ],           // 🔶 聚类🤖播种;label/statement 人工润色
   "turns": [ /* §4.3 */ ],            // 🔶 候选🤖;note ✍️(manual.turns_note);verdict/external ← enrich
@@ -71,10 +75,19 @@
 **用法**:`python build_author.py --author "<名>" [--data-root <读书蒸馏>] --manual <author.manual.json> --enrich <author.enrich.json> --out <author.json> [--force]`
 备选(fixture / 显式):`--inputs "<glob 指向若干 distill.json>"` 取代 --author 扫描。
 
-**流程**:① 收集该作者 distill.json(--author 扫 data-root/*/distill.json 按 author 分组;或 --inputs)② 门槛:<2 部 → exit 3(不生成)③ 防覆盖栏:out 已存在且 manual 缺失且无 --force → exit 2 ④ 派生 🤖 字段(§4 规则)⑤ 并入 manual(✍️/🔶)+ enrich(turns.verdict/external、consistency_note)⑥ 写 author.json + 打印各段条数 + `_warnings`。
+**成员选择优先级**:
+1. 给 `--inputs` 时沿用显式 glob(它优先于其他模式,主要供 fixture/专项调用)。
+2. 给 `--author + --data-root` 且 manual 含 `member_slugs` 时,只读取数组列出的 `<data-root>/{slug}/distill.json`;不再用作者名筛选,所以能显式纳入合著作品(页面时间序列仍按 `pub_year` 排)。数组缺失/损坏/路径 slug 与 `distill.slug` 不一致或 slug 含路径分隔、空白/控制字符、`.`/`..` 时 exit 2,不落输出。
+3. 未声明 `member_slugs` 时保持旧行为:扫描 `<data-root>/*/distill.json`,只收 `distill.author` 去首尾空白后与 `--author` **完全相等**的书;不会做 substring 猜测。损坏的无关候选沿用旧扫描容错,保证旧书零行为变化。
 
-**🤖 确定性派生(纯 Python,集合运算)**:concept_graph 节点/persist+drift 边、persistent_tensions、recurring_critique、era_limits×pub_year、signature_lines、genre_arc、influences.upstream 播种、periods 候选边界(§4.1 Jaccard)、turns 候选骨架(相邻年 stance 冲突 §4.3)。
-**🔶 认知部分(不在脚本内跑 LLM,由 manual 提供或主控填)**:motif 语义聚类的标签、turn 的 note、derive 边、period 命名、core_sentence、evolution_summary、evolution_verdict、reading_path、bio.background(定位卡结构化小传,`[{label,text}]` 数组,非纯一句话简介)。脚本对这些**只做「读 manual 填入 / 无则留候选占位 + 记 warning」**,不臆造。
+**合著归属**:显式列表只解决收集边界,不替代作者归因核查。manual 的 `author` 是专题焦点作者;合著书只纳入能明确归因或以共同作者身份成立的材料。凡 `derive_edges[]` 的任一端来自合著书,`note` 必须说明「焦点作者明确提出 / 共同作者共同主张 / 归属未能拆分」中的哪一种;不得把未知归属写成个人思想演变硬事实。
+
+**流程**:① 按上述优先级收集 distill.json ② 门槛:<2 部 → exit 3(不生成)③ 防覆盖栏:out 已存在且 manual 缺失且无 --force → exit 2 ④ 派生 🤖 字段(§4 规则)⑤ 并入 manual(✍️/🔶)+ enrich(turns.verdict/external、consistency_note)⑥ 写 author.json + 打印各段条数 + `_warnings`。
+
+**🤖 确定性派生(纯 Python,集合运算)**:concept_graph 节点/persist+drift 边、persistent_tensions、recurring_critique、era_limits×pub_year、signature_lines、genre_arc、influences.upstream 播种、periods 候选边界(§4.1 Jaccard)、turns 候选骨架(相邻年 stance 冲突 §4.3);books 合并 `manual.book_meta.{slug}.web_url`,仅合法根相对路径写入 author.json,非法值剔除并 warning。
+**🔶 认知部分(不在脚本内跑 LLM,由 manual 提供或主控填)**:motif 语义聚类的标签、turn 的 note、derive 边(显式成员模式保留 note,合著归属按上文必填)、period 命名、core_sentence、evolution_summary、evolution_verdict、reading_path、bio.background(定位卡结构化小传,`[{label,text}]` 数组,非纯一句话简介)。脚本对这些**只做「读 manual 填入 / 无则留候选占位 + 记 warning」**,不臆造。
+
+**校验硬门**:显式 `member_slugs` 的 schema/文件完整性在 builder 收集阶段 fail-closed(exit 2);输出 `books[].web_url` 还须经 verify 复核为安全同站根相对路径,模板 `safeRootUrl` 第三次防守。合法字段优先用于作者名片、分期、转向、代表作导航等所有书页深链;字段缺失或 builder 已剔除时统一退回 `../{slug}/{slug}.html`。
 
 ## 4. 派生规则 + 4 视图数据契约
 
@@ -112,14 +125,15 @@
 { "nodes":[{ "id":"c1","concept":"…","concept_en":"…","first_year":2015,"last_year":2023,
              "lane":0,"status":"persist|new|dropped|drift",
              "appearances":[{"slug":"…","year":2015,"one_liner":"…","stance":"…"}] }],
-  "edges":[{ "from":"c1","to":"c1","type":"persist|drift|derive","label":"…","book_pair":["slug","slug"] }] }
+  "edges":[{ "from":"c1","to":"c1","type":"persist|drift|derive","label":"…","book_pair":["slug","slug"],
+             "note":"显式成员模式可选;涉及合著书时必填归属范围" }] }
 ```
 - **派生(🤖 走现成跨书 5-tag 索引 `update_index.py`/`cross-book.md`,别另造)**:node=去重概念(同名合并);持续=同名现 ≥2 书;新增=首现于第 K 书;消失=晚书起无(dropped 终端);**漂移 drift 边**=同名但 one_liner/stance 跨书变(自动,label 标漂移);**派生 derive 边**=早书概念催生晚书新概念(🔶 manual.derive_edges,schema 无此编码)。lane 按主题族生成时写死。
 - **呈现**:x=first_year、y=lane;边三次贝塞尔 `<path>`,按类型上色(persist 灰实 / drift 红 / derive 蓝虚 `stroke-dasharray`);dropped 描边淡+×;点节点展开 appearances 面板;hover 非相邻 `.dim{opacity:.15}`;**手机端 CSS Grid 兜底**(列=书、行=概念世系)。
 
 ## 5. author.html 板块骨架(内容形态调研·倒金字塔·成果前置)
 
-页顶小眉题(`{作者} · 思想演变`,**不放大字 hero**) → **定位名片卡直接开场**(左栏:作者名 H1 + 别名 + one_liner 速览 + **bio.background 详实背景段(多段)**;右栏结构化字段:生卒/**代表作品清单(书名+年份,深链)**/**核心关切(全部母题 chip,hover 显 statement)**/**代表概念(top3 chip,hover 显出现次数+状态)**) → **③ 演变总结(连续 vs 断裂;core_sentence 论点在此)** → **演变总览地图 ⭐(时间线,一屏)** → 分期详解(每期五栏统一模板:阶段名·年份·一句主张·代表作·相较上期变了什么) → 关键转向(前后双列,verdict 控样式) → 母题 ribbon(不变的红线) → 概念演化图 → 影响谱系 → 代表作导航(每书一句「读它能懂什么」+ 深链) → 该信几分(recurring_critique 去神话化) → 入门路径(reading_path)。**先「变」(分期/转向)后「不变」(母题/谱系),两者互为张力**。
+页顶小眉题(`{作者} · 思想演变`,**不放大字 hero**) → **定位名片卡直接开场**(左栏:作者名 H1 + 别名 + one_liner 速览 + **bio.background 详实背景段(多段)**;右栏结构化字段:生卒/**代表作品清单(书名+年份,深链)**/**核心关切(全部母题 chip,hover 显 statement)**/**代表概念(top3 chip,hover 显出现次数+状态)**) → **③ 演变总结(连续 vs 断裂;core_sentence 论点在此)** → **演变总览地图 ⭐(时间线,一屏)** → 分期详解(每期五栏统一模板:阶段名·年份·一句主张·代表作·相较上期变了什么) → 关键转向(前后双列,verdict 控样式) → 母题 ribbon(不变的红线) → 概念演化图 → 影响谱系 → 代表作导航(每书一句「读它能懂什么」+ 深链) → 该信几分(recurring_critique 去神话化) → 入门路径(reading_path)。**所有指向成员书的深链都先用通过校验的 `books[].web_url`,缺失才回退旧 `../{slug}/{slug}.html`;先「变」(分期/转向)后「不变」(母题/谱系),两者互为张力**。
 
 **① 页面不放页顶大字 hero(v5.1 起)**:早期把 `core_sentence` 当页顶大字,但它是**我们蒸馏出的"思想内核概括",不是作者原话** -- 放最顶当 hero 会读成"像引文却不是引文"(provenance 歧义)、且抽象概括做开篇落地偏弱。改为:页面用**定位名片卡直接开场**,作者名(`.c-name`)升为页面唯一 H1;`core_sentence` 下沉到 ③ 演变总结板块当**思想内核论点**(在"连续/断裂"的编辑分析语境里,它作为我们的论点 provenance 清晰、不再像伪引文)。若日后想放真金句当 hero,应取 `signature_lines` 里的**逐字原话 + 出处**(而非 core_sentence 概括),这是另一条可选设计,不默认。
 

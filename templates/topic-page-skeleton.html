@@ -155,6 +155,26 @@ a.tp-chip:hover{background:var(--tint-accent)}
 .dsp-note{margin:14px 0 0;padding:12px 16px;border-left:3px solid var(--gold);background:var(--tint-accent);color:var(--ink-soft-2);font-size:.9375rem;line-height:1.72}
 @media(max-width:860px){.dsp-layers.has-adjudication{grid-template-columns:1fr}}
 
+/* ===== ③b 平行对照(互补镜头,不冒充分歧) ===== */
+.tp-parallels{display:grid;gap:16px}
+.cmp-card{border:1px solid var(--line);border-left:5px solid var(--blue);border-radius:8px;background:var(--surface);padding:18px 20px}
+.cmp-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:9px;margin:0 0 6px}
+.cmp-q{font:800 1.0625rem/1.4 var(--font-display);color:var(--ink)}
+.cmp-badge{padding:3px 10px;border:1px solid var(--blue);border-radius:999px;color:var(--blue);font:800 .6875rem/1.4 var(--font-display)}
+.cmp-axis{margin:0 0 12px;color:var(--muted);font:700 .8125rem/1.5 var(--font-display)}
+.cmp-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:10px}
+.cmp-col{padding:12px 14px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.cmp-col h4{margin:0 0 8px;color:var(--ink);font:800 .875rem/1.4 var(--font-display)}
+.cmp-book{margin:0 0 9px;padding:0 0 9px;border-bottom:1px dashed var(--line)}
+.cmp-book:last-child{margin-bottom:0;padding-bottom:0;border-bottom:0}
+.cmp-book a{color:var(--blue);font:700 .8125rem/1.4 var(--font-display);text-decoration:none}
+.cmp-book p{margin:4px 0 0;color:var(--ink-soft);font-size:.875rem;line-height:1.62}
+.cmp-book blockquote{margin:7px 0 0;padding-left:10px;border-left:2px solid var(--green);color:var(--ink);font:italic 500 .875rem/1.6 var(--font-body)}
+.cmp-evidence{margin:12px 0 0;padding:11px 14px;border-radius:6px;background:var(--paper-deep);color:var(--ink-soft-2);font-size:.875rem;line-height:1.68}
+.cmp-evidence b{color:var(--ink)}
+.cmp-sources{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px}
+.cmp-sources a{color:var(--blue);font:700 .75rem/1.4 var(--font-display);text-decoration:none}
+
 /* ===== ④ 维度对照表(certainty 原书依据/转述状态色点) ===== */
 .cert-legend{display:flex;flex-wrap:wrap;gap:16px;margin:0 0 16px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font:600 .8125rem/1.4 var(--font-display)}
 .cert{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -255,6 +275,14 @@ a.tp-chip:hover{background:var(--tint-accent)}
     <h2 class="tp-title">流派之间,到底在争什么</h2>
     <p class="dsp-hint">红旗 = 跨书索引已登记的书间对立;金标 = 编者从各书立场归纳的分歧轴。作者之间意见相反,不等于科学证据已判定谁对;有外证时会在右侧单独裁决。</p>
     <div class="tp-disputes" id="disputes-host"></div>
+  </section>
+
+  <!-- ③b 平行对照:相关但不互斥,禁止混入分歧卡 -->
+  <section class="tp-sec" id="sec-parallels" hidden>
+    <p class="tp-eyebrow">平行对照 · 互补镜头</p>
+    <h2 class="tp-title">不是谁驳倒谁,而是各自回答哪一段问题</h2>
+    <p class="dsp-hint">以下对照用于区分问题尺度、适用条件与操作重点,不把并列或互补观点包装成科学争议。</p>
+    <div class="tp-parallels" id="parallels-host"></div>
   </section>
 
   <!-- ④ 维度对照表 -->
@@ -393,7 +421,26 @@ a.tp-chip:hover{background:var(--tint-accent)}
   // --- helpers ---
   const bySlug = {};
   (T.books || []).forEach(b => { bySlug[b.slug] = b; });
-  const bookHref = slug => '../' + slug + '/' + slug + '.html';
+  const safeRootUrl = value => {
+    if (typeof value !== 'string' || !value || value !== value.trim() || !value.startsWith('/') || value.startsWith('//') || /[\\\s\u0000-\u001f]/.test(value)) return null;
+    try {
+      let path = value.split(/[?#]/, 1)[0];
+      for (let i = 0; i < 3; i += 1) {
+        const decoded = decodeURIComponent(path);
+        if (decoded === path) break;
+        path = decoded;
+      }
+      if (path.startsWith('//') || /[\\\s\u0000-\u001f]/.test(path) || path.split('/').some(part => part === '.' || part === '..')) return null;
+    } catch (_) { return null; }
+    return value;
+  };
+  const bookHref = slug => {
+    const book = bySlug[slug];
+    const explicit = book && safeRootUrl(book.web_url);
+    return explicit
+      ? explicit
+      : '../' + slug + '/' + slug + '.html';
+  };
   const bookTitle = slug => (bySlug[slug] && bySlug[slug].title) || slug;
   const el = (tag, attrs, txt) => { const n = document.createElement(tag); if (attrs) for (const k in attrs) { if (k === 'class') n.className = attrs[k]; else if (k === 'html') n.innerHTML = attrs[k]; else n.setAttribute(k, attrs[k]); } if (txt != null) n.textContent = txt; return n; };
   const show = id => { const n = document.getElementById(id); if (n) n.hidden = false; };
@@ -600,6 +647,66 @@ a.tp-chip:hover{background:var(--tint-accent)}
     });
   }
 
+  /* ===== ③b 平行对照(独立 schema / 独立卡型,不计入分歧) ===== */
+  function renderParallels() {
+    const comparisons = (T.parallel_comparisons || []).filter(d =>
+      (d.positions || []).filter(p => (p.books || []).length).length >= 2
+    );
+    if (!comparisons.length) return;
+    show('sec-parallels');
+    const host = document.getElementById('parallels-host');
+    comparisons.forEach(d => {
+      const card = el('article', { class: 'cmp-card', 'data-index-relation': 'parallel' });
+      const head = el('div', { class: 'cmp-head' });
+      head.appendChild(el('span', { class: 'cmp-q' }, d.question || ''));
+      head.appendChild(el('span', { class: 'cmp-badge' }, '平行对照 · 非互斥'));
+      if (d.question_type) head.appendChild(el('span', { class: 'dsp-type' }, (QUESTION_TYPE_LABEL[d.question_type] || d.question_type) + '问题'));
+      card.appendChild(head);
+      if (d.axis) card.appendChild(el('p', { class: 'cmp-axis' }, d.axis));
+
+      const cols = el('div', { class: 'cmp-cols' });
+      (d.positions || []).forEach(pos => {
+        if (!(pos.books || []).length) return;
+        const col = el('section', { class: 'cmp-col' });
+        col.appendChild(el('h4', null, pos.label || ''));
+        (pos.books || []).forEach(book => {
+          const box = el('div', { class: 'cmp-book' });
+          box.appendChild(bookLink(book.slug, '《' + bookTitle(book.slug) + '》'));
+          if (book.stance) box.appendChild(el('p', null, book.stance));
+          if (book.quote) box.appendChild(el('blockquote', null, book.quote));
+          if (book.anchor) box.appendChild(el('span', { class: 'db-anchor' }, '-- ' + book.anchor));
+          col.appendChild(box);
+        });
+        cols.appendChild(col);
+      });
+      card.appendChild(cols);
+
+      let adj = d.adjudication;
+      if (typeof adj === 'string') adj = { status: 'unverified', research_view: adj, boundary_conditions: '尚未核定' };
+      if (adj || (d.sources || []).length) {
+        const evidence = el('div', { class: 'cmp-evidence' });
+        if (adj && adj.research_view) {
+          evidence.appendChild(el('b', null, '研究提示: '));
+          evidence.appendChild(document.createTextNode(adj.research_view));
+        }
+        if (adj && adj.boundary_conditions) {
+          evidence.appendChild(el('p', { style: 'margin:6px 0 0' }, '适用边界: ' + adj.boundary_conditions));
+        }
+        const sourceHost = el('div', { class: 'cmp-sources' });
+        (d.sources || []).forEach((source, i) => {
+          const href = safeHttpUrl(typeof source === 'string' ? source : (source && source.url));
+          if (!href) return;
+          const label = (source && typeof source === 'object' && (source.title || source.citation)) || ('来源 ' + (i + 1));
+          sourceHost.appendChild(el('a', { href, target: '_blank', rel: 'noopener' }, label + ' ↗'));
+        });
+        if (sourceHost.children.length) evidence.appendChild(sourceHost);
+        card.appendChild(evidence);
+      }
+      if (d.note) card.appendChild(el('div', { class: 'dsp-note' }, d.note));
+      host.appendChild(card);
+    });
+  }
+
   /* ===== ④ 维度对照表(certainty 色点) ===== */
   function renderDimensions() {
     const dims = (T.dimensions || []).filter(d => (d.cells || []).length);
@@ -765,7 +872,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
 
   function run() {
     renderHero(); renderCard(); renderVerdict();
-    renderSchools(); renderDisputes(); renderDimensions();
+    renderSchools(); renderDisputes(); renderParallels(); renderDimensions();
     renderBooks(); renderConsensus(); renderReading();
     renderExternal(); renderFooter(); initTheme();
     window.__topicReady = true;

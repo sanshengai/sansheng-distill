@@ -30,7 +30,7 @@ import sys
 from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from validate_psychology_source_audit import validate_source_audit_file
 
@@ -222,7 +222,8 @@ PSYCHOLOGY_EMPIRICAL_CLAIM_TYPES = frozenset({
 })
 PSYCHOLOGY_SOURCE_TYPES = frozenset({
     "meta_analysis", "systematic_review", "registered_report", "replication",
-    "primary_study", "official_correction", "consensus_statement",
+    "primary_study", "reanalysis", "narrative_review",
+    "official_correction", "consensus_statement",
 })
 PSYCHOLOGY_CLAIM_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 
@@ -246,6 +247,26 @@ def _is_http_url(value) -> bool:
     except (TypeError, ValueError):
         return False
     return parsed.scheme.lower() in {"http", "https"} and bool(host and host.strip("."))
+
+
+def _is_safe_root_relative_url(value) -> bool:
+    """仅放行同站根相对 URL；拒绝协议相对、穿越、反斜杠及编码后的等价物。"""
+    if not isinstance(value, str):
+        return False
+    raw = value.strip()
+    if (not raw or raw != value or not raw.startswith("/") or raw.startswith("//")
+            or "\\" in raw or any(ch.isspace() or ord(ch) < 32 for ch in raw)):
+        return False
+    decoded = raw.split("?", 1)[0].split("#", 1)[0]
+    for _ in range(3):
+        next_decoded = unquote(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    if (decoded.startswith("//") or "\\" in decoded
+            or any(ch.isspace() or ord(ch) < 32 for ch in decoded)):
+        return False
+    return not any(part in {".", ".."} for part in decoded.split("/"))
 
 
 def _resolve_active_gates(prof):
@@ -1741,11 +1762,16 @@ def lint_author_html(html: str, author: dict | None) -> list:
         seen_fact_labels.add(label)
     # 深链 slug 格式合法(代表作导航 + 时间线书圆 + 各引用皆走 ../{slug}/{slug}.html)
     for b in author.get("books", []) or []:
+        if not isinstance(b, dict):
+            v.append("[author] books[] 有非对象条目")
+            continue
         s = b.get("slug")
         if not s:
             v.append("[author] books[] 有条目缺 slug(深链无法生成)")
         elif not _slug_ok(s):
             v.append(f"[author] 书 slug {s!r} 非法(会破坏深链 ../{{slug}}/{{slug}}.html)")
+        if "web_url" in b and not _is_safe_root_relative_url(b.get("web_url")):
+            v.append(f"[author] 书 {s!r}.web_url 仅允许安全的站内根相对路径")
     ref_slugs = []
     for rp in author.get("reading_path", []) or []:
         ref_slugs.append(rp.get("slug"))
@@ -1942,6 +1968,8 @@ def lint_topic_html(html: str, topic: dict | None) -> list:
         else:
             seen_books.add(s)
             book_slugs.append(s)
+        if "web_url" in b and not _is_safe_root_relative_url(b.get("web_url")):
+            v.append(f"[topic] 书 {s!r}.web_url 仅允许安全的站内根相对路径")
 
     schools = topic.get("schools", []) or []
     if not isinstance(schools, list):
@@ -2035,6 +2063,20 @@ def lint_topic_html(html: str, topic: dict | None) -> list:
             for b in pos.get("books", []) or []:
                 if isinstance(b, dict):
                     ref_slugs.append(b.get("slug"))
+    parallel_present = "parallel_comparisons" in topic
+    parallel_comparisons = topic.get("parallel_comparisons", []) if parallel_present else []
+    if not isinstance(parallel_comparisons, list):
+        v.append("[topic] parallel_comparisons 须为数组")
+        parallel_comparisons = []
+    for comparison in parallel_comparisons:
+        if not isinstance(comparison, dict):
+            continue
+        for pos in comparison.get("positions", []) or []:
+            if not isinstance(pos, dict):
+                continue
+            for book in pos.get("books", []) or []:
+                if isinstance(book, dict):
+                    ref_slugs.append(book.get("slug"))
     dimensions = topic.get("dimensions", []) or []
     if not isinstance(dimensions, list):
         v.append("[topic] dimensions 须为数组")
@@ -2121,6 +2163,88 @@ def lint_topic_html(html: str, topic: dict | None) -> list:
                 "supported", "mixed", "contested", "not_supported"} \
                 and isinstance(sources, list) and not sources:
             v.append(f"[topic] 分歧 {did} 的外证状态为 {adjudication.get('status')}，sources 至少 1 条")
+
+    # 平行对照：独立 schema，不得借 disputes 的 legacy parallel 放行逻辑绕过。
+    seen_parallel_ids = set()
+    for index, comparison in enumerate(parallel_comparisons):
+        label = f"parallel_comparisons[{index}]"
+        if not isinstance(comparison, dict):
+            v.append(f"[topic] {label} 非对象")
+            continue
+        cid = comparison.get("id")
+        if not isinstance(cid, str) or not cid.strip():
+            v.append(f"[topic] {label}.id 缺/空")
+            cid_label = label
+        else:
+            cid_label = f"平行对照 {cid}"
+            if cid in seen_parallel_ids:
+                v.append(f"[topic] parallel_comparison.id {cid!r} 重复")
+            if cid in seen_dispute_ids:
+                v.append(f"[topic] parallel_comparison.id {cid!r} 与 dispute.id 冲突")
+            seen_parallel_ids.add(cid)
+        if comparison.get("index_relation") != "parallel":
+            v.append(f"[topic] {cid_label} index_relation 必须精确为 'parallel'")
+        if not isinstance(comparison.get("question"), str) or not comparison["question"].strip():
+            v.append(f"[topic] {cid_label}.question 缺/空")
+        question_type = comparison.get("question_type")
+        if question_type is not None and question_type not in TOPIC_QUESTION_TYPES:
+            v.append(f"[topic] {cid_label} question_type {question_type!r} 非法;"
+                     f"应为 {sorted(TOPIC_QUESTION_TYPES)} 或 null")
+        positions = comparison.get("positions")
+        if not isinstance(positions, list):
+            v.append(f"[topic] {cid_label}.positions 须为数组")
+            positions = []
+        populated = 0
+        for position_index, pos in enumerate(positions):
+            pos_label = f"{cid_label}.positions[{position_index}]"
+            if not isinstance(pos, dict):
+                v.append(f"[topic] {pos_label} 非对象")
+                continue
+            if not isinstance(pos.get("label"), str) or not pos["label"].strip():
+                v.append(f"[topic] {pos_label}.label 缺/空")
+            books_in_position = pos.get("books")
+            if not isinstance(books_in_position, list):
+                v.append(f"[topic] {pos_label}.books 须为数组")
+                continue
+            has_valid_stance = False
+            for book_index, book in enumerate(books_in_position):
+                book_label = f"{pos_label}.books[{book_index}]"
+                if not isinstance(book, dict):
+                    v.append(f"[topic] {book_label} 非对象")
+                    continue
+                slug = book.get("slug")
+                if not isinstance(slug, str) or not slug:
+                    v.append(f"[topic] {book_label}.slug 缺/空")
+                elif not _slug_ok(slug) or slug not in seen_books:
+                    v.append(f"[topic] {book_label}.slug {slug!r} 非合法成员引用")
+                stance = book.get("stance")
+                if not isinstance(stance, str) or not stance.strip():
+                    v.append(f"[topic] {book_label}.stance 缺/空")
+                elif isinstance(slug, str) and _slug_ok(slug) and slug in seen_books:
+                    has_valid_stance = True
+            if has_valid_stance:
+                populated += 1
+        if populated < 2:
+            v.append(f"[topic] {cid_label} 有效立场列 <2(平行对照至少需要两列可回指立场)")
+
+        adjudication = comparison.get("adjudication")
+        if adjudication is not None and not isinstance(adjudication, dict):
+            v.append(f"[topic] {cid_label}.adjudication 须为完整四字段对象或 null")
+        if isinstance(adjudication, dict):
+            status = adjudication.get("status")
+            if status not in TOPIC_EVIDENCE_STATUS:
+                v.append(f"[topic] {cid_label}.adjudication.status {status!r} 非法")
+            for field in ("book_view", "research_view", "boundary_conditions"):
+                value = adjudication.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    v.append(f"[topic] {cid_label}.adjudication.{field} 缺/空")
+        sources = comparison.get("sources")
+        empirical_status = isinstance(adjudication, dict) and adjudication.get("status") in {
+            "supported", "mixed", "contested", "not_supported",
+        }
+        v += _lint_topic_sources(sources, f"{cid_label}.sources", required=empirical_status)
+        if empirical_status and isinstance(sources, list) and not sources:
+            v.append(f"[topic] {cid_label} 的外证状态为 {adjudication.get('status')}，sources 至少 1 条")
     # 维度对照表:certainty 枚举
     for dim in dimensions:
         if not isinstance(dim, dict):
@@ -2175,14 +2299,25 @@ def topic_smoke(path: Path, screenshot: str | None, topic: dict | None = None) -
         if (t.get("schools") or []) and pg.locator("#schools-host .sch-card").count() < 1:
             v.append("[topic渲染] 分类地图未出流派卡(.sch-card)")
         renderable_disp = [d for d in (t.get("disputes") or [])
-                           if d.get("index_relation") != "parallel"
-                           and any((pos.get("books") or []) for pos in (d.get("positions") or []))]
+                           if isinstance(d, dict) and d.get("index_relation") != "parallel"
+                           and any(isinstance(pos, dict) and (pos.get("books") or [])
+                                   for pos in (d.get("positions") or []))]
         actual_disputes = pg.locator("#disputes-host .dsp-card").count()
         if actual_disputes != len(renderable_disp):
             v.append("[topic渲染] .dsp-card 数量与非 parallel 可渲染分歧不一致"
                      f"(实际 {actual_disputes},应为 {len(renderable_disp)};parallel 不得渲染)")
         if pg.locator('#disputes-host .dsp-card[data-index-relation="parallel"]').count():
             v.append("[topic渲染] parallel 松散并列被错渲成分歧卡")
+        expected_comparisons = len(t.get("parallel_comparisons") or []) \
+            if isinstance(t.get("parallel_comparisons") or [], list) else 0
+        actual_comparisons = pg.locator("#parallels-host .cmp-card").count()
+        if actual_comparisons != expected_comparisons:
+            v.append("[topic渲染] .cmp-card 数量与 parallel_comparisons 不一致"
+                     f"(实际 {actual_comparisons},应为 {expected_comparisons})")
+        if pg.locator("#disputes-host .cmp-card").count():
+            v.append("[topic渲染] 平行对照卡被错放进分歧容器")
+        if pg.locator("#parallels-host .dsp-card").count():
+            v.append("[topic渲染] 分歧卡被错放进平行对照容器")
         if (t.get("dimensions") or []) and pg.locator("#dims-host .dim-card").count() < 1:
             v.append("[topic渲染] 维度对照表未出维度卡(.dim-card)")
         if (t.get("books") or []) and pg.locator("#books-host .book-row").count() < 1:
@@ -2564,16 +2699,20 @@ def lint_required_psychology_source_audit(
 ) -> list[str]:
     """项目严格模式专用：同书目录 source-audit 必须存在并绑定本次验证输入。"""
     page_path = Path(page_path)
-    expected_paths = {}
+    violations = []
+    if source_path is None:
+        violations.append("[source-audit] --require-domain psychology 必须显式传 --source")
+    expected_paths = {"claim_map": page_path.parent / "claim-coverage.json"}
     if distill_path is not None:
         expected_paths["distill"] = Path(distill_path)
     if source_path is not None:
         expected_paths["source"] = Path(source_path)
     if enrich_path is not None:
         expected_paths["enrich"] = Path(enrich_path)
-    return validate_source_audit_file(
+    violations += validate_source_audit_file(
         page_path.parent / "source-audit.json", expected_paths=expected_paths,
     )
+    return violations
 
 
 def main():

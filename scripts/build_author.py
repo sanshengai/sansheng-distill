@@ -19,6 +19,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 # Windows 管道默认 cp936,打中文 JSON 前必须强制 UTF-8(本仓库跨脚本契约)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -49,6 +50,27 @@ def norm(s: str) -> str:
     return PUNCT_RE.sub("", str(s)).lower()
 
 
+def normalize_web_url(value):
+    """只接受站内根相对深链；非法值 fail-closed，不让模板拼出外链或路径穿越。"""
+    if not isinstance(value, str):
+        return None
+    raw = value
+    if (not raw or raw != raw.strip() or not raw.startswith("/") or raw.startswith("//") or "\\" in raw
+            or any(ch.isspace() or ord(ch) < 32 for ch in raw)):
+        return None
+    path_only = raw.split("?", 1)[0].split("#", 1)[0]
+    for _ in range(3):
+        decoded = unquote(path_only)
+        if decoded == path_only:
+            break
+        path_only = decoded
+    if (path_only.startswith("//") or "\\" in path_only
+            or any(ch.isspace() or ord(ch) < 32 for ch in path_only)
+            or any(part in {".", ".."} for part in path_only.split("/"))):
+        return None
+    return raw
+
+
 def sim(a: str, b: str) -> float:
     """规范化后 difflib 相似度。"""
     return difflib.SequenceMatcher(None, norm(a), norm(b)).ratio()
@@ -72,29 +94,74 @@ def load_json(path: Path):
 
 # --------------------------------------------------------------------------- 收集
 
-def collect_distills(args):
-    """返回 (distills, warnings)。distills 是 dict 列表。"""
-    paths = []
+def _manual_member_slugs(manual):
+    """返回显式作者成员；字段不存在时返回 None，绝不做作者名 substring 猜测。"""
+    if not isinstance(manual, dict) or "member_slugs" not in manual:
+        return None
+    values = manual.get("member_slugs")
+    if not isinstance(values, list):
+        raise ValueError("manual.member_slugs 必须是 slug 列表")
+    out = []
+    seen = set()
+    for value in values:
+        if (not isinstance(value, str) or not value or value.strip() != value
+                or value in {".", ".."} or "/" in value or "\\" in value
+                or any(ch.isspace() or ord(ch) < 32 for ch in value)):
+            raise ValueError(f"manual.member_slugs 含非法 slug: {value!r}")
+        if value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def collect_distills(args, manual=None, warnings=None):
+    """返回 distill dict 列表；显式 member_slugs 存在时只按精确路径收集。
+
+    显式成员是编辑契约而非候选池：其中任何文件缺失、JSON 损坏或路径 slug
+    与正文 slug 不一致都必须 fail-closed，不能静默缩成一个“看似成功”的残缺作者页。
+    旧的作者名扫描路径仍保留原有容错行为。
+    """
+    warnings = warnings if warnings is not None else []
+    paths = []  # [(path, expected_slug_or_None)]
     if args.inputs:
-        paths = [Path(p) for p in sorted(globmod.glob(args.inputs))]
+        paths = [(Path(p), None) for p in sorted(globmod.glob(args.inputs))]
     elif args.author and args.data_root:
-        for p in sorted(Path(args.data_root).glob("*/distill.json")):
-            try:
-                d = load_json(p)
-            except (json.JSONDecodeError, OSError):
-                continue
-            if str(d.get("author", "")).strip() == str(args.author).strip():
-                paths.append(p)
+        explicit = _manual_member_slugs(manual)
+        if explicit is not None:
+            paths = [(Path(args.data_root) / slug / "distill.json", slug) for slug in explicit]
+        else:
+            for p in sorted(Path(args.data_root).glob("*/distill.json")):
+                try:
+                    d = load_json(p)
+                except (json.JSONDecodeError, OSError):
+                    continue
+                if str(d.get("author", "")).strip() == str(args.author).strip():
+                    paths.append((p, None))
     else:
         print("必须提供 --inputs 或 (--author + --data-root)", file=sys.stderr)
         sys.exit(2)
 
     distills = []
-    for p in paths:
+    for p, expected_slug in paths:
+        if not p.is_file():
+            message = f"成员 {expected_slug or p.parent.name} 的 distill.json 缺失({p})"
+            if expected_slug is not None:
+                raise ValueError(message)
+            warnings.append(f"{message},已剔除")
+            continue
         try:
-            distills.append(load_json(p))
+            distill = load_json(p)
         except (json.JSONDecodeError, OSError) as e:
-            print(f"跳过无法解析的 distill: {p} ({e})", file=sys.stderr)
+            message = f"成员 {expected_slug or p.parent.name} 的 distill.json 解析失败({e})"
+            if expected_slug is not None:
+                raise ValueError(message) from e
+            warnings.append(f"{message},已剔除")
+            continue
+        if expected_slug is not None and distill.get("slug") != expected_slug:
+            raise ValueError(
+                f"成员路径 {expected_slug} 内 distill.slug={distill.get('slug')!r} 不一致"
+            )
+        distills.append(distill)
     return distills
 
 
@@ -140,6 +207,63 @@ def load_author_index(index_path, author_slugs, slug_year):
             apps.sort(key=lambda a: (a["year"], a["slug"] or ""))
             out.append({"concept": name, "concept_en": c.get("concept_en", ""), "appearances": apps})
     return out or None
+
+
+def merge_manual_exact_concepts(books, manual, index_canon=None):
+    """以 manual 明列概念作精确对齐，并用成员 distill 补齐尚未入 index 的书。
+
+    只补 motif_groups / derive_edges 明列且规范化后精确相等的概念；不做模糊、substring
+    或语义猜测。这样增量生产时 index 尚缺新书也能落地，index 补齐后结果仍兼容。
+    """
+    wanted = []
+    for group in manual.get("motif_groups", []) or []:
+        wanted.extend(group.get("concepts", []) or [])
+    for edge in manual.get("derive_edges", []) or []:
+        wanted.extend([edge.get("from"), edge.get("to")])
+    wanted_by_norm = {}
+    for name in wanted:
+        key = norm(name)
+        if key and key not in wanted_by_norm:
+            wanted_by_norm[key] = name
+
+    out = []
+    by_norm = {}
+    for item in index_canon or []:
+        clone = dict(item)
+        clone["appearances"] = [dict(a) for a in item.get("appearances", [])]
+        out.append(clone)
+        by_norm[norm(clone.get("concept"))] = clone
+
+    for d in books:
+        slug = d.get("slug")
+        year = d.get("pub_year")
+        for concept in d.get("concepts", []) or []:
+            key = norm(concept.get("concept"))
+            if key not in wanted_by_norm:
+                continue
+            item = by_norm.get(key)
+            if item is None:
+                item = {
+                    "concept": wanted_by_norm[key],
+                    "concept_en": concept.get("concept_en", ""),
+                    "appearances": [],
+                }
+                out.append(item)
+                by_norm[key] = item
+            if any(a.get("slug") == slug for a in item["appearances"]):
+                continue
+            item["appearances"].append({
+                "slug": slug,
+                "year": year,
+                "stance": concept.get("stance", ""),
+                "one_liner": concept.get("one_liner", ""),
+                "anchor": concept.get("anchor", ""),
+            })
+    for item in out:
+        item["appearances"].sort(
+            key=lambda a: (a.get("year") is None, a.get("year"), a.get("slug") or "")
+        )
+    return out
 
 
 def derive_concept_graph(books, manual, index_canon=None):
@@ -193,8 +317,11 @@ def derive_concept_graph(books, manual, index_canon=None):
             f, t = by_name.get(de.get("from")), by_name.get(de.get("to"))
             if not f or not t:
                 continue
-            edges.append({"from": f["id"], "to": t["id"], "type": "derive",
-                          "label": de.get("label", ""), "book_pair": None})
+            edge = {"from": f["id"], "to": t["id"], "type": "derive",
+                    "label": de.get("label", ""), "book_pair": None}
+            if "member_slugs" in manual and de.get("note"):
+                edge["note"] = de["note"]
+            edges.append(edge)
         return {"nodes": nodes, "edges": edges}
 
     order = []           # 概念名首现顺序 -> node id
@@ -259,25 +386,31 @@ def derive_concept_graph(books, manual, index_canon=None):
         f, t = node.get(de.get("from")), node.get(de.get("to"))
         if not f or not t:
             continue
-        edges.append({
+        edge = {
             "from": f["id"],
             "to": t["id"],
             "type": "derive",
             "label": de.get("label", ""),
             "book_pair": None,
-        })
+        }
+        if "member_slugs" in manual and de.get("note"):
+            edge["note"] = de["note"]
+        edges.append(edge)
 
     return {"nodes": nodes, "edges": edges}
 
 
-def derive_motifs(books, manual=None, index_canon=None):
+def derive_motifs(books, manual=None, index_canon=None, warnings=None):
     """§4.2:母题=跨书复现的主题红线。
     优先:manual.motif_groups(人工把跨书对齐概念归成 3-4 条母题)+ index_canon -> 按组算 appears_in;
     回退:core_ideas(+mental_models)跨书 difflib 聚类(措辞相近才并,赫拉利这类措辞各异的书会偏空)。"""
     manual = manual or {}
+    warnings = warnings if warnings is not None else []
     groups = manual.get("motif_groups") or []
-    if groups and index_canon:
-        canon_by_name = {it["concept"]: it for it in index_canon}
+    if groups and (index_canon or "member_slugs" in manual):
+        explicit_members = "member_slugs" in manual
+        canon_by_name = ({norm(it["concept"]): it for it in index_canon}
+                         if explicit_members else {it["concept"]: it for it in index_canon})
         motifs = []
         for g in groups:
             label = g.get("label")
@@ -285,7 +418,7 @@ def derive_motifs(books, manual=None, index_canon=None):
                 continue
             appears = {}  # slug -> {year, cnt}
             for cn in g.get("concepts", []) or []:
-                it = canon_by_name.get(cn)
+                it = canon_by_name.get(norm(cn) if explicit_members else cn)
                 if not it:
                     continue
                 for a in it["appearances"]:
@@ -293,6 +426,8 @@ def derive_motifs(books, manual=None, index_canon=None):
                     rec = appears.setdefault(s, {"year": a["year"], "cnt": 0})
                     rec["cnt"] += 1
             if len(appears) < 2:
+                if explicit_members:
+                    warnings.append(f"motif_group「{label}」精确命中不足 2 本,已跳过且未做模糊补齐")
                 continue  # 单书不成母题(§4.2)
             ap = []
             for s, v in appears.items():
@@ -308,6 +443,8 @@ def derive_motifs(books, manual=None, index_canon=None):
                            "appears_in": ap})
         if motifs:
             return motifs
+        if explicit_members:
+            return []  # 显式组 fail-closed:绝不掉回 difflib 猜母题
 
     # 稳定顺序收集所有 idea 实例
     items = []
@@ -607,23 +744,36 @@ def derive_genre_arc(books):
             for d in books]
 
 
-def build_books(books, slug_period, manual):
+def build_books(books, slug_period, manual, warnings=None):
     roles = manual.get("role_in_evolution", {}) or {}
-    return [{
-        "slug": d.get("slug"),
-        "title": d.get("title"),
-        "book_type": d.get("book_type"),
-        "pub_year": d["pub_year"],
-        "period_id": slug_period.get(d.get("slug")),
-        "role_in_evolution": roles.get(d.get("slug")),
-    } for d in books]
+    book_meta = manual.get("book_meta", {}) or {}
+    warnings = warnings if warnings is not None else []
+    out = []
+    for d in books:
+        slug = d.get("slug")
+        row = {
+            "slug": slug,
+            "title": d.get("title"),
+            "book_type": d.get("book_type"),
+            "pub_year": d["pub_year"],
+            "period_id": slug_period.get(slug),
+            "role_in_evolution": roles.get(slug),
+        }
+        raw_url = (book_meta.get(slug) or {}).get("web_url")
+        web_url = normalize_web_url(raw_url)
+        if web_url:
+            row["web_url"] = web_url
+        elif raw_url is not None:
+            warnings.append(f"book_meta.{slug}.web_url 非法,已剔除")
+        out.append(row)
+    return out
 
 
 # --------------------------------------------------------------------------- 组装
 
-def build_author_json(distills, manual, enrich, index_path=None):
+def build_author_json(distills, manual, enrich, index_path=None, seed_warnings=None):
     books, missing = sort_books(distills)
-    warnings = []
+    warnings = list(seed_warnings or [])
     for slug in missing:
         warnings.append(f"书 {slug} 缺 pub_year,已排除出时间线")
 
@@ -633,8 +783,15 @@ def build_author_json(distills, manual, enrich, index_path=None):
     if index_path and index_canon is None:
         warnings.append("跨书索引缺失/为空,concept_graph 与 motifs 回退字符串匹配(概念图可能偏空)")
 
+    motif_canon = index_canon
+    if "member_slugs" in manual:
+        exact_canon = merge_manual_exact_concepts(books, manual, index_canon)
+        motif_canon = exact_canon
+        if index_canon:
+            index_canon = exact_canon
+
     concept_graph = derive_concept_graph(books, manual, index_canon)
-    motifs = derive_motifs(books, manual, index_canon)
+    motifs = derive_motifs(books, manual, motif_canon, warnings)
     periods, slug_period = derive_periods(books, manual)
     turns = derive_turns(books, manual, enrich)
     persistent_tensions = derive_persistent_tensions(books)
@@ -642,7 +799,7 @@ def build_author_json(distills, manual, enrich, index_path=None):
     influences = derive_influences(books, manual)
     signature_lines = derive_signature_lines(books)
     genre_arc = derive_genre_arc(books)
-    books_out = build_books(books, slug_period, manual)
+    books_out = build_books(books, slug_period, manual, warnings)
 
     # 缺 manual 认知字段 -> 记 warning(脚本不臆造)
     if not manual.get("period_names"):
@@ -659,7 +816,10 @@ def build_author_json(distills, manual, enrich, index_path=None):
         warnings.append("manual.bio 缺 background(定位卡左栏只有 one_liner 一句话,建议补详实背景段)")
 
     te = enrich.get("thought_evolution") or {}
-    author_name = (books[0].get("author") if books else None) or manual.get("author")
+    if "member_slugs" in manual:
+        author_name = manual.get("author") or (books[0].get("author") if books else None)
+    else:
+        author_name = (books[0].get("author") if books else None) or manual.get("author")
 
     doc = {
         "author": author_name,
@@ -737,15 +897,25 @@ def main():
               file=sys.stderr)
         return 2
 
-    # 收集
-    distills = collect_distills(a)
+    try:
+        manual = load_json(manual_path) if manual_present else {}
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"manual 解析失败:{exc}", file=sys.stderr)
+        return 2
+
+    # 收集；manual.member_slugs 存在时按 slug 精确取成员，可安全纳入合著作品。
+    collection_warnings = []
+    try:
+        distills = collect_distills(a, manual, collection_warnings)
+    except ValueError as exc:
+        print(f"manual schema 错误:{exc}", file=sys.stderr)
+        return 2
 
     # 触发门槛(§3②):<2 部 -> 不生成
     if len(distills) < 2:
         print(f"触发门槛未达:该作者仅 {len(distills)} 部已蒸(需 >=2),不生成演变页", file=sys.stderr)
         return 3
 
-    manual = load_json(manual_path) if manual_present else {}
     enrich = {}
     if a.enrich and Path(a.enrich).is_file():
         enrich = load_json(Path(a.enrich))
@@ -757,7 +927,9 @@ def main():
         if cand.is_file():
             index_path = str(cand)
 
-    doc, _ = build_author_json(distills, manual, enrich, index_path=index_path)
+    doc, _ = build_author_json(
+        distills, manual, enrich, index_path=index_path, seed_warnings=collection_warnings
+    )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")

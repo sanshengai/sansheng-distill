@@ -125,7 +125,7 @@
 2. 每项 `status` ∈ `supported|mixed|contested|not_supported|not_testable`;`confidence` ∈ `high|moderate|low|very_low|not_applicable`;`replication.status` ∈ `replicated|mixed|failed|not_attempted|not_applicable`。
 3. `best_evidence` 写外部证据裁决,不是作者观点复述;`scope` 必含 `population/context/limits[]/risks[]`。`clinical_relevance` 为 `direct|indirect` 时 `risks[]` 至少 1 条。
 4. 非 `not_testable` 主张至少 1 个可点击来源;`not_testable` 可 `sources:[]`,但必须 `confidence:not_applicable` + `replication.status:not_applicable`,并在 `best_evidence` 明说为何不可检验/不可证伪。`descriptive|associational|causal|predictive|intervention` 属实证型,**不得**标 `not_testable`;只有 `framework|methodological|normative` 可在理由充分时使用。
-5. 来源优先级:元分析/系统综述 → 注册报告/大样本复制 → 原始研究 → 官方勘误或共识声明。`sources[].type` **必须**取 `meta_analysis|systematic_review|registered_report|replication|primary_study|official_correction|consensus_statement`;每项必带非空 `title`、可解析且有 host 的 `http(s) url`、合法 `type`、合理四位 `year`。普通 verifier 不联网探测可达性,避免构建依赖网络。
+5. 来源优先级:元分析/系统综述 → 注册报告/大样本复制 → 原始研究/开放数据重分析 → 叙述性综述；官方勘误或共识声明按其用途单列。`sources[].type` **必须**取 `meta_analysis|systematic_review|registered_report|replication|primary_study|reanalysis|narrative_review|official_correction|consensus_statement`;每项必带非空 `title`、可解析且有 host 的 `http(s) url`、合法 `type`、合理四位 `year`。`narrative_review` 不得冒充系统综述或独立复制，证据置信度须相应下调。普通 verifier 不联网探测可达性,避免构建依赖网络。
 6. HTML 每个 claim 精确一张 `.pe-claim[data-claim-id]`；`.pe-boundary` 完整呈现 scope 四字段里的全部非空值，`.pe-research` 可见来源链接 URL 集合与 `sources[].url` 精确一致。隐藏节点、空文字链接和模板内容不计作已呈现；浏览器验收会先激活 `panel-judge` 再查计算样式。
 
 **检索纪律**:这是英文技术/学术任务,按全局路由只用 Tavily;技术问题只采一手材料(论文原页/DOI、期刊、OSF/Center for Open Science、学术组织或官方勘误),作者官网、出版社、媒体书评不能充当科学有效性证据。先找综述/元分析定全局,再为争议点补复制与原始研究;不同研究冲突时标 `mixed|contested`,不得以票数或作者名气替代证据权重。`as_of` 写核查截止日(ISO 日期)。

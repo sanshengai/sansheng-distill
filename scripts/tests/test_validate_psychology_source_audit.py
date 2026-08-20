@@ -216,7 +216,21 @@ def test_source_audit_segments_must_be_contiguous_and_heading_must_hit_start_lin
     audit["segments"][2]["heading_excerpt"] = "不存在的章头"
     errors = _pure(audit, source, distill, claim_map, enrich)
     assert any("不连续" in error for error in errors)
-    assert any("heading_excerpt" in error and "逐字命中" in error for error in errors)
+    assert any("heading_excerpt" in error and "命中" in error for error in errors)
+
+
+def test_source_audit_accepts_real_segment_kind_and_heading_within_first_64_lines(tmp_path):
+    audit, source, distill, claim_map, enrich, _ = audit_fixture(tmp_path)
+    audit["segments"][0]["kind"] = "front_matter"
+    audit["segments"][0]["heading_excerpt"] = "本审计说明"
+    assert _pure(audit, source, distill, claim_map, enrich) == []
+
+
+def test_source_audit_rejects_unknown_segment_kind(tmp_path):
+    audit, source, distill, claim_map, enrich, _ = audit_fixture(tmp_path)
+    audit["segments"][0]["kind"] = "banana"
+    errors = _pure(audit, source, distill, claim_map, enrich)
+    assert any("segments[0].kind" in error and "非法" in error for error in errors)
 
 
 def test_source_audit_records_reject_duplicate_unknown_cross_chapter_and_false_excerpt(tmp_path):

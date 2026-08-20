@@ -1,6 +1,7 @@
 """build_topic.py 聚合器单测:确定性派生 / index_relation 三档 / certainty 校验 / 门槛 / 防覆盖。"""
 import sys
 import json
+import re
 from pathlib import Path
 import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -65,6 +66,28 @@ def test_derive_books_school_ids_ordered_deduplicated():
     out = bt.derive_books(members, m)
     assert out[0]["school_ids"] == ["lens-a", "lens-b"]
     assert "school_id" not in out[0]
+
+
+def test_derive_books_preserves_only_valid_explicit_web_url():
+    members = [("b0", _distill("b0")), ("b1", _distill("b1"))]
+    warnings = []
+    out = bt.derive_books(members, {
+        "book_meta": {
+            "b0": {"web_url": "/library/work-a.html"},
+            "b1": {"web_url": "https://evil.example/book"},
+        }
+    }, warnings=warnings)
+    assert out[0]["web_url"] == "/library/work-a.html"
+    assert "web_url" not in out[1]
+    assert any("web_url 非法" in item for item in warnings)
+
+
+@pytest.mark.parametrize("value", [
+    " /library/work-a.html", "/library/%252e%252e/private.html",
+    "/%252f%252fevil.example/work", "/library\\work-a.html",
+])
+def test_book_web_url_rejects_ambiguous_or_encoded_unsafe_paths(value):
+    assert bt.normalize_web_url(value) is None
 
 
 def test_resolve_disputes_contradicts_and_stance_pulled():
@@ -162,6 +185,39 @@ def test_resolve_disputes_parallel_dropped():
     assert any("parallel" in x for x in w)
 
 
+def test_explicit_parallel_is_routed_out_of_disputes_and_keeps_scientific_fields():
+    real = _manual()["disputes"][0]
+    parallel = dict(real)
+    parallel.update({"id": "p1", "question": "互补问题", "parallel": True, "curated": False})
+    m = _manual(disputes=[real, parallel])
+
+    doc, _ = bt.build_topic_json(_members(3), m, {}, _idx_contra())
+
+    assert [d["id"] for d in doc["disputes"]] == ["d1"]
+    assert [d["id"] for d in doc["parallel_comparisons"]] == ["p1"]
+    comparison = doc["parallel_comparisons"][0]
+    assert comparison["index_relation"] == "parallel"
+    assert comparison["question_type"] == "causal"
+    assert comparison["adjudication"]["research_view"] == "外部结果混合"
+    assert comparison["sources"] == ["https://example.org/synthesis"]
+    assert doc["_provenance"]["dispute_count"] == 1
+    assert doc["_provenance"]["parallel_comparison_count"] == 1
+
+
+def test_parallel_comparison_without_two_stance_columns_fails_closed():
+    m = _manual(disputes=[{
+        "id": "p1", "question": "只有一边", "parallel": True,
+        "positions": [
+            {"label": "有立场", "members": [{"slug": "b0", "stance": "s0"}]},
+            {"label": "空立场", "members": [{"slug": "b1"}]},
+        ],
+    }])
+    warnings = []
+    out = bt.resolve_parallel_comparisons(m, {}, {"b0", "b1", "b2"}, warnings)
+    assert out == []
+    assert any("有效立场不足 2 列" in item for item in warnings)
+
+
 def test_resolve_dimensions_missing_certainty_never_inferred_from_matching_anchor():
     mbs = {"b0": _distill("b0")}   # 即使同 anchor 原项是 book_explicit 也不代填
     m = _manual(dimensions=[{"name": "D", "cells": [{"slug": "b0", "value": "v", "anchor": "第1章"}]}])
@@ -220,6 +276,57 @@ def test_build_topic_json_shape_and_provenance():
     assert doc["_provenance"]["school_count"] == 2
     assert doc["_provenance"]["dispute_count"] == 1
     assert len(doc["books"]) == 3
+    assert "parallel_comparisons" not in doc  # 旧 topic 未声明新 schema 时语义零变化
+
+
+def test_topic_template_routes_all_book_links_and_separates_parallel_cards():
+    html = (Path(__file__).parents[2] / "templates" / "topic-page-skeleton.html").read_text(
+        encoding="utf-8"
+    )
+    assert "book.web_url" in html
+    assert 'id="parallels-host"' in html
+    assert "function renderParallels()" in html
+    assert "class: 'cmp-card'" in html
+
+
+def test_topic_template_browser_smoke_renders_one_dispute_three_parallel_and_routes():
+    from playwright.sync_api import sync_playwright
+
+    path = Path(__file__).parents[2] / "templates" / "topic-page-skeleton.html"
+    html = path.read_text(encoding="utf-8")
+    match = re.search(
+        r'(<script type="application/json" id="topic-data">)\s*(.*?)\s*(</script>)',
+        html, re.S,
+    )
+    fixture = json.loads(match.group(2))
+    slug = fixture["books"][0]["slug"]
+    fixture["books"][0]["web_url"] = "/library/work-a.html"
+    fixture["books"][1]["web_url"] = "//evil.example/work-b.html"
+    real = fixture["disputes"][0]
+    fixture["disputes"] = [real]
+    fixture["parallel_comparisons"] = []
+    for i in range(3):
+        comparison = json.loads(json.dumps(real, ensure_ascii=False))
+        comparison.update({"id": f"p{i + 1}", "question": f"平行对照 {i + 1}",
+                           "index_relation": "parallel"})
+        fixture["parallel_comparisons"].append(comparison)
+    rendered = html[:match.start()] + match.group(1) + "\n" + json.dumps(
+        fixture, ensure_ascii=False
+    ) + "\n" + match.group(3) + html[match.end():]
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.set_content(rendered)
+        page.wait_for_function("window.__topicReady === true")
+        assert page.locator(".dsp-card").count() == 1
+        assert page.locator(".cmp-card").count() == 3
+        layer_titles = page.locator(".dsp-card .dsp-layer-title").all_text_contents()
+        assert layer_titles == ["原书怎么说", "外部研究怎么说", "适用边界与风险"]
+        assert page.locator('a[href="/library/work-a.html"]').count() > 0
+        assert page.locator(f'a[href="../{slug}/{slug}.html"]').count() == 0
+        assert page.locator('a[href^="//evil.example/"]').count() == 0
+        browser.close()
 
 
 def test_build_topic_rejects_duplicate_school_ids_before_derivation():
@@ -258,6 +365,35 @@ def _write_distill(root, slug):
     d = root / slug
     d.mkdir(parents=True, exist_ok=True)
     (d / "distill.json").write_text(json.dumps(_distill(slug), ensure_ascii=False), encoding="utf-8")
+
+
+def test_collect_members_fails_closed_for_missing_or_mismatched_explicit_member(tmp_path):
+    _write_distill(tmp_path, "b0")
+    with pytest.raises(ValueError, match="成员 b1 .*缺失"):
+        bt.collect_members({"members": ["b0", "b1"]}, tmp_path, [])
+
+    wrong_dir = tmp_path / "b1"
+    wrong_dir.mkdir()
+    (wrong_dir / "distill.json").write_text(
+        json.dumps(_distill("other"), ensure_ascii=False), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="distill.slug='other' 不一致"):
+        bt.collect_members({"members": ["b0", "b1"]}, tmp_path, [])
+
+
+def test_collect_members_fails_closed_for_corrupt_json(tmp_path):
+    folder = tmp_path / "b0"
+    folder.mkdir()
+    (folder / "distill.json").write_text("{broken", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="成员 b0 .*解析失败"):
+        bt.collect_members({"members": ["b0"]}, tmp_path, [])
+
+
+@pytest.mark.parametrize("bad", ["../b1", "b1/child", " b1", 7, None])
+def test_collect_members_rejects_unsafe_explicit_slug(tmp_path, bad):
+    with pytest.raises(ValueError, match="非法 slug"):
+        bt.collect_members({"members": [bad]}, tmp_path, [])
 
 
 def test_main_under_3_members_exit3(tmp_path, monkeypatch):

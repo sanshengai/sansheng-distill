@@ -9,7 +9,7 @@ from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_
                          lint_topic_html, is_topic_page, lint_source_grounding,
                          lint_psychology_evidence, lint_psychology_html,
                          lint_required_psychology_source_audit,
-                         _psychology_smoke)  # 纯函数:-> list[str] 违规
+                         topic_smoke, _psychology_smoke)  # 纯函数:-> list[str] 违规
 
 SKILL_ROOT = Path(__file__).resolve().parents[2]  # tests -> scripts -> 仓根
 SKELETON = SKILL_ROOT / "templates" / "page-skeleton.html"
@@ -644,6 +644,18 @@ def test_g24_source_type_is_closed_enum_and_url_needs_host():
     assert any("sources[0].url" in x and "host" in x for x in v)
 
 
+def test_g24_accepts_truthful_reanalysis_and_narrative_review_types():
+    for source_type in ("reanalysis", "narrative_review"):
+        enrich = psych_enrich()
+        enrich["evidence_page"]["claims"]["structured-judgment"]["sources"][0][
+            "type"
+        ] = source_type
+        assert not any(
+            "sources[0].type" in item and "非法" in item
+            for item in lint_psychology_evidence(psych_distill(), enrich)
+        )
+
+
 @pytest.mark.parametrize("old,new,needle", [
     ("状态:supported", "状态:", "evidence_page.status"),
     ('data-status="supported">supported</span>', 'data-status="supported">错误文字</span>', ".pe-status 可见文字"),
@@ -686,7 +698,40 @@ def test_strict_psychology_page_requires_same_book_source_audit(tmp_path):
     page_path = tmp_path / "psych-book.html"
     page_path.write_text("<html></html>", encoding="utf-8")
     errors = lint_required_psychology_source_audit(page_path)
+    assert any("必须显式传 --source" in error for error in errors)
     assert any("缺同书目录 source-audit.json" in error for error in errors)
+
+
+def test_strict_psychology_source_audit_binds_canonical_claim_coverage(tmp_path):
+    page_path = tmp_path / "work-a.html"
+    page_path.write_text("<html></html>", encoding="utf-8")
+    for filename, content in {
+        "book.txt": "原文",
+        "distill.json": "{}",
+        "enrich.json": "{}",
+        "shadow-claim-map.json": "{}",
+    }.items():
+        (tmp_path / filename).write_text(content, encoding="utf-8")
+    audit = {
+        "inputs": {
+            role: {"path": filename, "sha256": "0" * 64}
+            for role, filename in {
+                "source": "book.txt", "distill": "distill.json",
+                "claim_map": "shadow-claim-map.json", "enrich": "enrich.json",
+            }.items()
+        }
+    }
+    (tmp_path / "source-audit.json").write_text(
+        json.dumps(audit, ensure_ascii=False), encoding="utf-8"
+    )
+
+    errors = lint_required_psychology_source_audit(
+        page_path,
+        distill_path=tmp_path / "distill.json",
+        source_path=tmp_path / "book.txt",
+        enrich_path=tmp_path / "enrich.json",
+    )
+    assert any("inputs.claim_map.path 未绑定本次 verify" in error for error in errors)
 
 
 def test_g24_smoke_activates_real_hidden_judge_panel_then_restores_glance(tmp_path):
@@ -1666,6 +1711,18 @@ def test_author_missing_book_slug_flagged():
     assert any("slug" in x for x in v)
 
 
+@pytest.mark.parametrize("web_url", [
+    "javascript:alert(1)", "//evil.example/work", "/library/../private.html",
+    "/library/%2e%2e/private.html", "/library/%252e%252e/private.html",
+    "/%252f%252fevil.example/work", "/library\\work.html", " /library/work.html",
+])
+def test_author_unsafe_web_url_flagged(web_url):
+    books = ajson()["books"]
+    books[0]["web_url"] = web_url
+    v = lint_author_html(author_html(), ajson(books=books))
+    assert any("web_url" in item and "站内根相对路径" in item for item in v)
+
+
 def test_author_fullwidth_dash_flagged():
     v = lint_author_html(author_html(), ajson(evolution_summary="从甲到乙——这是断裂"))
     assert any("破折号" in x for x in v)
@@ -1763,6 +1820,13 @@ def tjson(**over):
     return d
 
 
+def parallel_json(**over):
+    item = json.loads(json.dumps(tjson()["disputes"][0], ensure_ascii=False))
+    item.update({"id": "p1", "question": "两种路径各回答什么?", "index_relation": "parallel"})
+    item.update(over)
+    return item
+
+
 def test_topic_clean_passes():
     assert lint_topic_html(topic_html(), tjson()) == []
 
@@ -1810,6 +1874,18 @@ def test_topic_bad_book_slug_flagged():
         {"slug": "c-book", "title": "丙", "pub_year": 2020},
     ]))
     assert any("slug" in x and "非法" in x for x in v)
+
+
+@pytest.mark.parametrize("web_url", [
+    "javascript:alert(1)", "//evil.example/work", "/library/../private.html",
+    "/library/%2e%2e/private.html", "/library/%252e%252e/private.html",
+    "/%252f%252fevil.example/work", "/library\\work.html", " /library/work.html",
+])
+def test_topic_unsafe_web_url_flagged(web_url):
+    books = tjson()["books"]
+    books[0]["web_url"] = web_url
+    v = lint_topic_html(topic_html(), tjson(books=books))
+    assert any("web_url" in item and "站内根相对路径" in item for item in v)
 
 
 def test_topic_bad_index_relation_flagged():
@@ -1897,6 +1973,61 @@ def test_topic_parallel_is_trace_data_not_a_dispute_card_contract():
     dispute.pop("adjudication")
     dispute.pop("sources")
     assert lint_topic_html(topic_html(), d) == []
+
+
+def test_topic_parallel_comparison_contract_passes_when_complete():
+    d = tjson(parallel_comparisons=[parallel_json()])
+    assert lint_topic_html(topic_html(), d) == []
+
+
+def test_topic_parallel_comparison_rejects_bad_relation_duplicate_id_and_member():
+    first = parallel_json(index_relation="curated")
+    second = parallel_json(id="d1")
+    second["positions"][0]["books"][0]["slug"] = "ghost"
+    duplicate = parallel_json(id="p1")
+    v = lint_topic_html(topic_html(), tjson(parallel_comparisons=[first, second, duplicate]))
+    assert any("必须精确为 'parallel'" in item for item in v)
+    assert any("与 dispute.id 冲突" in item for item in v)
+    assert any("parallel_comparison.id" in item and "重复" in item for item in v)
+    assert any("非合法成员引用" in item and "ghost" in item for item in v)
+
+
+def test_topic_parallel_comparison_requires_two_stance_columns_and_valid_sources():
+    comparison = parallel_json(sources=[{"url": "https:///missing-host"}])
+    comparison["positions"][1]["books"][0]["stance"] = ""
+    v = lint_topic_html(topic_html(), tjson(parallel_comparisons=[comparison]))
+    assert any("stance 缺/空" in item for item in v)
+    assert any("有效立场列 <2" in item for item in v)
+    assert any("sources[0]" in item and "host" in item for item in v)
+
+
+def test_topic_parallel_comparison_empirical_adjudication_requires_sources_and_labels():
+    comparison = parallel_json()
+    comparison.pop("sources")
+    comparison["positions"][0]["label"] = ""
+    v = lint_topic_html(topic_html(), tjson(parallel_comparisons=[comparison]))
+    assert any("positions[0].label 缺/空" in item for item in v)
+    assert any("sources 须为 sources 数组" in item for item in v)
+
+
+def test_topic_smoke_detects_missing_parallel_card(tmp_path):
+    html = TOPIC_SKELETON.read_text(encoding="utf-8")
+    no_comments = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+    match = re.search(r'(<script[^>]*\bid="topic-data"[^>]*>)\s*(.*?)\s*(</script>)', no_comments, re.S)
+    topic = json.loads(match.group(2))
+    topic["parallel_comparisons"] = [parallel_json()]
+    rendered = no_comments[:match.start()] + match.group(1) + "\n" + json.dumps(
+        topic, ensure_ascii=False
+    ) + "\n" + match.group(3) + no_comments[match.end():]
+    rendered = rendered.replace(
+        "renderSchools(); renderDisputes(); renderParallels(); renderDimensions();",
+        "renderSchools(); renderDisputes(); renderDimensions();",
+    )
+    path = tmp_path / "topic.html"
+    path.write_text(rendered, encoding="utf-8")
+
+    v = topic_smoke(path, None, topic)
+    assert any(".cmp-card 数量" in item and "应为 1" in item for item in v)
 
 
 def test_topic_fullwidth_dash_flagged():

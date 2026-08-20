@@ -51,6 +51,20 @@ On top of that, three interactive layers: a **clickable mind-map** (hand-drawn S
 
 When you distill a whole set (like Harari's four), it also synthesizes an **author collection page**: a thought-evolution timeline, how concepts drift across books, the themes that run through all of them, and a "where to start reading" route -- that's the page in the demo above.
 
+## Psychology evidence and cross-book aggregation
+
+Psychology books can opt into a strict domain contract that separates **what the book claims** from **what external research supports**. Each claim gets a stable `claim_id`; the page shows the book's position, scientific evidence, boundary conditions, and risks in separate columns. A `source-audit.json` ledger binds `book.txt`, `distill.json`, the fixed same-directory `claim-coverage.json`, and `enrich.json` by SHA-256 and records the source lines behind every audited item. Strict verification must receive the source explicitly:
+
+```bash
+python scripts/verify_page.py path/to/work.html \
+  --distill path/to/distill.json --source path/to/book.txt \
+  --require-domain psychology
+```
+
+These are **conditional contracts**: ordinary books and existing pages behave exactly as before when the strict domain is not enabled. The mechanical gates detect input substitution, missing coverage, and structural false greens; they do not replace human review of research context or omitted counter-evidence.
+
+There are also two deterministic cross-book paths: two or more works by one author can produce a thought-evolution page, while three or more works on one topic can produce a taxonomy, true-dispute matrix, parallel comparisons, and dimension table. Explicit membership is fail-closed, and custom book routes accept only safe root-relative internal URLs. True contradictions and complementary lenses that answer different questions render in separate dispute and `parallel_comparisons` cards.
+
 ## It can also distill *a person*, not just a work (v0.5.0)
 
 Everything above turns **one work** into one page. Since v0.5.0 there is a second path: turn **everything one creator has published across media** -- hundreds of videos + a newsletter + books + podcasts -- into a map of their thinking.
