@@ -12,6 +12,17 @@ def _pass1_stage():
     return distill(chapters=[dch(narr=0, excerpts=[])])
 
 
+def _psych_pass1():
+    d = _pass1_stage()
+    d["domain_profile"] = {
+        "domain": "psychology", "subfields": ["judgment-and-decision-making"],
+        "work_kind": "popular_science", "clinical_relevance": "indirect",
+    }
+    d["core_ideas"][0].update(claim_id="book-framework", claim_type="framework")
+    d["decision_rules"][0].update(claim_id="book-intervention", claim_type="intervention")
+    return d
+
+
 def test_pass1_clean_skeleton_passes():
     # Pass1 骨架完整(仅缺 Pass2 才产的 narrative/excerpts)→ 应全过
     assert pass1_violations(_pass1_stage()) == []
@@ -39,3 +50,13 @@ def test_pass1_surfaces_bad_title_and_anchor():
     v = pass1_violations(d)
     assert any("G8" in x for x in v)
     assert any("anchor" in x for x in v)
+
+
+def test_pass1_psychology_g23_clean_skeleton_passes():
+    assert pass1_violations(_psych_pass1()) == []
+
+
+def test_pass1_psychology_g23_is_not_filtered_as_pass2_content():
+    d = _psych_pass1()
+    d["decision_rules"][0].pop("claim_type")
+    assert any("G23" in x and "claim_type" in x for x in pass1_violations(d))

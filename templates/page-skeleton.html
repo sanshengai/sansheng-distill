@@ -11,7 +11,7 @@
   头部两层: header.cb-banner(纸底+森林绿粗色带 + .cb-intro 封面简介 + .cb-author-link 醒目作者入口胶囊) + section.hero(标语 .hero>h1 字阶 T0<=48px);导读条 .reading-guide 已废,导航唯一入口 = sticky nav.tabs
     (1) glance: .bd-napkin 餐巾纸四件套(.formula + .formula-read 读法 + one_liner) -> .napkin-sketch 因果骨架草图(内联 SVG,可降级) -> .bd-mindmap-wrap 脑图 -> .bd-coreideas 核心观点卡(展开态必渲 .ci-explain/.ci-evidence/.ci-evlevel) -> .soul-block 两种养法对照 -> .next-cta
     (2) full:   .concept-chips 概念筹码条 -> .chapter-toc 目录态(默认收起!) -> .bd-chapters>.bd-chapter#ch-N 手风琴多开 -> .quote-wall 金句墙(全书金句唯一归宿) -> .next-cta
-    (3) judge:  .verdict-bar 裁决条 -> .arg-restate 立论复述 -> .tensions 内在张力 -> .crit-quad 批判四区 -> .reviews 书评 -> .views-entry 观点对照入口 -> .next-cta
+    (3) judge:  .verdict-bar 裁决条 -> .arg-restate 立论复述 -> .tensions 内在张力 -> .crit-quad 批判四区 -> .psych-evidence 心理学科学证据(条件) -> .reviews 书评 -> .views-entry 观点对照入口 -> .next-cta
     (4) action: .chain 五环路线图(.chain-detail 全可见 + .chain-loop 回环) -> .rules 情境决策卡(.rule-chips 筛选 + .rule-card) -> .models 模型抽屉卡(.model-drawer 含 boundary) -> .questions 自检 -> .next-cta
     (5) extend: .similar 同类书 -> .reading-path 阅读路径 -> .author-shelf 作者书架 -> .cross-domain 跨域命名(v4) -> .crossbook 跨书回声 -> .takeaway-strip 离开前带走(v4,出口骨架复现) -> .extend-pointer 末行指路(⑤ 无 next-cta)
   页内子视图(2 张,</main> 前 · panel 外 · hidden 默认): #sub-author(au-* infobox 归一栏 + 五栏)/ #sub-views(观点对照 + .vt-focus 争议焦点);返回件墨色胶囊 .sub-back + .subpage-from 归属语境
@@ -437,6 +437,24 @@ main{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:0 0 60px;isolatio
 .cq-object{background:color-mix(in srgb,var(--red) 12%,transparent);border-left:4px solid var(--red);grid-column:1/-1}
 .cq-object .cq-strong{margin:0 0 10px;font:800 1.1875rem/1.5 var(--font-display);color:var(--ink)}
 
+/* ===== (3) 心理学科学证据 .psych-evidence(仅 domain=psychology;G24) ===== */
+.psych-evidence{margin-bottom:26px;padding:20px;border:1px solid var(--line);border-left:4px solid var(--blue);background:var(--surface)}
+.pe-list{display:grid;gap:14px;margin-top:14px}
+.pe-claim{padding:18px;border:1px solid var(--line);border-radius:6px;background:var(--surface-strong)}
+.pe-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.pe-title{margin:0;font:800 1.0625rem/1.4 var(--font-display);color:var(--ink)}
+.pe-status{margin-left:auto;padding:4px 10px;border:1px solid var(--line);border-radius:999px;color:var(--ink-soft-2);font:700 .75rem/1.3 var(--font-display)}
+.pe-status[data-status="supported"]{border-color:var(--green);color:var(--green)}
+.pe-status[data-status="mixed"],.pe-status[data-status="contested"]{border-color:var(--gold);color:var(--ink-soft)}
+.pe-status[data-status="not_supported"]{border-color:var(--red);color:var(--red)}
+.pe-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.pe-col{padding:14px;border:1px solid var(--line);background:var(--paper)}
+.pe-col h4{margin:0 0 8px;font:800 .875rem/1.3 var(--font-display);color:var(--red)}
+.pe-col p{margin:0 0 8px;color:var(--ink-soft-2);font-size:.875rem;line-height:1.7}
+.pe-col ul{margin:6px 0 0;padding-left:18px;color:var(--ink-soft-2);font-size:.8125rem;line-height:1.65}
+.pe-sources{margin:8px 0 0;padding-top:8px;border-top:1px dashed var(--line)}
+.pe-sources a{display:block;color:var(--blue);font-size:.8125rem;line-height:1.6}
+
 /* ===== (3) 书评 .reviews(正反两列) ===== */
 .reviews{margin-bottom:26px}
 .review-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
@@ -694,7 +712,7 @@ main{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:0 0 60px;isolatio
   .cb-banner img.cb-cover{max-height:280px;padding:24px}
   .cb-banner .cb-meta{padding:26px 24px 30px}
   .tabs{position:static;grid-template-columns:repeat(2,1fr)}
-  .ci-list,.sim-grid,.crit-quad,.au-debate-cols,.review-cols,.vt-cols{grid-template-columns:1fr}
+  .ci-list,.sim-grid,.crit-quad,.au-debate-cols,.review-cols,.vt-cols,.pe-cols{grid-template-columns:1fr}
   .theme-picker .tp-menu{width:min(200px,calc(100vw - 28px))}
 }
 @media (max-width:720px){
@@ -874,7 +892,7 @@ body[data-theme="dark"] .bd-brandbar__logo.is-dark,body[data-theme="brand-dark"]
   <!-- /SLOT:AUTHOR-ENTRY -->
 
   <!-- SLOT:TOPIC-ENTRY 主题聚合入口卡(banner 之后 · hero 之前;链到该书所属「主题聚合全景」页 topic.html)
-       填槽: {topic}=topic.json.topic / {N}=该主题已蒸总数 / {school_name}=本书所属流派名(topic.books[].school_id → schools[].name) / {topic_slug}=topics 目录 slug;href=../topics/{topic_slug}/topic.html。
+       填槽: {topic}=topic.json.topic / {N}=该主题已蒸总数 / {school_name}=本书所属流派名(topic.books[].school_ids[] → schools[].name;兼容旧 school_id) / {topic_slug}=topics 目录 slug;href=../topics/{topic_slug}/topic.html。
        降级(硬): 该主题 <3 部已蒸 或 无 topics/{topic_slug}/topic.json → 生成时把本 SLOT(含注释对)整段删,单书页照常(见 references/topic-craft.md §7)。可与 AUTHOR-ENTRY 并存(一本书既属某作者演变、又属某主题聚合)。下方为 dummy 示例。 -->
   <a class="topic-entry" href="../topics/TOPIC_SLUG_PLACEHOLDER/topic.html">
     <span class="te-badge">主题聚合</span>
@@ -966,7 +984,7 @@ body[data-theme="dark"] .bd-brandbar__logo.is-dark,body[data-theme="brand-dark"]
     </div>
     <!-- /SLOT:G-MINDMAP -->
 
-    <!-- SLOT:G-COREIDEAS 核心观点卡(v4:按 pillar 分组渲染,组头=脑图一级分支名,组内 2-4 卡,null 入「贯穿全书」组;点卡展开必渲 explain+evidence+evlevel 三件,T8) -->
+    <!-- SLOT:G-COREIDEAS 核心观点卡(v4:按 pillar 分组渲染,组头=脑图一级分支名,组内 2-4 卡,null 入「贯穿全书」组;点卡展开必渲 explain+evidence+evlevel 三件,T8;evlevel 可见标签=原书依据/转述状态,不是科学证据强度) -->
     <!-- 填槽:每个 .ci-group 对应一个脑图一级分支(core_ideas[].pillar=分支序号);.ci-group-head=分支名;pillar===null 的卡入末组「贯穿全书」。
          与 soul_module 同源的那条 core_idea 不标 primary、渲普通卡 + 卡尾 .ci-portal 传送门到 #soul-block(Q1-4)。 -->
     <div class="bd-coreideas">
@@ -978,22 +996,22 @@ body[data-theme="dark"] .bd-brandbar__logo.is-dark,body[data-theme="brand-dark"]
           <article class="ci" data-source="第1章 · 约第12-20页(示例)">
             <p class="ci-idea">{{core_ideas[0].idea}} 核心主张一:把抽象原则压成一句可反驳的判断句(dummy)。</p>
             <p class="ci-analogy">就像 -- {{layman_analogy}} 邻居报低价你不会贱卖房子,持股一绿你却慌着割肉(示例)。</p>
-            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+              <p class="ci-more">点击展开:解释 + 原书依据 + 转述状态 ▾</p>
             <div class="ci-detail">
               <p class="ci-explain">{{explain}} 展开解释:这条主张为什么成立、在全书中的位置(dummy)。</p>
               <p class="ci-evidence">{{evidence}} 书里给的最有力证据 / 案例 / 数据(dummy)。</p>
-              <span class="ci-evlevel" data-level="confirmed">证据强度:原文确认</span>
+              <span class="ci-evlevel" data-level="confirmed">原书依据/转述状态:原文确认</span>
               <a class="ci-teleport" href="#ch-1">出自第 1 章 →</a>
             </div>
           </article>
           <article class="ci" data-source="第2章 · 约第30-40页(示例)">
             <p class="ci-idea">{{core_ideas[1].idea}} 核心主张二(与书魂同源,故不放大):操作要基于算术而非信心(dummy)。</p>
             <p class="ci-analogy">就像 -- 过马路只看有没有勇气而不看红灯,迟早出事(示例)。</p>
-            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+              <p class="ci-more">点击展开:解释 + 原书依据 + 转述状态 ▾</p>
             <div class="ci-detail">
               <p class="ci-explain">{{explain}} 展开解释(dummy)。</p>
               <p class="ci-evidence">{{evidence}} 书里依据(dummy)。</p>
-              <span class="ci-evlevel" data-level="inferred">证据强度:结构推断</span>
+              <span class="ci-evlevel" data-level="inferred">原书依据/转述状态:结构推断</span>
               <a class="ci-teleport" href="#ch-2">出自第 2 章 →</a>
               <!-- Q1-4:与 soul_module 同源,降 primary + 传送门到本板块结尾书魂可视化 -->
               <a class="ci-portal" href="#soul-block">完整可视化见本板块结尾 ↓</a>
@@ -1007,11 +1025,11 @@ body[data-theme="dark"] .bd-brandbar__logo.is-dark,body[data-theme="brand-dark"]
           <article class="ci ci-primary" data-source="第3章 · 约第45-52页(示例)">
             <p class="ci-idea">{{core_ideas[2].idea}} 核心主张三(primary):正确来自数据与推理,不来自附和多数人(dummy)。</p>
             <p class="ci-analogy">就像 -- 全班都抄错答案,不会因为人多就变成对的(示例)。</p>
-            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+              <p class="ci-more">点击展开:解释 + 原书依据 + 转述状态 ▾</p>
             <div class="ci-detail">
               <p class="ci-explain">{{explain}} 展开解释(dummy)。</p>
               <p class="ci-evidence">{{evidence}} 书里依据(dummy)。</p>
-              <span class="ci-evlevel" data-level="review">证据强度:需复核</span>
+              <span class="ci-evlevel" data-level="review">原书依据/转述状态:需复核</span>
               <a class="ci-teleport" href="#ch-3">出自第 3 章 →</a>
             </div>
           </article>
@@ -1023,11 +1041,11 @@ body[data-theme="dark"] .bd-brandbar__logo.is-dark,body[data-theme="brand-dark"]
           <article class="ci" data-source="引言 · 约全书2%处(示例)">
             <p class="ci-idea">{{core_ideas[3].idea}} 核心主张四:一条横切全书、不专属某一段的主张(dummy)。</p>
             <p class="ci-analogy">就像 -- 想让房间暖起来别对着温度计哈气,得去调锅炉(示例)。</p>
-            <p class="ci-more">点击展开:解释 + 证据 + 证据强度 ▾</p>
+              <p class="ci-more">点击展开:解释 + 原书依据 + 转述状态 ▾</p>
             <div class="ci-detail">
               <p class="ci-explain">{{explain}} 展开解释(dummy)。</p>
               <p class="ci-evidence">{{evidence}} 书里依据(dummy)。</p>
-              <span class="ci-evlevel" data-level="confirmed">证据强度:原文确认</span>
+              <span class="ci-evlevel" data-level="confirmed">原书依据/转述状态:原文确认</span>
               <a class="ci-teleport" href="#ch-1">出自引言 →</a>
             </div>
           </article>
@@ -1276,6 +1294,39 @@ body[data-theme="dark"] .bd-brandbar__logo.is-dark,body[data-theme="brand-dark"]
       </section>
     </div>
     <!-- /SLOT:J-QUAD -->
+
+    <!-- SLOT:J-PSYCH-EVIDENCE 心理学科学证据层(仅 domain_profile.domain=psychology 保留;非心理学整段删;每个 claim_id 恰一张 .pe-claim,G24) -->
+    <div class="psych-evidence">
+      <h3 class="zone-title">这些心理学主张,外部研究怎么说</h3>
+      <p class="section-lead">原书陈述与科学有效性分开看。状态核查截至 {{evidence_page.as_of}}。</p>
+      <div class="pe-list">
+        <article class="pe-claim" data-claim-id="{{claim_id}}">
+          <div class="pe-head">
+            <h4 class="pe-title">{{claim_title}} 一条可核查的心理学主张(dummy)</h4>
+            <span class="pe-status" data-status="mixed">{{status}} 证据混合</span>
+          </div>
+          <div class="pe-cols">
+            <section class="pe-col pe-book">
+              <h4>原书怎么说</h4>
+              <p>{{book_claim}} 作者在原书中的主张摘要(dummy)。</p>
+              <p>主张类型:{{claim_type}}</p>
+            </section>
+            <section class="pe-col pe-research">
+              <h4>外部研究怎么说</h4>
+              <p>{{best_evidence}} 当前最佳证据与复制状态的裁决(dummy)。</p>
+              <p>复制:{{replication.status}} -- {{replication.note}}</p>
+              <div class="pe-sources"><a href="https://example.org/" rel="noopener">{{source.title}} · {{source.year}}(示例)</a></div>
+            </section>
+            <section class="pe-col pe-boundary">
+              <h4>适用边界与风险</h4>
+              <p>人群:{{scope.population}} · 情境:{{scope.context}}</p>
+              <ul><li>{{scope.limits[0]}} 不能外推的边界(dummy)</li><li>{{scope.risks[0]}} 误用风险(dummy)</li></ul>
+            </section>
+          </div>
+        </article>
+      </div>
+    </div>
+    <!-- /SLOT:J-PSYCH-EVIDENCE -->
 
     <!-- SLOT:J-REVIEWS 别人怎么评(reviews 正反两列;reviews===null → 整块删) -->
     <div class="reviews">

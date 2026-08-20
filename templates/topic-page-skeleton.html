@@ -10,12 +10,12 @@
         生成时把 #topic-data 的内容替换为真实 topics/{slug}/topic.json,渲染器读它通用出图,无需改 JS/CSS。
   数据契约: references/topic-craft.md §2(topic.json schema)/ §4(4 视图)/ §5(板块骨架,倒金字塔·成果前置)。字段名严格照它。
   板块顺序(§5,固定): 定位卡直接开场(无大字 hero) → ① 怎么选(verdict) → ② 分类地图(schools ⭐)
-        → ③ 分歧矩阵(disputes,index_relation 三档诚实标注) → ④ 维度对照表(dimensions,certainty 来源硬度色点)
+        → ③ 分歧矩阵(disputes,书间立场/科学外证/边界分层) → ④ 维度对照表(dimensions,原书依据/转述状态)
         → ⑤ 书目导航(深链) → 该信几分(consensus,可选) → 怎么读(reading_guide,可选)
         → 外部争议(external_debate,enrich,可选) → footer(AI 是地图别当目的地)
   与 StepA 作者演变页的区别: 主题数据形态是表格/多列对照卡(分类分区/书×立场矩阵/维度×书对照),不套坐标系 SVG。纯 HTML+CSS。
   Zero-Hex 铁律: 新增颜色只在 :root{} token 块内;组件一律 var(--*) 或 class,禁内联 hex。配色沿用蒸馏页同一套 --* token。
-        lang="zh";破折号用 --;零外链(仅 external_debate 出处 <a href> 可 http)。
+        lang="zh";破折号用 --;零外链资源(仅 disputes.sources / external_debate 出处 <a href> 可 http)。
 -->
 <style>
 /* ===== TOKENS(warm-paper 默认 + brand-dark 覆盖;hex 只许出现在这两个 token 块内,组件一律 var(--*)) ===== */
@@ -109,6 +109,9 @@ a.tp-chip:hover{background:var(--tint-accent)}
 .sch-card{border:1px solid var(--line);border-left:5px solid var(--accent,var(--green));border-radius:8px;background:var(--surface);padding:18px 20px}
 .sch-name{margin:0 0 4px;font:900 1.1875rem/1.3 var(--font-display);color:var(--ink)}
 .sch-name .sch-count{margin-left:8px;color:var(--muted);font:700 .75rem/1.3 var(--font-display)}
+.sch-meta{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.sch-meta span{padding:2px 9px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink-soft-2);font:700 .6875rem/1.4 var(--font-display)}
+.sch-meta .sch-ev{border-color:var(--gold);color:var(--gold);background:var(--tint-accent)}
 .sch-claim{margin:0 0 12px;color:var(--ink-soft);font-size:.9375rem;line-height:1.7}
 .sch-anchor{margin:0 0 10px;color:var(--ink-soft-2);font:600 .875rem/1.5 var(--font-display)}
 .sch-anchor a{color:var(--accent,var(--green));font-weight:800;text-decoration:none}
@@ -126,7 +129,19 @@ a.tp-chip:hover{background:var(--tint-accent)}
 .dsp-flag{padding:3px 12px;border-radius:999px;font:800 .6875rem/1.4 var(--font-display);white-space:nowrap}
 .dsp-flag.rel-CONTRADICTS{background:var(--red);color:var(--white)}
 .dsp-flag.rel-curated{background:var(--tint-accent);color:var(--gold);border:1px solid var(--gold)}
+.dsp-type{padding:3px 10px;border:1px solid var(--blue);border-radius:999px;color:var(--blue);font:700 .6875rem/1.4 var(--font-display)}
 .dsp-axis{margin:0 0 14px;color:var(--muted);font:700 .875rem/1.4 var(--font-display)}
+.dsp-layers{display:grid;gap:14px}
+.dsp-layers.has-adjudication{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) minmax(0,1fr)}
+.dsp-layer{min-width:0;padding:14px 16px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.dsp-layer-title{margin:0 0 10px;color:var(--ink);font:800 .875rem/1.4 var(--font-display);letter-spacing:.02em}
+.dsp-layer-copy{margin:0 0 10px;color:var(--ink-soft);font-size:.875rem;line-height:1.68}
+.dsp-layer .dsp-cols{grid-template-columns:1fr;gap:10px}
+.dsp-layers:not(.has-adjudication) .dsp-cols{grid-template-columns:repeat(auto-fit,minmax(248px,1fr))}
+.dsp-status{display:inline-flex;margin:0 0 9px;padding:2px 10px;border-radius:999px;background:var(--tint-accent);color:var(--gold);border:1px solid var(--gold);font:800 .6875rem/1.4 var(--font-display)}
+.dsp-sources{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.dsp-sources a{color:var(--blue);font:700 .75rem/1.4 var(--font-display);text-decoration:none}
+.dsp-sources a:hover{text-decoration:underline}
 .dsp-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:14px}
 .dsp-col{border:1px solid var(--line);border-top:3px solid var(--accent,var(--blue));border-radius:6px;background:var(--paper);padding:14px 16px}
 .dsp-col .dc-label{margin:0 0 10px;font:800 .9375rem/1.35 var(--font-display);color:var(--ink)}
@@ -138,14 +153,16 @@ a.tp-chip:hover{background:var(--tint-accent)}
 .dsp-book blockquote{margin:7px 0 0;padding:0 0 0 11px;border-left:2px solid var(--accent,var(--green));color:var(--ink);font:italic 500 .875rem/1.6 var(--font-body)}
 .dsp-book .db-anchor{display:block;margin-top:5px;color:var(--muted);font:600 .75rem/1.4 var(--font-display)}
 .dsp-note{margin:14px 0 0;padding:12px 16px;border-left:3px solid var(--gold);background:var(--tint-accent);color:var(--ink-soft-2);font-size:.9375rem;line-height:1.72}
+@media(max-width:860px){.dsp-layers.has-adjudication{grid-template-columns:1fr}}
 
-/* ===== ④ 维度对照表(certainty 来源硬度色点) ===== */
+/* ===== ④ 维度对照表(certainty 原书依据/转述状态色点) ===== */
 .cert-legend{display:flex;flex-wrap:wrap;gap:16px;margin:0 0 16px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font:600 .8125rem/1.4 var(--font-display)}
 .cert{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .cert::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
 .cert.ce-book_explicit::before{background:var(--green)}
 .cert.ce-cross_book_synthesis::before{background:var(--gold)}
 .cert.ce-general_knowledge::before{background:var(--muted)}
+.cert.ce-unverified::before{background:var(--red)}
 .tp-dims{display:grid;gap:16px}
 .dim-card{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:18px 20px}
 .dim-name{margin:0 0 3px;font:800 1.125rem/1.35 var(--font-display);color:var(--ink)}
@@ -236,7 +253,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
   <section class="tp-sec" id="sec-disputes" hidden>
     <p class="tp-eyebrow">分歧矩阵</p>
     <h2 class="tp-title">流派之间,到底在争什么</h2>
-    <p class="dsp-hint">红旗 = 跨书索引已登记的真实对立;金标 = 编者从各书立场归纳的分歧轴(附依据)。只呈现可回指原文的立场,不硬造对立。</p>
+    <p class="dsp-hint">红旗 = 跨书索引已登记的书间对立;金标 = 编者从各书立场归纳的分歧轴。作者之间意见相反,不等于科学证据已判定谁对;有外证时会在右侧单独裁决。</p>
     <div class="tp-disputes" id="disputes-host"></div>
   </section>
 
@@ -244,7 +261,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
   <section class="tp-sec" id="sec-dimensions" hidden>
     <p class="tp-eyebrow">维度对照表</p>
     <h2 class="tp-title">同一个问题,各书给的具体数字</h2>
-    <p class="tp-lead">把散在各书里的可执行数字(月龄窗口/等待时长/见效周期…)并排对照,每格标来源硬度 -- 一眼看清这个数字是书里白纸黑字,还是编者跨书合成。</p>
+    <p class="tp-lead">把散在各书里的可执行数字(月龄窗口/等待时长/见效周期…)并排对照,每格标原书依据/转述状态 -- 锚点无法回指时明示「未核实」,不自动当成原书明说。</p>
     <div class="cert-legend" id="cert-legend"></div>
     <div class="tp-dims" id="dims-host"></div>
   </section>
@@ -289,7 +306,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
  "topic": "合成测试主题",
  "slug": "__fixture__",
  "subtitle": "3 本合成经典 · 2 大流派 · 2 条真分歧",
- "intro": "这是 v6 开发用的合成夹具,非真实主题 -- 演示主题聚合页的四视图:分类地图把书按核心主张分派,分歧矩阵呈现流派间的真实对立(index 已登记的红旗 vs 编者归纳的金标),维度对照表把各书的可执行数字并排、每格标来源硬度,书目导航给深链。真实主题填 topics/{slug}/topic.manual.json 后跑 build_topic.py 生成。",
+ "intro": "这是 v6 开发用的合成夹具,非真实主题 -- 演示主题聚合页的四视图:分类地图把书按核心主张分派,分歧矩阵把书间立场、科学外证与适用边界分层,维度对照表把各书的可执行数字并排并标原书依据/转述状态,书目导航给深链。真实主题填 topics/{slug}/topic.manual.json 后跑 build_topic.py 生成。",
  "verdict": {
   "headline": "没有放之四海皆准的一本 -- 先按你能接受的强度选派,再在派内挑代表作。",
   "guidance": [
@@ -298,23 +315,25 @@ a.tp-chip:hover{background:var(--tint-accent)}
   ]
  },
  "books": [
-  { "slug": "tz-jiegou", "title": "结构训练法", "book_type": "工具", "pub_year": 2010, "stakes": "high", "school_id": "s1", "one_liner": "用精密设计的外部流程把行为训练成型", "role_in_topic": "深挖代表作:结构派最系统的一本" },
-  { "slug": "tz-wenhe", "title": "温和渐进法", "book_type": "工具", "pub_year": 2015, "stakes": "high", "school_id": "s2", "one_liner": "拒绝对抗,靠陪伴与等待让能力自然长出", "role_in_topic": "深挖代表作:温和派的极点" },
-  { "slug": "tz-zhehong", "title": "折中综合论", "book_type": "论说", "pub_year": 2020, "stakes": "high", "school_id": "s2", "one_liner": "不站队,按阶段在两派之间取用", "role_in_topic": "带过:适合收尾的循证综合" }
+  { "slug": "tz-jiegou", "title": "结构训练法", "book_type": "工具", "pub_year": 2010, "stakes": "high", "school_ids": ["s1"], "one_liner": "用精密设计的外部流程把行为训练成型", "role_in_topic": "深挖代表作:结构派最系统的一本" },
+  { "slug": "tz-wenhe", "title": "温和渐进法", "book_type": "工具", "pub_year": 2015, "stakes": "high", "school_ids": ["s2"], "one_liner": "拒绝对抗,靠陪伴与等待让能力自然长出", "role_in_topic": "深挖代表作:温和派的极点" },
+  { "slug": "tz-zhehong", "title": "折中综合论", "book_type": "论说", "pub_year": 2020, "stakes": "high", "school_ids": ["s1", "s2"], "one_liner": "不站队,按阶段在两派之间取用", "role_in_topic": "带过:适合收尾的循证综合" }
  ],
  "schools": [
-  { "id": "s1", "name": "结构训练派", "claim": "行为是可被外部流程精密塑形的,家长要主动设计训练系统。", "members": ["tz-jiegou"], "anchor_book": "tz-jiegou", "color_idx": 0 },
-  { "id": "s2", "name": "温和渐进派", "claim": "能力要等发育成熟自然长出,对抗式训练弊大于利。", "members": ["tz-wenhe", "tz-zhehong"], "anchor_book": "tz-wenhe", "color_idx": 1 }
+  { "id": "s1", "name": "结构训练派", "kind": "应用框架", "evidence_status": "mixed", "claim": "行为是可被外部流程精密塑形的,家长要主动设计训练系统。", "members": ["tz-jiegou", "tz-zhehong"], "anchor_book": "tz-jiegou", "color_idx": 0 },
+  { "id": "s2", "name": "温和渐进派", "kind": "理论框架", "evidence_status": "contested", "claim": "能力要等发育成熟自然长出,对抗式训练弊大于利。", "members": ["tz-wenhe", "tz-zhehong"], "anchor_book": "tz-wenhe", "color_idx": 1 }
  ],
  "disputes": [
-  { "id": "d1", "question": "核心能力能不能靠训练提前教会?", "axis": "结构训练派 vs 温和渐进派", "concept": "自我塑形能力",
+  { "id": "d1", "question": "核心能力能不能靠训练提前教会?", "question_type": "causal", "axis": "结构训练派 vs 温和渐进派", "concept": "自我塑形能力",
     "index_relation": "CONTRADICTS",
     "positions": [
      { "label": "可训练/后天习得", "books": [ { "slug": "tz-jiegou", "stance": "作者认为这是可通过外部流程反复练习教会的技能。", "quote": "能力不是等来的,是练出来的。", "anchor": "第3章" } ] },
      { "label": "不可训练/发育里程碑", "books": [ { "slug": "tz-wenhe", "stance": "作者认为这是发育里程碑,只能等成熟自然出现,训练是拔苗助长。", "quote": "你教不会一朵花提前开放。", "anchor": "第5章" } ] }
     ],
-    "note": "index 已登记 CONTRADICTS:结构派与温和派在「能力可否训练」上直接对立。" },
-  { "id": "d2", "question": "见效要多久算合理?", "axis": "快见效 vs 慢陪伴", "concept": null,
+    "adjudication": { "status": "mixed", "book_view": "两派对训练能否改变进程给出相反回答。", "research_view": "合成外证示例:目前证据支持部分可训练效果,但迁移与长期效果仍混合。", "boundary_conditions": "效果受年龄、基线能力、训练强度与随访时长限制;不得从短期任务表现外推为稳定人格改变。" },
+    "sources": [ { "title": "合成外证示例", "url": "https://example.com/fixture-study" } ],
+    "note": "index 已登记 CONTRADICTS:结构派与温和派在「能力可否训练」上直接对立;这只表示书间立场冲突,不等于外部研究已判定谁对。" },
+  { "id": "d2", "question": "见效要多久算合理?", "question_type": "predictive", "axis": "快见效 vs 慢陪伴", "concept": null,
     "index_relation": "curated",
     "positions": [
      { "label": "两三周", "books": [ { "slug": "tz-jiegou", "stance": "结构训练两三周内应见明显改善,否则调整方案。", "quote": "", "anchor": "第6章" } ] },
@@ -358,7 +377,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
   ],
   "sources": ["https://example.com/fixture-study"]
  },
- "_provenance": { "generated_from": ["tz-jiegou", "tz-wenhe", "tz-zhehong"], "topic_slug": "__fixture__", "member_count": 3, "school_count": 2, "dispute_count": 2, "aggregator_version": "1", "warnings": [] }
+ "_provenance": { "generated_from": ["tz-jiegou", "tz-wenhe", "tz-zhehong"], "topic_slug": "__fixture__", "member_count": 3, "school_count": 2, "dispute_count": 2, "aggregator_version": "2", "warnings": [] }
 }
 </script>
 
@@ -377,8 +396,15 @@ a.tp-chip:hover{background:var(--tint-accent)}
   const el = (tag, attrs, txt) => { const n = document.createElement(tag); if (attrs) for (const k in attrs) { if (k === 'class') n.className = attrs[k]; else if (k === 'html') n.innerHTML = attrs[k]; else n.setAttribute(k, attrs[k]); } if (txt != null) n.textContent = txt; return n; };
   const show = id => { const n = document.getElementById(id); if (n) n.hidden = false; };
   const cidx = i => 'c' + (((i | 0) % 4 + 4) % 4);
-  const CERT_LABEL = { book_explicit: '书中明确', cross_book_synthesis: '跨书合成', general_knowledge: '编者通识' };
+  const CERT_LABEL = { book_explicit: '原书明确', cross_book_synthesis: '跨书归纳', general_knowledge: '通识补充', unverified: '未核实' };
+  const STATUS_LABEL = { supported: '支持', mixed: '证据混合', contested: '有争议', not_supported: '不支持', not_testable: '暂不可检验', unverified: '未核实' };
+  const QUESTION_TYPE_LABEL = { conceptual: '概念', descriptive: '描述', causal: '因果', predictive: '预测', intervention: '干预', methodological: '方法论', normative: '规范判断' };
   const schoolName = id => { const s = (T.schools || []).find(x => x.id === id); return s ? s.name : null; };
+  // 新产物用 school_ids[];已上线旧 topic 仍可只有 school_id。
+  const schoolIds = b => {
+    const raw = Array.isArray(b.school_ids) ? b.school_ids : (b.school_id ? [b.school_id] : []);
+    return raw.filter((id, i) => id && raw.indexOf(id) === i);
+  };
 
   // 书链接 span(有 slug 深链,否则纯文字)
   function bookLink(slug, label) {
@@ -466,6 +492,12 @@ a.tp-chip:hover{background:var(--tint-accent)}
       const cnt = (s.members || []).length;
       if (cnt) nm.appendChild(el('span', { class: 'sch-count' }, cnt + ' 本'));
       card.appendChild(nm);
+      if (s.kind || s.evidence_status) {
+        const meta = el('div', { class: 'sch-meta' });
+        if (s.kind) meta.appendChild(el('span', { class: 'sch-kind' }, s.kind));
+        if (s.evidence_status) meta.appendChild(el('span', { class: 'sch-ev ev-' + s.evidence_status }, '外证:' + (STATUS_LABEL[s.evidence_status] || s.evidence_status)));
+        card.appendChild(meta);
+      }
       if (s.claim) card.appendChild(el('p', { class: 'sch-claim' }, s.claim));
       if (s.anchor_book && bySlug[s.anchor_book]) {
         const a = el('p', { class: 'sch-anchor' });
@@ -483,21 +515,33 @@ a.tp-chip:hover{background:var(--tint-accent)}
     });
   }
 
-  /* ===== ③ 分歧矩阵(多列立场对照) ===== */
+  /* ===== ③ 分歧矩阵(书间立场 / 科学外证 / 适用边界三层分开) ===== */
   function renderDisputes() {
     const disputes = (T.disputes || []).filter(d => (d.positions || []).some(p => (p.books || []).length));
     if (!disputes.length) return;
     show('sec-disputes');
     const host = document.getElementById('disputes-host');
-    const FLAG = { CONTRADICTS: '已登记分歧', curated: '编者归纳的分歧轴' };
+    const FLAG = { CONTRADICTS: '书间已登记分歧', curated: '书间分歧(编者归纳)' };
     disputes.forEach(d => {
       const card = el('div', { class: 'dsp-card' });
       const head = el('div', { class: 'dsp-head' });
       head.appendChild(el('span', { class: 'dsp-q' }, d.question || ''));
       const rel = d.index_relation === 'CONTRADICTS' ? 'CONTRADICTS' : 'curated';
       head.appendChild(el('span', { class: 'dsp-flag rel-' + rel }, FLAG[rel] || rel));
+      if (d.question_type) head.appendChild(el('span', { class: 'dsp-type' }, (QUESTION_TYPE_LABEL[d.question_type] || d.question_type) + '问题'));
       card.appendChild(head);
       if (d.axis) card.appendChild(el('p', { class: 'dsp-axis' }, d.axis));
+
+      // 旧字符串 adjudication 仅作显示兼容;新 builder 已归一化为四字段对象。
+      let adj = d.adjudication;
+      if (typeof adj === 'string') adj = { status: 'unverified', book_view: adj, research_view: '尚无外部证据裁决', boundary_conditions: '尚未核定' };
+      const sources = Array.isArray(d.sources) ? d.sources : [];
+      const hasExternal = !!adj || sources.length > 0;
+      const layers = el('div', { class: 'dsp-layers' + (hasExternal ? ' has-adjudication' : '') });
+
+      const bookLayer = el('section', { class: 'dsp-layer dsp-book-layer' });
+      bookLayer.appendChild(el('h4', { class: 'dsp-layer-title' }, '原书怎么说'));
+      if (adj && adj.book_view) bookLayer.appendChild(el('p', { class: 'dsp-layer-copy' }, adj.book_view));
       const cols = el('div', { class: 'dsp-cols' });
       (d.positions || []).forEach((p, i) => {
         if (!(p.books || []).length) return;
@@ -515,7 +559,33 @@ a.tp-chip:hover{background:var(--tint-accent)}
         });
         cols.appendChild(col);
       });
-      card.appendChild(cols);
+      bookLayer.appendChild(cols);
+      layers.appendChild(bookLayer);
+
+      if (hasExternal) {
+        const researchLayer = el('section', { class: 'dsp-layer dsp-research-layer' });
+        researchLayer.appendChild(el('h4', { class: 'dsp-layer-title' }, '外部研究怎么说'));
+        const status = adj && adj.status;
+        if (status) researchLayer.appendChild(el('span', { class: 'dsp-status ev-' + status }, STATUS_LABEL[status] || status));
+        const researchView = adj && (adj.research_view || adj.summary);
+        if (researchView) researchLayer.appendChild(el('p', { class: 'dsp-layer-copy' }, researchView));
+        else researchLayer.appendChild(el('p', { class: 'dsp-layer-copy' }, '尚无外部证据裁决'));
+        const sourceHost = el('div', { class: 'dsp-sources' });
+        sources.forEach((source, i) => {
+          const href = typeof source === 'string' ? source : (source && source.url);
+          if (!href || !/^https?:\/\//i.test(href)) return;
+          const label = (source && typeof source === 'object' && (source.title || source.citation)) || ('来源 ' + (i + 1));
+          sourceHost.appendChild(el('a', { href, target: '_blank', rel: 'noopener' }, label + ' ↗'));
+        });
+        if (sourceHost.children.length) researchLayer.appendChild(sourceHost);
+        layers.appendChild(researchLayer);
+
+        const boundaryLayer = el('section', { class: 'dsp-layer dsp-boundary-layer' });
+        boundaryLayer.appendChild(el('h4', { class: 'dsp-layer-title' }, '适用边界与风险'));
+        boundaryLayer.appendChild(el('p', { class: 'dsp-layer-copy' }, (adj && (adj.boundary_conditions || adj.scope || adj.risk)) || '尚未核定'));
+        layers.appendChild(boundaryLayer);
+      }
+      card.appendChild(layers);
       if (d.note) card.appendChild(el('div', { class: 'dsp-note' }, d.note));
       host.appendChild(card);
     });
@@ -528,7 +598,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
     show('sec-dimensions');
     // 图例
     const leg = document.getElementById('cert-legend');
-    leg.appendChild(el('span', null, '来源硬度:'));
+    leg.appendChild(el('span', null, '原书依据/转述状态:'));
     Object.keys(CERT_LABEL).forEach(k => {
       leg.appendChild(el('span', { class: 'cert ce-' + k }, CERT_LABEL[k]));
     });
@@ -549,7 +619,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
         cell.appendChild(bk);
         if (c && c.value) {
           cell.appendChild(el('p', { class: 'dm-v' }, c.value));
-          const cert = CERT_LABEL[c.certainty] ? c.certainty : 'book_explicit';
+          const cert = CERT_LABEL[c.certainty] ? c.certainty : 'unverified';
           cell.appendChild(el('span', { class: 'cert ce-' + cert }, CERT_LABEL[cert]));
         } else {
           cell.appendChild(el('p', { class: 'dm-v empty' }, '该书未涉及'));
@@ -572,8 +642,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
       const m = el('div', { class: 'bk-main' });
       const t = el('div', { class: 'bk-title' }); t.appendChild(document.createTextNode(b.title || ''));
       if (b.book_type) t.appendChild(el('span', { class: 'bk-type' }, b.book_type));
-      const sn = schoolName(b.school_id);
-      if (sn) t.appendChild(el('span', { class: 'bk-school' }, sn));
+      schoolIds(b).map(schoolName).filter(Boolean).forEach(sn => t.appendChild(el('span', { class: 'bk-school' }, sn)));
       m.appendChild(t);
       const role = b.role_in_topic || b.one_liner;
       if (role) m.appendChild(el('p', { class: 'bk-role' }, role));

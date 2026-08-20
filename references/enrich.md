@@ -1,6 +1,6 @@
-# 联网增补手册 v2 -- Step3 enrich.json:三个延展二级页 + 内联书评/跨书(sansheng-distill)
+# 联网增补手册 v2.1 -- Step3 enrich.json:五个基础块 + 心理学科学证据层(sansheng-distill)
 
-> **执行手册,不是理论文**。管线跑到 Step3 时 agent 逐节照做,产出 `enrich.json`(五个顶层键,任一键可降级为 `null`)。
+> **执行手册,不是理论文**。管线跑到 Step3 时 agent 逐节照做,产出 `enrich.json`(五个基础顶层键,任一基础键可降级为 `null`;心理学书条件增加第六键 `evidence_page`)。
 > 核心立场:蒸馏主体(distill.json)已完成且**不依赖网络**;本层是锦上添花的外部信息,拿不到就隐藏,**绝不编造**。
 > **v2 变化**:三块内容做成「延展二级页」(satellite_form=B,页内全屏子视图,仍单文件填充)-- `author_page`(作者页)/ `similar_page`(同类书页)/ `views_page`(观点对比页);外加两个内联模块 `reviews`(书评)/ `cross_book_external`(跨书外部立场)沿用。主页只放短卡/入口卡,点开子视图看全文。
 > 全文破折号一律 `--`;规则全部给可判定标准(数字/枚举/命令),不用「酌情」「适当」。
@@ -21,9 +21,9 @@
 
 ---
 
-## 1. 五个顶层键与 enrich.json schema(整块契约)
+## 1. 五个基础键 + 心理学条件键与 enrich.json schema(整块契约)
 
-`enrich.json` 恰好五个顶层键。**任一键取值 `null` 表示该块整块降级隐藏**(页面对应子视图/内联模块不渲染)。字段命名逐字以本表为准(下游 page-skeleton / verify 消费,不得改名)。
+普通书/视频的 `enrich.json` 恰好五个基础顶层键。**任一基础键取值 `null` 表示该块整块降级隐藏**(页面对应子视图/内联模块不渲染)。当 `distill.domain_profile.domain=="psychology"` 时必须再写第六键 `evidence_page`,该键不可降级为 `null`;字段命名逐字以本表为准(下游 page-skeleton / verify 消费,不得改名)。
 
 ```jsonc
 {
@@ -84,7 +84,25 @@
     "sources": ["…"]
   },
   "reviews": { "rating": "8.9 / 豆瓣", "items": [{ "text": "书评摘要 ≤80 字", "stance": "正|反", "source": "url" }] },
-  "cross_book_external": [{ "concept": "…", "book": "…", "stance": "…", "source": "url" }]
+  "cross_book_external": [{ "concept": "…", "book": "…", "stance": "…", "source": "url" }],
+  "evidence_page": {
+    "as_of": "2026-08-20",
+    "claims": {
+      "loss-aversion-generalizes": {
+        "status": "mixed",
+        "best_evidence": "当前最佳证据的简明裁决,不复述原书。",
+        "confidence": "moderate",
+        "replication": { "status": "mixed", "note": "复制结果与主要异质性。" },
+        "scope": {
+          "population": "研究覆盖的人群",
+          "context": "研究成立的任务/场景",
+          "limits": ["不能外推到的边界"],
+          "risks": ["照做或误用的风险"]
+        },
+        "sources": [{ "title": "论文或官方项目题名", "url": "https://…", "type": "meta_analysis", "year": 2024 }]
+      }
+    }
+  }
 }
 ```
 
@@ -95,8 +113,21 @@
 | `views_page` | **子视图 `#sub-views`**(全屏) | 书中核心观点的国内外赞同方/质疑方对照,每条带来源 | 整块置 `null`;某 topic 缺一方 → 该方 `[]` |
 | `reviews` | **内联 ⑤**(该信几分·书评) | 评分 + 代表性书评(正反都收),每条带来源 | 整块置 `null`;有评分无书评 → `items: []` 保留 `rating` |
 | `cross_book_external` | **内联 ⑤**(跨书表·外部书立场) | 同一概念在**未蒸过的**其他书里的立场 | 整块置 `null` 或 `[]`(见 §6) |
+| `evidence_page` | **内联 ③**(心理学科学证据卡) | 按 claim_id 显示「原书怎么说 / 外部研究怎么说 / 适用边界与风险」 | 非心理学书省略;心理学书必填且不可为 `null`(G24) |
 
 **主页短作者卡 = `author_page.tagline`**(≤50 字页顶导语,渲染层直接取用,比截断 bio_long 更短更钉人),点开 `#sub-author` 看完整结构化档案。因此 enrich.json **不再有独立 `author_card` 字段**--短卡是 `author_page` 的派生视图,单一来源,避免两处数据漂移。旧版 `similar_books` 已由 `similar_page` 取代(升级为带 author/why/fit/order/reading_path 的子视图),不再单列。
+
+### 1.1 evidence_page 心理学科学证据层(v2.1,G24)
+
+这一层回答「这条心理学主张在书外站不站得住」,与 `evidence_level`(原书转述忠实度)和 `certainty`(内容来源)正交。执行顺序固定:
+
+1. 从 `distill.core_ideas[] + decision_rules[]` 收集全部唯一 `claim_id`;`evidence_page.claims` 的键集合必须**无多无少完全相等**。框架、方法论、规范建议也不能跳过。
+2. 每项 `status` ∈ `supported|mixed|contested|not_supported|not_testable`;`confidence` ∈ `high|moderate|low|very_low|not_applicable`;`replication.status` ∈ `replicated|mixed|failed|not_attempted|not_applicable`。
+3. `best_evidence` 写外部证据裁决,不是作者观点复述;`scope` 必含 `population/context/limits[]/risks[]`。`clinical_relevance` 为 `direct|indirect` 时 `risks[]` 至少 1 条。
+4. 非 `not_testable` 主张至少 1 个可点击来源;`not_testable` 可 `sources:[]`,但必须 `confidence:not_applicable` + `replication.status:not_applicable`,并说明为何不可实证裁决。
+5. 来源优先级:元分析/系统综述 → 注册报告/大样本复制 → 原始研究 → 官方勘误或共识声明。`sources[].type` 建议用 `meta_analysis|systematic_review|registered_report|replication|primary_study|official_correction|consensus_statement`;每项必带 `title/url/type/year`。
+
+**检索纪律**:这是英文技术/学术任务,按全局路由只用 Tavily;技术问题只采一手材料(论文原页/DOI、期刊、OSF/Center for Open Science、学术组织或官方勘误),作者官网、出版社、媒体书评不能充当科学有效性证据。先找综述/元分析定全局,再为争议点补复制与原始研究;不同研究冲突时标 `mixed|contested`,不得以票数或作者名气替代证据权重。`as_of` 写核查截止日(ISO 日期)。
 
 **author_page 逐字段降级规则(逐行/逐栏删,绝不渲染「未知/暂无」占位)**:
 
@@ -134,13 +165,14 @@
 | `views_page.sources` | 汇总所有 topic 用到的源 | 见 §5 铁律一 |
 | `reviews.items` | **3-5 条** | 正反都要(见 §5 铁律三);每条 `{text, stance:"正"\|"反", source:url}`;text 为原书评摘要(≤80 字),不改写立场 |
 | `cross_book_external` | 无下限(有几个算几个) | 每条 `{concept, book, stance, source:url}`;`concept` 用本书 `distill.json.concepts[]` 的概念名;仅收 §6 判定为「索引没有」的概念 |
+| `evidence_page.claims` | 心理学书 **100% 覆盖 claim_id** | 键集合与 distill 的 core_ideas + decision_rules claim_id 完全一致;非 not_testable 每项 sources≥1;结构与枚举见 §1.1 |
 
 - `reviews.rating` 格式:`{分值} / {来源}`,如 `8.9 / 豆瓣`、`4.2 / Goodreads`;多源只填最先命中的一个,不加权平均(避免制造假精度)。
 - 所有 `sources` / 每条 `source`:必须是**可点击的 http(s) URL**(见 §5 铁律一)。
 
 ---
 
-## 3. 信源优先级表 + 三块搜索 pass 设计
+## 3. 信源优先级表 + 基础块与条件证据搜索 pass 设计
 
 **v2 预算加大**:三个二级页各起一轮**专门**搜索(不再是 v1 单模块一击即止);长搜可按块派 subagent 并行(全 Opus,禁 cheap model)。每块按下方降级链从左到右尝试,**前一档拿到可用信息即停**;某档抓取失败(含反爬,见 §4)即降级下一档;全部档位都拿不到 → 该块整块置 `null`。
 
@@ -151,6 +183,7 @@
 | 观点对比页(views_page) | **国内轨 + 国外轨两轨分搜**(见 §3.3,不是单链降级) |
 | 书评(reviews) | 豆瓣(反爬时降级)→ 微信读书 → Goodreads → 搜索引擎摘要 |
 | 跨书外部(cross_book_external) | 先查本地索引(Step4 query)→ 已蒸书走互链不进本文件;索引缺的再联网找(见 §6) |
+| 心理学科学证据(evidence_page) | 元分析/系统综述 → 注册报告/大样本复制 → 原始研究 → 官方勘误/共识;只收一手学术或官方页面 |
 
 ### 3.1 author_page 搜索 pass(v3 结构化,按字段分头检索)
 
@@ -195,6 +228,14 @@
 
 **组织成「书中观点 → 赞同方 / 质疑方」**:每个 topic 力求国内外都有、赞同质疑都有;但**据实**(§5 铁律三)-- 真一边倒就如实一边倒,不硬造反方来凑平衡。
 
+### 3.3a evidence_page 搜索 pass(仅 psychology)
+
+1. 按 claim_id 逐条把原书主张压成英文检索式,先找最近且范围匹配的 meta-analysis/systematic review。
+2. 对 `mixed|contested` 候选补 registered report、multi-lab/large-sample replication 与官方 correction;记录研究对象、任务与情境,不只记结论方向。
+3. 同一文献可支撑多个 claim,但每个 claim 都须独立写 `best_evidence/scope`;不得把一条宽泛综述复制粘贴到所有主张。
+4. 将「没有复制研究」与「复制失败」分开:`not_attempted` 不等于 `failed`;把「效应量很小/高度异质」与「完全不存在」分开,不把统计不显著自动写成 `not_supported`。
+5. 最后做 ID 集合对账;缺一条即 G24 失败,不能用 `views_page` 的书评/观点材料顶替科学证据页。
+
 ### 3.4 搜索工具链降级(全局规范,取「搜索引擎摘要」这一档时用)
 
 **按任务类型选一个引擎,不是固定顺序链**(同题并行撒网只烧上下文):
@@ -224,10 +265,10 @@
 ## 5. 三条铁律(硬约束,违反即本层作废重来)
 
 **铁律一 · 每条外部信息必带来源 URL。**
-`author_page.sources`(≥1 条)、`similar_page.sources`(≥1 条,承载全部同类书条目来源 -- `similar_page.items` **无** per-item source)、每条 `views_page.topics[].supporters/critics[].source`、每条 `reviews.items[].source`、`cross_book_external[].source` 都必须是可点击的 http(s) URL。拿不到 URL 的信息 = 拿不到该信息,按铁律二处理,**绝不凭记忆/训练知识填充无源内容**。
+`author_page.sources`(≥1 条)、`similar_page.sources`(≥1 条,承载全部同类书条目来源 -- `similar_page.items` **无** per-item source)、每条 `views_page.topics[].supporters/critics[].source`、每条 `reviews.items[].source`、`cross_book_external[].source`、每条可检验 `evidence_page.claims.*.sources[]` 都必须是可点击的 http(s) URL。拿不到 URL 的信息 = 拿不到该信息,按铁律二处理,**绝不凭记忆/训练知识填充无源内容**。
 
 **铁律二 · 拿不到就降级留空/置 null,页面隐藏,不编造。**
-某块所有信源档位都失败 → 该顶层键置 `null`,页面对应子视图/内联模块不渲染。单字段拿不到 → 该字段留空(`year:""`、某 topic 的 `critics:[]`),不臆造填充。宁可缺内容,不可编造作者生平、假著作、假书评、假赞同/质疑方。「据实降级」永远优于「编个像样的」。
+某个**基础块**所有信源档位都失败 → 该顶层键置 `null`,页面对应子视图/内联模块不渲染。单字段拿不到 → 该字段留空(`year:""`、某 topic 的 `critics:[]`),不臆造填充。宁可缺内容,不可编造作者生平、假著作、假书评、假赞同/质疑方。「据实降级」永远优于「编个像样的」。心理学 `evidence_page` 不允许整块降级:证据不足就如实写 `low|very_low`、`not_attempted` 或 `not_testable`,仍须覆盖全部 claim_id。
 
 **铁律三 · 评价/观点类必须尽量正反都收;一边倒要如实呈现,不硬造反方。**
 - `reviews.items` 尽量同时含 `stance:"正"` 与 `stance:"反"`(至少各一条)。若某书在所有档位都**只搜到清一色好评**、找不到任何批评:这是信源可疑信号(营销页/水军/样本偏);处置 = 正面书评照收,但在 `reviews.rating` 后追加标注 ` (未见负面书评,信源存疑)`,`items` 里**不得为凑「反」而伪造差评**。
@@ -260,7 +301,7 @@
 
 ## 7. 收尾自查 checklist(写完 enrich.json 逐条核对)
 
-- [ ] 五个顶层键都在;拿不到的据实置 `null`,没有为凑数编造的块。
+- [ ] 五个基础顶层键都在;拿不到的据实置 `null`,没有为凑数编造的块。心理学书另有非 null 的第六键 `evidence_page`。
 - [ ] `author_page` 为结构化:`name`/`tagline`(≤50字)必填;`infobox` 事实行据实(缺项已删非填「未知」)或事实行 <3 已降级速览横条;`career` 3-5 段;`impact`/`debate`/`this_book` 有则规范、无则整栏 `null`;`works` 全量带 year(缺 year 进「年份不详」组)且**恰一条** `is_this_book:true`;`sources` ≥1 个 URL。
 - [ ] 主页短作者卡取 `author_page.tagline`(非截断 `bio_long`),未在 enrich.json 里另存 `author_card`(无重复数据);`bio_long` 仅旧书兜底、新蒸不产。
 - [ ] `similar_page.items` 3-6 本,每本 `relation` ∈ {印证,补充,反驳} 且不全是 `印证`,`why`/`fit`/`order` 齐全;`reading_path` 非空;`sources` 齐。
@@ -268,6 +309,7 @@
 - [ ] `reviews.items` 3-5 条,**尽量有正有反**;全好评已按铁律三标注 `(未见负面书评,信源存疑)`。
 - [ ] 每条外部信息(作者/同类书/观点/书评/跨书)都带可点击 http(s) URL(铁律一)。
 - [ ] `cross_book_external` 只含「query 名单里查不到」的概念(§6),未与 Step4 互链重复。
+- [ ] 心理学 `evidence_page.claims` 与 distill 全部 claim_id 无多无少;状态/置信度/复制/范围结构合法;非 not_testable 每项至少 1 个一手 URL;页面三栏没有把「原书确认」冒充「科学支持」。
 - [ ] 豆瓣抓取失败处已降级,无重试轰炸痕迹(§4)。
 - [ ] 全文破折号 `--`,无全角 `——`;书评/观点原文照录未润色改立场。
 

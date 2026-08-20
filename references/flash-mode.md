@@ -123,7 +123,7 @@ print([(c.get('no'),len(c.get('narrative','') or '')) for c in d['chapters']])"
 
 三张子视图各起一轮搜索(作者页 / 同类书页 / 观点对比页)+ `reviews` + `cross_book_external`,全带来源 URL。
 
-**判据**:`enrich.json` 已落盘,五个顶层键都在(整块抓不到的置 `null`,**但文件必须有**)。
+**判据**:`enrich.json` 已落盘,五个基础顶层键都在(整块抓不到的置 `null`,**但文件必须有**);心理学书还必须有第六键 `evidence_page`,且完整覆盖全部 `claim_id`。
 参考量级:正常一本 19-34 KB;**产出不足 5 KB 基本等于没搜**,回去补。
 
 ### Step4 · 跨书索引登记

@@ -43,8 +43,20 @@ def test_derive_books_school_reverse_and_oneliner_fallback():
     members = [("b0", _distill("b0", napkin={"one_liner": "L0"}))]
     m = {"members": ["b0"], "schools": [{"id": "s1", "members": ["b0"]}], "book_meta": {}}
     out = bt.derive_books(members, m)
-    assert out[0]["school_id"] == "s1"           # 从 schools 反推
+    assert out[0]["school_ids"] == ["s1"]        # 从 schools 反推
     assert out[0]["one_liner"] == "L0"           # 缺 book_meta 回退 napkin
+
+
+def test_derive_books_school_ids_ordered_deduplicated():
+    members = [("b0", _distill("b0"))]
+    m = {"members": ["b0"], "schools": [
+        {"id": "lens-a", "members": ["b0", "b0"]},
+        {"id": "lens-b", "members": ["b0"]},
+        {"id": "lens-a", "members": ["b0"]},
+    ]}
+    out = bt.derive_books(members, m)
+    assert out[0]["school_ids"] == ["lens-a", "lens-b"]
+    assert "school_id" not in out[0]
 
 
 def test_resolve_disputes_contradicts_and_stance_pulled():
@@ -63,6 +75,74 @@ def test_resolve_disputes_curated_when_no_index_contradicts():
     assert out[0]["index_relation"] == "curated"
 
 
+def test_resolve_disputes_scientific_layer_normalized_and_sources_filtered():
+    m = _manual(disputes=[{
+        "id": "d1", "question": "Q?", "concept": None, "question_type": "causal",
+        "positions": [
+            {"label": "L1", "members": [{"slug": "b0", "stance": "s0"}]},
+            {"label": "L2", "members": [{"slug": "b1", "stance": "s1"}]},
+        ],
+        "adjudication": {
+            "status": "mixed", "book_view": "书间观点不同",
+            "research_view": "现有研究结果混合", "boundary_conditions": "仅适用于成人样本",
+        },
+        "sources": [
+            "https://example.org/review",
+            {"title": "Meta", "url": "https://example.org/meta"},
+            "ftp://example.org/bad",
+        ],
+    }])
+    w = []
+    out = bt.resolve_disputes(m, {}, {"b0", "b1", "b2"}, w)
+    assert out[0]["question_type"] == "causal"
+    assert out[0]["adjudication"] == {
+        "status": "mixed", "book_view": "书间观点不同",
+        "research_view": "现有研究结果混合", "boundary_conditions": "仅适用于成人样本",
+    }
+    assert out[0]["sources"] == [
+        "https://example.org/review", {"title": "Meta", "url": "https://example.org/meta"}
+    ]
+    assert any("ftp" in x or "sources[2]" in x for x in w)
+
+
+def test_resolve_disputes_old_string_adjudication_gets_honest_defaults():
+    m = _manual(disputes=[{
+        "id": "d1", "question": "Q?", "concept": None,
+        "positions": [
+            {"label": "L1", "members": [{"slug": "b0", "stance": "s0"}]},
+            {"label": "L2", "members": [{"slug": "b1", "stance": "s1"}]},
+        ],
+        "adjudication": "两本书都声称自己更准",
+    }])
+    out = bt.resolve_disputes(m, {}, {"b0", "b1", "b2"}, [])
+    assert out[0]["adjudication"] == {
+        "status": "unverified",
+        "book_view": "两本书都声称自己更准",
+        "research_view": "尚无外部证据裁决",
+        "boundary_conditions": "尚未核定",
+    }
+
+
+def test_resolve_disputes_bad_question_type_and_adjudication_warns_and_downgrades():
+    m = _manual(disputes=[{
+        "id": "d1", "question": "Q?", "concept": None, "question_type": "opinion",
+        "positions": [
+            {"label": "L1", "members": [{"slug": "b0", "stance": "s0"}]},
+            {"label": "L2", "members": [{"slug": "b1", "stance": "s1"}]},
+        ],
+        "adjudication": {"status": "certain", "book_view": "", "research_view": "r"},
+    }])
+    w = []
+    out = bt.resolve_disputes(m, {}, {"b0", "b1", "b2"}, w)
+    assert out[0]["question_type"] is None
+    assert out[0]["adjudication"] == {
+        "status": "unverified", "book_view": "见上方书间立场",
+        "research_view": "r", "boundary_conditions": "尚未核定",
+    }
+    assert any("question_type" in x for x in w)
+    assert any("adjudication.status" in x for x in w)
+
+
 def test_resolve_disputes_parallel_dropped():
     m = _manual(disputes=[{"id": "d1", "question": "Q?", "concept": None,
         "positions": [{"label": "L1", "members": [{"slug": "b0", "stance": "s0"}]}]}])  # 单派
@@ -72,19 +152,34 @@ def test_resolve_disputes_parallel_dropped():
     assert any("parallel" in x for x in w)
 
 
-def test_resolve_dimensions_certainty_default_pull():
-    mbs = {"b0": _distill("b0")}   # 全 book_explicit
+def test_resolve_dimensions_missing_certainty_never_inferred_from_matching_anchor():
+    mbs = {"b0": _distill("b0")}   # 即使同 anchor 原项是 book_explicit 也不代填
     m = _manual(dimensions=[{"name": "D", "cells": [{"slug": "b0", "value": "v", "anchor": "第1章"}]}])
-    out = bt.resolve_dimensions(m, {"b0", "b1", "b2"}, mbs, [])
-    assert out[0]["cells"][0]["certainty"] == "book_explicit"
+    w = []
+    out = bt.resolve_dimensions(m, {"b0", "b1", "b2"}, mbs, w)
+    assert out[0]["cells"][0]["certainty"] == "unverified"
+    assert any("缺 certainty" in x for x in w)
 
 
 def test_resolve_dimensions_bad_certainty_coerced():
     m = _manual(dimensions=[{"name": "D", "cells": [{"slug": "b0", "value": "v", "certainty": "guess"}]}])
     w = []
     out = bt.resolve_dimensions(m, {"b0", "b1", "b2"}, {"b0": _distill("b0")}, w)
-    assert out[0]["cells"][0]["certainty"] == "book_explicit"
+    assert out[0]["cells"][0]["certainty"] == "unverified"
     assert any("certainty" in x for x in w)
+
+
+def test_resolve_dimensions_missing_or_mismatched_anchor_is_unverified():
+    m = _manual(dimensions=[{"name": "D", "cells": [
+        {"slug": "b0", "value": "v0"},
+        {"slug": "b1", "value": "v1", "certainty": "book_explicit", "anchor": "第99章"},
+    ]}])
+    w = []
+    out = bt.resolve_dimensions(
+        m, {"b0", "b1", "b2"}, {"b0": _distill("b0"), "b1": _distill("b1")}, w
+    )
+    assert [c["certainty"] for c in out[0]["cells"]] == ["unverified", "unverified"]
+    assert len([x for x in w if "unverified" in x]) == 2
 
 
 def test_resolve_schools_member_out_of_set_dropped():
@@ -93,6 +188,20 @@ def test_resolve_schools_member_out_of_set_dropped():
     out = bt.resolve_schools(m, {"b0", "b1", "b2"}, {"b0": "甲"}, w)
     assert "zzz" not in out[0]["members"]
     assert any("zzz" in x for x in w)
+
+
+def test_resolve_schools_kind_and_evidence_status_passthrough_and_validate():
+    m = _manual(schools=[
+        {"id": "s1", "name": "研究传统", "kind": "research_program", "evidence_status": "mixed",
+         "members": ["b0"], "anchor_book": "b0"},
+        {"id": "s2", "name": "坏数据", "kind": [], "evidence_status": "certain",
+         "members": ["b1"], "anchor_book": "b1"},
+    ])
+    w = []
+    out = bt.resolve_schools(m, {"b0", "b1", "b2"}, {"b0": "甲", "b1": "乙"}, w)
+    assert out[0]["kind"] == "research_program" and out[0]["evidence_status"] == "mixed"
+    assert out[1]["kind"] is None and out[1]["evidence_status"] is None
+    assert any("kind" in x for x in w) and any("evidence_status" in x for x in w)
 
 
 def test_build_topic_json_shape_and_provenance():

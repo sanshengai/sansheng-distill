@@ -22,9 +22,16 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-AGGREGATOR_VERSION = "1"
+AGGREGATOR_VERSION = "2"
 MIN_MEMBERS = 3  # 触发门槛(topic-craft §0):同主题 <3 本不生成
-CERTAINTY_VALUES = ("book_explicit", "cross_book_synthesis", "general_knowledge")
+CERTAINTY_VALUES = ("book_explicit", "cross_book_synthesis", "general_knowledge", "unverified")
+EVIDENCE_STATUS_VALUES = (
+    "supported", "mixed", "contested", "not_supported", "not_testable", "unverified"
+)
+QUESTION_TYPE_VALUES = (
+    "conceptual", "descriptive", "causal", "predictive", "intervention", "methodological", "normative"
+)
+HTTP_URL_RE = re.compile(r"^https?://[^\s]+$", re.I)
 
 PUNCT_RE = re.compile(r"[\s　-〿＀-￯,.!?;:\"'`()\[\]{}<>/\\|~@#$%^&*_+=·、,。!?;:「」『』（）【】]")
 
@@ -97,13 +104,17 @@ def load_index_concepts(index_path):
 # --------------------------------------------------------------------------- 派生
 
 def derive_books(members, manual):
-    """🤖 直取 distill 元数据 + 合并 manual.book_meta(one_liner/role_in_topic)+ 从 schools 反推 school_id。"""
+    """🤖 直取 distill 元数据 + 合并 manual.book_meta(one_liner/role_in_topic)
+    + 从 schools 反推 school_ids(按 schools 顺序有序去重)。"""
     book_meta = manual.get("book_meta") or {}
-    # slug -> school_id(反推:书落在哪个 school.members)
+    # slug -> school_ids(同一本书可属于多个研究传统/分析镜头)
     school_of = {}
-    for sc in manual.get("schools", []) or []:
+    for i, sc in enumerate(manual.get("schools", []) or []):
+        school_id = sc.get("id") or f"s{i + 1}"
         for s in sc.get("members", []) or []:
-            school_of.setdefault(s, sc.get("id"))
+            ids = school_of.setdefault(s, [])
+            if school_id not in ids:
+                ids.append(school_id)
     out = []
     for slug, d in members:
         meta = book_meta.get(slug, {}) or {}
@@ -117,7 +128,7 @@ def derive_books(members, manual):
             "book_type": d.get("book_type"),
             "pub_year": d.get("pub_year"),
             "stakes": d.get("stakes", "normal"),
-            "school_id": school_of.get(slug),
+            "school_ids": school_of.get(slug, []),
             "one_liner": one_liner,
             "role_in_topic": meta.get("role_in_topic"),
         })
@@ -125,7 +136,11 @@ def derive_books(members, manual):
 
 
 def resolve_schools(manual, member_set, title_of, warnings):
-    """✍️ 流派纯 manual;校验 members⊆成员、补 color_idx、解析 anchor_book title。"""
+    """✍️ 分类纯 manual;校验 members⊆成员、补 color_idx、解析 anchor_book title。
+
+    kind 是可扩展的人类可读分类，只校验为非空字符串；evidence_status 与心理学外证
+    状态共用六状态枚举。旧 topic 可缺这两字段，不破坏非心理学主题。
+    """
     out = []
     for i, sc in enumerate(manual.get("schools", []) or []):
         name = sc.get("name")
@@ -140,9 +155,24 @@ def resolve_schools(manual, member_set, title_of, warnings):
         if anchor and anchor not in member_set:
             warnings.append(f"school「{name}」anchor_book {anchor} 不在 members 集")
             anchor = None
+        kind = sc.get("kind")
+        if kind is not None and (not isinstance(kind, str) or not kind.strip()):
+            warnings.append(f"school「{name}」kind 必须是非空字符串,已置空")
+            kind = None
+        elif isinstance(kind, str):
+            kind = kind.strip()
+        evidence_status = sc.get("evidence_status")
+        if evidence_status is not None and evidence_status not in EVIDENCE_STATUS_VALUES:
+            warnings.append(
+                f"school「{name}」evidence_status「{evidence_status}」∉ "
+                f"{EVIDENCE_STATUS_VALUES},已置空"
+            )
+            evidence_status = None
         out.append({
             "id": sc.get("id") or f"s{i + 1}",
             "name": name,
+            "kind": kind,
+            "evidence_status": evidence_status,
             "claim": sc.get("claim", ""),
             "members": mem,
             "anchor_book": anchor,
@@ -157,8 +187,84 @@ def _member_slug(m):
     return m if isinstance(m, str) else (m.get("slug") if isinstance(m, dict) else None)
 
 
+def _normalize_adjudication(value, label, warnings):
+    """外部研究裁决归一化为四字段对象。
+
+    旧字符串按兼容契约视为未核定的书内观点；对象中任一必需字段缺失/非法时，
+    使用明确的「尚未核定」降级文案并记 warning，不臆造科学结论。
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value.strip():
+            return {
+                "status": "unverified",
+                "book_view": value.strip(),
+                "research_view": "尚无外部证据裁决",
+                "boundary_conditions": "尚未核定",
+            }
+        warnings.append(f"dispute「{label}」adjudication 为空字符串,已置空")
+        return None
+    if not isinstance(value, dict):
+        warnings.append(f"dispute「{label}」adjudication 必须是对象或字符串,已置空")
+        return None
+    status = value.get("status")
+    if status not in EVIDENCE_STATUS_VALUES:
+        warnings.append(
+            f"dispute「{label}」adjudication.status「{status}」∉ "
+            f"{EVIDENCE_STATUS_VALUES},改 unverified"
+        )
+        status = "unverified"
+    defaults = {
+        "book_view": "见上方书间立场",
+        "research_view": "尚无外部证据裁决",
+        "boundary_conditions": "尚未核定",
+    }
+    out = {"status": status}
+    for key, fallback in defaults.items():
+        item = value.get(key)
+        if not isinstance(item, str) or not item.strip():
+            warnings.append(f"dispute「{label}」adjudication.{key} 必须是非空字符串,已降级")
+            out[key] = fallback
+        else:
+            out[key] = item.strip()
+    return out
+
+
+def _normalize_sources(value, label, warnings):
+    """外部证据来源归一化为 URL 字符串或含 url 的对象；非 http(s) 项不进入产物。"""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        warnings.append(f"dispute「{label}」sources 必须是数组,已置空")
+        return []
+    out = []
+    for i, source in enumerate(value):
+        if isinstance(source, str):
+            if HTTP_URL_RE.match(source.strip()):
+                out.append(source.strip())
+            else:
+                warnings.append(f"dispute「{label}」sources[{i}] 不是合法 http(s) URL,已剔除")
+            continue
+        if isinstance(source, dict):
+            url = source.get("url")
+            if isinstance(url, str) and HTTP_URL_RE.match(url.strip()):
+                item = dict(source)
+                item["url"] = url.strip()
+                out.append(item)
+            else:
+                warnings.append(f"dispute「{label}」sources[{i}].url 不是合法 http(s) URL,已剔除")
+            continue
+        warnings.append(f"dispute「{label}」sources[{i}] 类型非法,已剔除")
+    return out
+
+
 def resolve_disputes(manual, index_concepts, member_set, warnings):
-    """🔶 每条 dispute:从 index 摊各 slug 立场 + 判 index_relation(§4.3)。parallel 剔除。"""
+    """🔶 每条 dispute:从 index 摊各 slug 立场 + 判 index_relation(§4.3)。parallel 剔除。
+
+    positions/index_relation 只描述「书间立场」；question_type/adjudication/sources 独立承载
+    「外部研究怎么判」。两层不相互冒充。
+    """
     out = []
     for i, d in enumerate(manual.get("disputes", []) or []):
         q = d.get("question")
@@ -210,35 +316,44 @@ def resolve_disputes(manual, index_concepts, member_set, warnings):
             warnings.append(f"dispute「{q}」判为 parallel(松散并列,非真交锋),已从分歧矩阵剔除")
             continue
 
+        question_type = d.get("question_type")
+        if question_type is not None and question_type not in QUESTION_TYPE_VALUES:
+            warnings.append(
+                f"dispute「{q}」question_type「{question_type}」∉ {QUESTION_TYPE_VALUES},已置空"
+            )
+            question_type = None
+        adjudication = _normalize_adjudication(d.get("adjudication"), q, warnings)
+        sources = _normalize_sources(d.get("sources"), q, warnings)
+        if adjudication and not sources:
+            warnings.append(f"dispute「{q}」有 adjudication 但无合法 sources,外部研究结论待补出处")
+
         out.append({
             "id": did, "question": q, "axis": d.get("axis", ""),
             "concept": concept, "index_relation": rel,
+            "question_type": question_type,
             "positions": positions, "note": d.get("note"),
+            "adjudication": adjudication,
+            "sources": sources,
         })
     return out
 
 
-def _pull_certainty(slug, anchor, members_by_slug):
-    """dimensions cell 缺 certainty 时:从该 distill 的 decision_rules/core_ideas 拉;
-    优先 anchor 精确匹配,否则若全书 certainty 单一取值则用之,再否则 book_explicit。"""
+def _anchor_matches(slug, anchor, members_by_slug):
+    """锚点是否在该书 decision_rules/core_ideas 中精确出现（忽略标点/空白）。"""
+    if not anchor:
+        return False
     d = members_by_slug.get(slug)
     if not d:
-        return "book_explicit"
+        return False
     items = list(d.get("decision_rules", []) or []) + list(d.get("core_ideas", []) or [])
-    # anchor 精确匹配
-    if anchor:
-        for it in items:
-            if it.get("anchor") and norm(it["anchor"]) == norm(anchor) and it.get("certainty") in CERTAINTY_VALUES:
-                return it["certainty"]
-    # 全书单一 certainty
-    seen = {it.get("certainty") for it in items if it.get("certainty") in CERTAINTY_VALUES}
-    if len(seen) == 1:
-        return next(iter(seen))
-    return "book_explicit"
+    return any(it.get("anchor") and norm(it["anchor"]) == norm(anchor) for it in items)
 
 
 def resolve_dimensions(manual, member_set, members_by_slug, warnings):
-    """✍️🔶 维度对照表:name/value 纯 manual;certainty 缺则拉 distill;校验 slug∈成员 + certainty 合法。"""
+    """✍️🔶 维度对照表:name/value 纯 manual;校验 slug∈成员 + certainty + 原书锚点。
+
+    certainty 必须由 manual 显式声明；缺失时不再从全书或同锚点项推断，直接 unverified。
+    """
     out = []
     for i, dim in enumerate(manual.get("dimensions", []) or []):
         name = dim.get("name")
@@ -253,10 +368,16 @@ def resolve_dimensions(manual, member_set, members_by_slug, warnings):
                 continue
             cert = cell.get("certainty")
             if cert is None:
-                cert = _pull_certainty(slug, cell.get("anchor"), members_by_slug)
+                cert = "unverified"
+                warnings.append(f"维度「{name}」的 {slug} 缺 certainty,改 unverified")
             elif cert not in CERTAINTY_VALUES:
-                warnings.append(f"维度「{name}」的 {slug} certainty「{cert}」∉ 三枚举,改 book_explicit")
-                cert = "book_explicit"
+                warnings.append(f"维度「{name}」的 {slug} certainty「{cert}」非法,改 unverified")
+                cert = "unverified"
+            elif cert != "unverified" and not _anchor_matches(slug, cell.get("anchor"), members_by_slug):
+                warnings.append(
+                    f"维度「{name}」的 {slug} anchor「{cell.get('anchor', '')}」无法回指原书,改 unverified"
+                )
+                cert = "unverified"
             cells.append({"slug": slug, "value": cell.get("value", ""),
                           "certainty": cert, "anchor": cell.get("anchor", "")})
         if not cells:

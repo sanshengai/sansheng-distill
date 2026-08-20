@@ -115,6 +115,23 @@ schema(distill.json 顶层,Step1 产;下游 Step6 选模板变体 / Step2 按 na
 
 **驱动什么**:`stakes=high` 激活门禁 **G22**(可执行数字必带 `certainty`,§4.5.16 / §7)+ 硬门禁②的**事实抽检**(SKILL 铁律「不编造」:回原书抽检 ≥5 条数字 + 金句)。`normal` 书不强制 certainty(可选产)。**旧 distill 无 `stakes` = normal**(向后兼容,旧书不必回填,除非要做高后果主题聚合 / StepB)。
 
+### 1.6 domain_profile:心理学科学证据轴(v6.2)
+
+`domain_profile` 是可选顶层对象,只在需要把「作者/原书主张」与「外部科学证据」分开的领域启用。本版先注册 `domain:"psychology"`;旧书与非心理学书不写,行为完全不变:
+
+```jsonc
+"domain_profile": {
+  "domain": "psychology",
+  "subfields": ["judgment-and-decision-making"],
+  "work_kind": "popular_science",
+  "clinical_relevance": "none"
+}
+```
+
+- `work_kind` ∈ `popular_science|academic_monograph|methods_manifesto|applied_guide|textbook|casebook`;`clinical_relevance` ∈ `none|indirect|direct`;`subfields` 至少 1 个非空领域标识。
+- 该轴不新增 `book_type`、不改变 `render_profile`,只条件激活 **G23**(Pass1 claim 契约)与 Step3/Step7 **G24**(外部科学证据契约)。
+- `evidence_level` 仍只问「转述是否忠于原书」,`certainty` 仍只问「这条内容来自原书/跨书合成/编者通识」;二者都**不能**回答某项心理学结论是否经得住复制、元分析或边界检验。科学有效性只写 `enrich.evidence_page`。
+
 ---
 
 ## 2. Step2:两遍蒸馏总览(v2)
@@ -470,6 +487,15 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 - **与 evidence_level 正交共存**:`core_ideas[]` 同时挂 `evidence_level`(忠实度)与 `certainty`(来源硬度),二者互不覆盖、都填。
 - **诚实优先**:拿不准往低标(宁 `general_knowledge` 不冒充 `book_explicit`);`cross_book_synthesis` / `general_knowledge` 的数字**尤其要过硬门禁②事实抽检** -- 它们最易在下游被当成「书里说的」误引(这正是 2026-07-15 婴幼儿睡眠文章 fact-check 抓出「成人 REM 20%」「一晚醒 2-8 次」的根因:distill 没标来源硬度,写作时被当书中数据引用)。
 
+#### 4.5.17 心理学 claim_id / claim_type(v6.2,Pass 1 产)
+
+当 `domain_profile.domain=="psychology"` 时,`core_ideas[]` 与 `decision_rules[]` 每条都必须增加:
+
+- `claim_id`:本书内唯一、稳定的 ASCII kebab 标识,如 `loss-aversion-generalizes`;后续修文案不改 ID。
+- `claim_type` ∈ `framework|descriptive|associational|causal|predictive|intervention|methodological|normative`。按主张最强语义定型,不得把相关性包装成因果、把规范建议包装成实证结论。
+
+这一步只是在原书层给可核查主张建立主键,**不是**给主张判真。Step3 的 `evidence_page.claims` 必须逐一覆盖这些 ID;框架型、规范型和不可检验主张也保留,并在外证层如实标 `not_testable`。
+
 ---
 
 ## 4.6 M03 脑图拆分(自绘 SVG 知识树:关键词路标 + 判断句副文本,先读骨架再读血肉)
@@ -562,6 +588,8 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 取值 `原文确认 | 结构推断 | 需复核`:
 
+> `evidence_level` 是**原书转述忠实度**,不是科学证据等级。心理学书中即使一条主张标为「原文确认」,也只表示作者确实这样写过;它仍可能在外部研究中呈 `mixed`、`contested` 或 `not_supported`。
+
 | 值 | 定义 | 判定标准 |
 |---|---|---|
 | `原文确认` | 有可复述的原文句子支撑 | `evidence` 能给出该书可在 `book.txt` 定位的原句/近似原句,且 agent 确实读到 |
@@ -572,7 +600,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 
 ## 6. distill.json schema(主对象,整块契约 · v2)
 
-`evidence_level` 取值 `原文确认|结构推断|需复核`;`book_type` 取值 `论说|叙事|人物|工具`;`render_profile.archetype` 取值 `论说|叙事|人物|工具|语录|书单|课程|考试`(v6,见 §1.4);`soul_module.type` 取值 `compare|chain|curve`;`stakes` 取值 `high|normal`(v6.1,顶层,缺省 normal,见 §1.5);`certainty` 取值 `book_explicit|cross_book_synthesis|general_knowledge`(v6.1,decision_rules / core_ideas 元素级,stakes=high 必产,见 §4.5.16)。**本表是全 skill 契约单一来源,下游(enrich / page-skeleton / html-spec / verify)一律以此字段名为准。**
+`evidence_level` 取值 `原文确认|结构推断|需复核`;`book_type` 取值 `论说|叙事|人物|工具`;`render_profile.archetype` 取值 `论说|叙事|人物|工具|语录|书单|课程|考试`(v6,见 §1.4);`soul_module.type` 取值 `compare|chain|curve`;`stakes` 取值 `high|normal`(v6.1,顶层,缺省 normal,见 §1.5);`certainty` 取值 `book_explicit|cross_book_synthesis|general_knowledge`(v6.1,decision_rules / core_ideas 元素级,stakes=high 必产,见 §4.5.16);心理学书另有可选顶层 `domain_profile` 与元素级 `claim_id/claim_type`(v6.2,见 §1.6/§4.5.17)。**本表是全 skill 契约单一来源,下游(enrich / page-skeleton / html-spec / verify)一律以此字段名为准。**
 
 > **`pub_year`(顶层整数,v5,原著/系列首版年)**:多书作者「思想演变专题」的排序轴(见 `author-craft.md`)。书籍填原著首版年;视频系列填该系列最早一集年份。**一次性查证/手填,非重蒸**;单书蒸馏不消费它,只作跨书聚合的时间锚。缺失时演变页降级(时间线/分期不可用),故建议每部蒸完即回填。
 
@@ -668,6 +696,31 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
   "voice_dna": "(仅人物书)句式 / 节奏 / 禁忌"
 }
 ```
+
+### 6.1a 心理学书条件增量(v6.2)
+
+当且仅当顶层 `domain_profile.domain=="psychology"` 时,在上面的通用对象上叠加以下字段。这里的 `claim_id` 是 Step3 外部证据页与 Step7 G24 的连接键:
+
+```jsonc
+{
+  "domain_profile": {
+    "domain": "psychology",
+    "subfields": ["judgment-and-decision-making"],
+    "work_kind": "popular_science",
+    "clinical_relevance": "none"
+  },
+  "core_ideas": [{
+    "claim_id": "loss-aversion-generalizes",
+    "claim_type": "descriptive"
+  }],
+  "decision_rules": [{
+    "claim_id": "use-reference-class",
+    "claim_type": "predictive"
+  }]
+}
+```
+
+`claim_id` 在 `core_ideas + decision_rules` 合并集合中不得重复;`claim_type` 必须取 §4.5.17 八枚举。旧数据、非心理学书与视频不回填、不触发 G23/G24。
 
 > 约束回顾:`primary:true` 的 core_ideas **1-2 条**(G15);`featured:true` 的 quotes **≤3 条**(§4.5.2);`soul_module.states` **2-3 个同构态**、`subtitle` 非空(G11);`soul_module.curve` **仅 `type=curve` 必填**;`action_chain` **4-5 环**(G13);`self_check` **4-8 条**(G12);书 `chapters[].excerpts` **每章 ≥1**(G14)。**v3 新增**:`cover_intro` **2-3 句、禁比喻、禁复用 napkin ≥12 字连续片段**(G16);`action_chain[].detail` **每环去空白 ≥60 字**(G17);`credibility_verdict` **书籍必产**(G18);`decision_rules[].chain_step` / `mental_models[].chain_step` ∈ **[1,5] 或 null**(牵强留空,禁硬塞)。**v4 新增**:`core_question` **书/视频必产、≤40 字疑问句、禁复用 cover_intro/one_liner ≥12 字连续片段**(G19);`core_ideas[].pillar` ∈ **[1,5] 或 null**(牵强留空);`arguments.chain_steps` **4-8 步、每步 ≤14 字**(G20);`chapters[].hook` **若产则 ≤20 字**(G21);`cross_domain[]` **3-5 条、宁缺毋滥不设机检**;`action_chain[].detail` 末句补**时间盒首步动作**(§4.5.6 自查,不加机检)。**餐巾纸四件套(§3 餐巾纸压缩)**:`napkin.formula_read` **书/视频必产、≤80 字、须含运算符或「乘·加·减·除·归零·缺一·比例·乘积」语义词**(G4 扩展);`napkin.sketch` **可降级(蒸不出干净骨架即省略);若产则 type∈{cascade,fork,loop}、caption 非空、nodes ∈ [6,12] 含 ≥1 中间产物(mid:true)、edges ≥1、label 集合 ≠ 公式右侧项**(G4 扩展,防重画公式凑数)。**v6.1(2026-07-15)**:`stakes` ∈ `{high,normal}`(顶层,缺省 normal,§1.5);**`stakes=high` 时** `decision_rules[]` + `core_ideas[]` 每条必带 `certainty` ∈ `{book_explicit,cross_book_synthesis,general_knowledge}`(§4.5.16,G22 机拦);`normal` 书 certainty 可选、不产不拦。
 
@@ -803,6 +856,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 | G20 | `arguments.chain_steps`(v4)不合规 | 命中任一:缺 `chain_steps` 或数 ∉ **[4,8]**;或任一步有效长 > **14 字**。 |
 | G21 | `chapters[].hook`(v4)超长 | 任一章 `hook` **存在且**有效长 > **20 字**即打回该章(缺失不拦,存在性属自查;「具象 / 非论点复述」靠蒸馏自查)。 |
 | G22 | `stakes=high` 书 `certainty` 缺失 / 非法(v6.1) | **仅 `stakes=="high"`(§1.5)激活**:`decision_rules[]` 任一条 **或** `core_ideas[]` 任一条缺 `certainty` 或值 ∉ `{book_explicit,cross_book_synthesis,general_knowledge}` 即打回。`stakes=normal` 本项**不检**(certainty 可选)。 |
+| G23 | 心理学书 claim 主键 / 类型缺失或非法(v6.2) | **仅 `domain_profile.domain=="psychology"` 激活**:domain_profile 缺必要字段/枚举非法;或 `core_ideas[]`、`decision_rules[]` 任一条缺 `claim_id` / `claim_type`;或 claim_id 非 ASCII kebab、在两数组合并集合中重复;或 claim_type 不在 §4.5.17 八枚举即打回。 |
 
 > **v4 补充**:`core_ideas[].pillar` ∈ [1,5] 或 `null`(同 chain_step 机检,牵强留空);`cross_domain[]` **宁缺毋滥、不设机检门禁**(置信不足不产);`action_chain[].detail` 末句时间盒动作(§4.5.6)靠蒸馏自查、不加机检。
 
@@ -811,6 +865,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 > **v4 新增门禁 G19-G21**(2026-07-05,深度分析批次 B):G19 查 `core_question` 存在 + ≤40 字疑问句 + 不复用 cover_intro/one_liner;G20 查 `arguments.chain_steps` 4-8 步、每步 ≤14 字;G21 查 `chapters[].hook` 若产则 ≤20 字。`pillar` 合法性(∈ [1,5] 或 `null`)一并由 verify 机拦(不单列 G 号)。三条均机械可判。原 **G8-G18 判定不变**。
 > **v4 批次 B-2 门禁(2026-07-05,餐巾纸四件套)**:**G4 扩展 a** 查 `napkin.formula_read` 存在 + ≤80 字 + 含运算符/语义词(书/视频必产);**G4 扩展 b** 查 `napkin.sketch` 若产则 `type/caption/nodes/edges` 齐全、`nodes` ∈ [6,12]、node.label 集合 ≠ 公式右侧项(sketch 可降级,缺失不拦)。两扩展均并入 G4、机械可判(见 §7.3)。原 **G8-G21 判定不变**。
 > **v6.1 门禁 G22(2026-07-15,高后果书确定性)**:`stakes=high`(§1.5)时,`decision_rules[]` + `core_ideas[]` 每条可执行建议必带 `certainty`(§4.5.16 三枚举)。**这是独立 stakes 闸,不随 `render_profile.active_gates`**(后果轴与形态轴正交)—— verify 按 `distill.stakes=="high"` 单独激活、不登记进 archetype 注册表(避免污染 profile 完整性校验 `_lint_profile_integrity`)。`stakes=normal` 书 certainty 可选、不检。事实抽检(SKILL 铁律「不编造」)与 G22 配套:G22 机拦「有没有标 certainty」,抽检管「标得对不对 + 数字真不真」。原 **G1-G21 判定不变**。
+> **v6.2 条件门禁 G23(心理学 claim 契约)**:`domain_profile.domain=="psychology"` 时,domain_profile 结构 + 每条 core_idea/decision_rule 的唯一 `claim_id` 与八类 `claim_type` 必须合规。与 G22 一样,G23 不写入 archetype 的 `active_gates`;它由领域轴独立激活。G23 只保证「所有待核主张有稳定主键且没有偷换主张类型」,科学证据覆盖由 enrich + Step7 **G24** 单独判定。
 > **v4 批次 C 门禁 / 自查(2026-07-05,逐章交互 + UI 精修)**:
 >   - **破折号统一(Q7-12,机检)**:verify 机拦「页面可见转述正文出现全角 `——`/`—`」(原文照录 blockquote/qw-card 豁免);写 narrative/summary/卡片文案时破折号一律 `--`(§3.5.2 Pass 2 文风约束)。
 >   - **cs-badge 死徽标(Q7-9,机检)**:`chain_step` 关联做法数为 0 → **不渲染 `.cs-badge`**;verify 拦页面出现「0 条…做法」的 `.cs-badge`。

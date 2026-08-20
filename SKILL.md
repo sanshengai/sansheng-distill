@@ -3,21 +3,21 @@ name: sansheng-distill
 description: Use when 用户要把一本书全文、单个视频（按 1 集）、YouTube/B站视频系列，或一个视频博主/人物的全部作品（跨媒介人物思想蒸馏）做成深度蒸馏资料；触发词：蒸馏这本书、拆书、蒸馏视频、视频系列蒸馏、蒸馏 UP 主、蒸馏这个博主、人物思想蒸馏。只要字幕摘要、单篇文章写作或「一页」世界史专项时不用此 Skill。
 ---
 
-# sansheng-distill -- 书籍/视频蒸馏引擎(v2 浏览型)
+# sansheng-distill -- 书籍/视频蒸馏引擎(v3 浏览型)
 
 输入一本书的电子全文(或一组视频),跑完 Step0-Step7 管线(Step2 分两遍),产出一个可 `file://` 直开的**单文件交互 HTML 蒸馏页**。
 
-**v2 页型 = 浏览型「凝练地图 + 详实正文 + 页内二级视图」**,承旧版验证过的**五段漏斗**:
+**v3 页型 = 浏览型「凝练地图 + 详实正文 + 批判证据 + 页内二级视图」**,按读者逻辑链组织:
 
 | Tab | 装什么 |
 |---|---|
-| ① 一眼全书 | 真封面 hero + 餐巾纸公式 + 核心观点独立模块 + 可点跳脑图 + 精选金句(给 3 分钟扫读的人) |
-| ② 全书详实 | 逐章 800-1500 字详实转述,论点式标题,**默认全展开不折叠**(给愿读 30 分钟的人) |
-| ③ 书魂 | 全书最核心那条反直觉主张的可视化(并排对照 / 流程链 / 曲线) |
-| ④ 行动与自检 | 因果链 + 心智模型 + 决策规则 + 第二人称自检问句(纯浏览,无打分) |
-| ⑤ 该信几分·延伸 | 批判层四分区 + 内在张力 + 书评 + 跨书互链 + 三张页内子视图入口(作者/同类书/观点对比) |
+| ① 全书速览 | 真封面 + 餐巾纸公式/因果草图 + 可点跳脑图 + 核心观点 + 最强反直觉主张 |
+| ② 逐章精读 | 逐章 800-1500 字详实转述 + 概念筹码 + 金句墙;**目录态默认收起,可全部展开** |
+| ③ 批判与评价 | 先复述作者论证,再放内在张力、批判四区、书评与观点对照;心理学书另列科学证据层 |
+| ④ 行动清单 | 行动路线 + 决策规则 + 心智模型 + 第二人称自检(纯浏览,无打分) |
+| ⑤ 延伸阅读 | 同类书、作者书架、跨域命名、跨书互链与阅读路径 |
 
-交互:脑图可点跳章节、章节详实层默认全展开、书魂可视化、3 个页内全屏子视图(hash 路由开合)、多主题换肤。
+交互:脑图可点跳章节、章节手风琴多开、两张页内全屏子视图(hash 路由开合)、多主题换肤。
 
 **这是入口编排文件。** 先读本文对齐管线,再在每一步按下表**读对应 reference / 跑对应 script**;references 是各步的执行细则,不要凭记忆做。
 
@@ -60,7 +60,7 @@ $DATA\
     comments.json               # 仅视频:观众评论(Step0-V,供 Step3 enrich.reviews)
     distill.json                # 蒸馏主对象 v2(Step2 两遍产:Pass1 骨架 + Pass2 narrative/excerpts)
     _pass2_g*.json              # Pass2 分块中间态(长书按章 fan-out 各组产物,合并回 distill) -- gitignore
-    enrich.json                 # 联网增补 v2(Step3:author_page/similar_page/views_page + reviews + cross_book_external,带来源 URL,可整块降级)
+    enrich.json                 # 联网增补 v2.1(五个基础键;心理学书加 evidence_page 科学证据层)
     index-merge.json            # 5-tag 合并清单(Step4 中间产物)
     {slug}.html                 # 单文件交互蒸馏页(Step6 产物,最终交付,≤3MB;真封面 base64 内联,无独立 cover 文件)
     _verify.png                 # Step7 验证全页截图                                  -- gitignore
@@ -78,14 +78,14 @@ $DATA\
 |---|---|---|---|---|---|
 | **Step0-B** 入书诊断 + 转 txt(蒸**书**走此行) | 电子书 → 全文 txt + 诊断(格式/可提取/扫描版/乱码率/目录识别) | 脚本自足;分流规则见 `method.md §0` | `python $SKILL\scripts\convert_book.py "<书文件>" --outdir "$DATA\{书目录}"`(重转加 `--force`)。**套装/合集 epub**:先 `--list-volumes` 列分册,再逐本 `--volume "<分册名>"` 切(按 TOC 顶层 + spine 区间,不漏未列入目录的正文续页) | `book.txt` / `diagnose.json` | exit 2 = 缺依赖/格式不支持/拒覆盖 → 装 calibre(azw3·mobi)或补 pip 依赖或加 `--force`;**exit 3 = 需OCR / 需人工确认 → 停下问用户(见硬门禁①),不硬读、不编内容** |
 | **Step0-V** 视频系列入库(蒸**视频**走此行) | 每个视频取材转写 → 手写 manifest → 组装语料 + 抓评论。章节=集数 | **`method.md §V.0`(取材 cascade,固定流程,先读)** + `§V`。分流:YouTube 优先抓字幕(**认准人工字幕**,`video-to-subtitle-summary`)/ 无字幕或需画面语义 → Gemini 原生在线(`claude-gemini-video`,免下载)/ 非 YouTube 先下载再解析 | ① 按 §V.0 取每视频**干净转写**(YouTube 人工字幕 `subtitle.{lang}.vtt` 可直喂 build_series;⚠️ 别用滚动重复 3× 的 `text.txt`/自动字幕),存 `$DATA\{书目录}\raw\{NN}_{id}\`;② 手写 `series-input.json`(`transcript` 指向选定的**干净**字幕文件);③ `python $SKILL\scripts\build_series.py --manifest "<series-input.json>" --outdir "$DATA\{书目录}"`;④ `python $SKILL\scripts\fetch_comments.py --series "$DATA\{书目录}\series.json" --out "$DATA\{书目录}\comments.json"`;⑤ 逐条 `yt-dlp --skip-download --print` 抓热度元数据(播放/赞/评论数/日期,供热度条;`--flat-playlist` 拿不到须逐条 full extract) | `book.txt` / `series.json` / `diagnose.json` / `comments.json` | build exit 3 = 全部视频缺转写/乱码 → 停下问用户(见硬门禁①);fetch exit 2 = 全失败或抖音不支持 → 评论整块降级(enrich.reviews 置 null),不阻塞蒸馏 |
-| **Step1** 书型判定 | 读诊断 + 全书抽样(首/中/末章),判 论说/叙事/人物/工具 型,定加重字段与硬门槛 | `method.md §1` | 无(读 `diagnose.json` + `book.txt` 抽样) | `book_type`(写入 distill.json) | 边界模糊按 §1.2 顺序裁决,命中即停;传记重思维 → 人物(不判叙事) |
-| **Step2·Pass1** 压缩骨架(凝练地图) | 三轮认知压缩 + 四嫁接件(决策规则/心智模型/内在张力/批判段)+ v2 延展字段(生活类比/主次/金句点评/概念误读/书魂/因果链/自检)+ 逐条补锚点与证据等级 | `method.md §2-§5`(§3 三轮 + §4 四嫁接件 + **§4.5 延展字段** + §5 锚点) | 无(内化方法蒸馏,产出 JSON) | `distill.json` 骨架层(**除 `chapters[].narrative`/`.excerpts` 外全部字段**) | diagnose=分组蒸馏 → 走 `method.md §8` 分组再合成(禁一次性硬吞);产出后过 §7 门禁 G1-G15 自查(见硬门禁②) |
+| **Step1** 书型 + 领域判定 | 读诊断 + 全书抽样(首/中/末章),判书型、stakes;心理学书另写 `domain_profile` | `method.md §1` | 无(读 `diagnose.json` + `book.txt` 抽样) | `book_type/stakes/domain_profile?`(写入 distill.json) | 边界模糊按 §1.2 顺序裁决;`domain_profile` 不确定则不冒标,一旦标 psychology 就激活 G23/G24 |
+| **Step2·Pass1** 压缩骨架(凝练地图) | 三轮认知压缩 + 四嫁接件 + v2/v4 延展字段 + 逐条补锚点与原书转述状态;心理学 core_ideas/decision_rules 逐条补唯一 claim_id + claim_type | `method.md §2-§5`(心理学另读 §1.6/§4.5.17) | 无(内化方法蒸馏,产出 JSON) | `distill.json` 骨架层(**除 `chapters[].narrative`/`.excerpts` 外全部字段**) | diagnose=分组蒸馏 → 走 `method.md §8`;产出后过 §7 门禁 G1-G23(条件门按 stakes/domain 激活) |
 | **Step2·Pass2** 详实转述(详实正文) | 逐章两级检索(先读 Pass1 骨架保结构,再回 book.txt 该章原文 grep 案例/数字/原话保血肉)→ 讲书稿式 narrative(坡道开场 → 观点+完整案例故事+数据 → 一句接主线)+ 挑 excerpts。**长书按章 fan-out 并行**(每组≤5 章派 1 subagent 全 Opus,组内串行,主控合并) | `method.md §3.5`(两级检索 / 讲书稿模板 / 版权线 / fan-out) | 无(内化;长书分组各产 `_pass2_g*.json` 中间态,主控回填 distill.json) | 回填 `distill.json` 的 `chapters[].narrative`(书 800-1500 字/章·视频段 ≥400；**文章选编**设 `render_profile.archetype="文章选编"`，逐篇 ≥300 字)+ `chapters[].excerpts`(书每章 ≥1,原文 ≤150 字) | grep 不到支撑就降级不写该点,**禁凭印象编案例/编数字**；读者可见 narrative 禁写“蒸馏/审计/后续出版”等工作流元话语，禁用同章重复句凑字数；主控做 G9 / G14 机械核对 + **标志性案例保全抽检**(招牌故事必须整段完整出现,不得压成标签) |
-| **Step3** 联网增补(三页内子视图 + 内联) | 三张二级页各起一轮专门搜索:作者页 / 同类书页 / 观点对比页(国内外赞同方/质疑方);另产内联 `reviews`(书评正反)+ `cross_book_external`(跨书外部立场),全带来源 URL。**视频系列:`reviews`/`views_page` 数据源含 Step0-V 的 `comments.json`,`author_page` 改频道页,详见 `enrich.md §V`** | `enrich.md`(§3 三块搜索 pass;§4 豆瓣反爬;视频看 §V) | 联网检索(引擎按 `enrich.md §3.4` 路由表按任务类型选一个,内置 WebSearch 仅末位回退);视频 reviews/views 读 comments.json | `enrich.json`(五顶层键:`author_page`/`similar_page`/`views_page`/`reviews`/`cross_book_external`) | 某块全档抓不到 → 该键置 `null` 整块隐藏(子视图 + 入口一并删);蒸馏主体不依赖网络,联网失败不阻塞 |
+| **Step3** 联网增补(页内子视图 + 内联) | 产五个基础块;心理学书再逐 claim 查元分析/复制研究/官方勘误,产 `evidence_page` | `enrich.md`(§1.1 科学证据契约 + §3 搜索 pass;视频看 §V) | 联网检索按 §3.4 路由只选一个引擎;心理学学术检索走 Tavily 且只采一手论文/官方材料 | 普通书五键;心理学书第六键 `evidence_page` | 基础块可据实置 null;心理学 evidence_page 不可整块降级,证据不足须标低置信/not_testable 仍全量覆盖 |
 | **Step4** 跨书索引登记 + 互链 | `distill.concepts` 逐个与现有索引语义匹配,赋 5-tag(SUPPORTS/REFINES/CONTRADICTS/NEW_SUB_ASPECT/NEW_CONCEPT),登记本书 entry + 渲染 ⑤ M11 已蒸书互链 | `cross-book.md`(§2 精确四步 + §3 tag 判定) | ① `python $SKILL\scripts\update_index.py query --index "$DATA\knowledge-index.json" --names-only` → ② 写 `index-merge.json` → ③ `... register --index "$DATA\knowledge-index.json" --merge "$DATA\{书目录}\index-merge.json" --dry-run`(exit 0)→ ④ 去 `--dry-run` 真跑 | `index-merge.json` / 更新 `knowledge-index.json`(+.bak) / M11 互链数据 | register exit 1 = 校验错 → 按 stderr 逐条修 `index-merge.json` 回 ③ 重校验(**禁用 `--force` 绕 exit 1**);exit 2 = 同书 slug 冲突 → 确为重蒸才加 `--force`,slug 撞车则换唯一 slug |
 | **Step5** 设计两遍工作法 | 为这本书出 token plan + signature 决策,过对抗自审;品牌锁八成、书魂放两成 | `design-craft.md`(两遍工作法)+ `brand-tokens.md`(主题 token 契约) | 无(设计决策,内化到 Step6 填槽) | token/signature 定调(不落独立文件,直接指导 Step6) | signature 命中反 slop 黑名单(蓝紫渐变/emoji 图标/圆角+左边框卡滥用/凑数数据)→ 改;衬线模式必配 CJK 衬线兜底 |
-| **Step6** 生成单文件 HTML | 复制骨架填**五 tab + 17 区块 + 3 页内子视图(SUB01-03)**的槽,删干净 dummy,可降级区块(M10/M11/子视图)整块删;**品牌浮标 `SLOT:BRANDBAR` 默认整块删,只有交付方明确给了 `brand` 配置才填槽保留(§1.6)** | `html-spec.md`(§1 五 tab + 区块规格表 / §1.6 品牌浮标 / §3 生成流程 / §4 脑图 md / §5 体积 / §6 extract 兼容) | 复制 `$SKILL\templates\page-skeleton.html` 到 `$DATA\{书目录}\{slug}.html` 后逐槽填充(vendor 已内联,勿动) | `$DATA\{书目录}\{slug}.html`(单文件,**≤3MB**) | 超体积预算按 `html-spec.md §5` 先删 dummy 再压 excerpts 再压封面(WebP data URI/降尺寸);禁删 vendor/必需区块/data-source,禁压 narrative 跌破 G9 |
-| **Step7** 出厂验证 v2 | 静态 lint + 契约门禁 + **原文事实门禁** + Playwright 冒烟:**零占位符残留(`{{槽}}`/dummy,T0-P)/ distill 顶层必需键齐(T0-S)/ 封面非占位 SVG(T0-C)** / 体积≤3MB / 必需区块齐 / 五 tab 文案+panel id 对 / narrative 字数达标(书≥800·文章选编≥300·视频≥400)/ **每条 chapter excerpt 与顶层 quote 必须在 `book.txt` 逐字命中、文章选编每篇须以 `source_title` 命中原始篇名、章节 anchor 不得指向不存在章节（`尾声` 合法）、跨章不得复用≥120字正文、同章不得复用≥40字句、正文不得含编辑流程语** / 章标题论点式(黑名单+长度)/ 书籍真封面 `img[src^="data:image"]` / 3 子视图与入口·返回一致 / 无「显示出处」开关且 `.src-note` 常显；**公开 HTML 不得泄露 `book.txt` 等内部输入文件名，应显示为“章节·原文位置”** / 无独立金句墙 / 零外链 / lang="zh" / data-source≥20 / token 块外零 hex / 主题切换 body 背景变化 | `html-spec.md §3`(违规修复优先级) | `python $SKILL\scripts\verify_page.py "$DATA\{书目录}\{slug}.html" --distill "$DATA\{书目录}\distill.json" --source "$DATA\{书目录}\book.txt" --screenshot "$DATA\{书目录}\_verify.png"; echo "退出码=$?"` | 退出码 + `_verify.png` 全页截图 | **exit 1 = 有违规,按输出逐条修后重跑;exit 0 才算 Step7 / 本书完成(见硬门禁③)。绝不放宽 verify 或删检查项来「过关」** |
+| **Step6** 生成单文件 HTML | 复制骨架填五 tab + 两张页内子视图;删净 dummy;心理学书保留并填 `J-PSYCH-EVIDENCE`,普通书整段删 | `html-spec.md`(§1 区块规格 / §1.2.3 心理学证据 / §3 生成 / §5 体积) | 复制 `$SKILL\templates\page-skeleton.html` 到 `$DATA\{书目录}\{slug}.html` 后逐槽填充(vendor 已内联,勿动) | `$DATA\{书目录}\{slug}.html`(单文件,**≤3MB**) | 超体积先删 dummy 再压 excerpts/封面;禁删必需块、data-source 或心理学 G24 三栏 |
+| **Step7** 出厂验证 v2 | 静态 lint + 原文事实门禁 + Playwright 冒烟 + G1-G24 条件契约。心理学 G24 对账 claim ID、证据枚举/来源/范围,并核 HTML 三栏一一对应 | `html-spec.md §3` + `method.md §7` + `enrich.md §1.1` | `python $SKILL\scripts\verify_page.py "$DATA\{书目录}\{slug}.html" --distill "$DATA\{书目录}\distill.json" --source "$DATA\{书目录}\book.txt" --screenshot "$DATA\{书目录}\_verify.png"; echo "退出码=$?"` | 退出码 + `_verify.png` | exit 0 才算完成;绝不放宽验证阈值或删检查项假过关 |
 
 > ⚠ **视频路径 v2 尚未跑 E2E 验证**:骨架 / `method.md §V` / `html-spec.md §V` / `enrich.md §V` / `verify_page.py` 的视频分支已随 v2 更新到位,但尚未用视频样本完整重蒸验收(书样本《金钱心理学》已 E2E 通过)。蒸视频系列时按 §V 照做,遇到骨架/门禁与视频不吻合的坑先记录再修。
 > 跑判成败的脚本别用 `\| tail` / `\| head` 取摘要(管道退出码取最后一段,`tail` 永远成功会吞失败);看完整结尾行或补 `; echo "退出码=$?"`。
@@ -135,8 +135,8 @@ $DATA\
 1. **Step0 exit 3 → 停下问用户**:诊断判「需OCR」(扫描版纯图)或「需人工确认」(gb18030 疑似假字/乱码率>2%)时,**不启动蒸馏、不硬读、不编内容**,把 diagnose 结论报给用户定夺(补 OCR / 换文件 / 人工核编码)。**视频系列同理**:`build_series.py` exit 3(全部视频都缺转写,一个都没抓到)→ 停下问用户(补转写 / 换视频 / 核 manifest),不拿空语料硬蒸。
    > **`toc_detected: false` / `chapters_detected: 1` 也要停**(v0.5 补):目录结构没识别出来 = 蒸馏时手里**没有原书章节划分**,章数只能靠模型自由发挥(2026-07-26 实测:6 本全切自同一个「套装共5册」合订 epub,`toc_detected` 全 false,产出的章数一律被压成 6 章)。
    > **套装/合集 epub 走 `--volume` 切,别整本硬蒸、也别手工切**:`convert_book.py --list-volumes` 列出顶层分册与各自章数 → 逐本 `--volume "<分册名>"`。切分按 TOC 顶层定分册、按 **spine 区间**取正文(未列入目录的正文续页也收进来,只取 TOC 篇目会静默丢正文),`diagnose.title` 自动取分册名。`chapters_source` 字段标明章数来自 `epub_toc` 还是 `body_regex`。
-2. **Step2 两遍质量门禁自查(G1-G22)**:Pass1 骨架 + Pass2 详实转述产出后,按 `method.md §7` 逐条自查(通用 G1-G7 + 书型专项 + v2 详实/浏览层 G8-G21 + 高后果 stakes 门 G22)。空洞夸赞 / 无锚点论断 / 硬门槛未达 / 公式含糊 / 叙事压成标签 / **章标题非论点式(G8)/ narrative 详实度不足(书<800·视频<400 字·G9)/ layman_analogy 有空(G10)/ soul_module 不合规(G11)/ self_check·action_chain 越界(G12/G13)/ excerpts 缺或超 150 字版权红线(G14)/ primary·featured 越界(G15)/ cover_intro·裁决·core_question·论证链结构越界(G16-G21)/ 高后果书(stakes=high)可执行数字缺 certainty(G22)** = 打回重蒸 / 回补,不带病进 Step6。
-3. **Step7 verify v2 exit 0 才算完成**:`verify_page.py`(v2,传 `--distill` 追加契约门禁)退出码非 0 就不是成品。按输出修数据/样式后重跑,直到 exit 0。**绝不放宽验证阈值或删检查项来假过关**。
+2. **Step2 两遍质量门禁自查(G1-G23)**:Pass1 骨架 + Pass2 详实转述产出后,按 `method.md §7` 逐条自查。通用/书型/详实门 G1-G21 不变;`stakes=high` 条件激活 G22;`domain_profile.domain=psychology` 条件激活 G23,要求每条 core_idea/decision_rule 有唯一 claim_id + 合法 claim_type。命中即打回重蒸/回补,不带病进 Step3/Step6。
+3. **Step7 verify v2 exit 0 才算完成**:`verify_page.py`(v2,传 `--distill` 追加契约门禁)退出码非 0 就不是成品。心理学书另以 G24 核 `evidence_page` 全 claim 覆盖、外证枚举/URL/范围/风险及 HTML 三栏映射。按输出修数据/样式后重跑,直到 exit 0。**绝不放宽验证阈值或删检查项来假过关**。
    > **T0 三道补盲门(v0.5,2026-07-27 加)**:`[占位]` 模板槽 / dummy 残留、`[schema]` 顶层必需键缺失、`[lint]` 封面是占位 SVG -- 三者**恒校验、任何 render_profile 不可关**。立法起因见 `flash-mode.md §0`(旧门禁 174 项全是「校验已有字段的取值」,默认「一定会填槽、一定产全 schema」;模型把模板原样交付或少产半个 schema 时,循环空转 = 零违规放行)。**`[schema]` 项对 2026-07-27 前蒸的旧书会报 render_profile/cover_intro 等缺失,属预期,旧书不必重蒸。**⚠ **verify 只查「结构 / 契约 / 版权长度 / 防注水」,不保证事实正确**:narrative 是否忠于原书、数字 / 人名 / 案例是否真实、excerpts 是否真原文·是否真出现在所标 anchor,**全部无机检** -- 事实正确性靠硬门禁②的蒸馏自查 + 铁律「不编造」,**exit 0 ≠ 内容属实**(高后果书另做人工抽检,见铁律「不编造」)。
 
 4. **批量交付闸 exit 0 才许上站**(v0.5,蒸多本时):单本 verify 只回答「这一本合不合格」,回答不了「**这一批该有的都在吗**」。上站前把**预期名单显式**交给批量闸核对:
@@ -153,8 +153,8 @@ $DATA\
 - **论点式标题(v2)**:`chapters[].title` / M04 `<h3>` 一律**可反驳的判断句**,禁「第N章 / 视频N」式纯章号、禁通用容器词(章节脉络/全书脉络/金句墙/总结/概述…),有效长度 ≥8 字(G8;verify 机拦黑名单+长度,判断句语义靠蒸馏自查)。**脑图二级节点(v4 批 A 双层化)例外**:`topic` 改概念关键词 ≤10 字做扫读层、**取消 ≥8 字下限**(仍守黑名单+禁容器词);可反驳判断句下沉到 `tags[0]`(≥8 字,verify 机拦缺失/过短),`tags[1]` 放「第N章」章码 chip(见 method §4.6 / html-spec §5)。
 - **详实度下限(v2)**:每章 `narrative` 书 ≥800 字 / 视频段 ≥400 字(G9);宁可少论点讲透,不注水;**标志性案例 / 故事必须整段完整讲**(时间·人物·动作·转折·结果),禁压成一句标签。
 - **真封面(书,v2)**:书籍 M01 封面必须**真封面 base64**(`data:image`),禁外链、禁纯色占位;联网拿不到才退占位 SVG。视频用系列封面(首集缩略图 `data:` URI)。
-- **URL**:外部信息(作者/书评/同类书/观点对比/跨书外部)必须带可点击 http(s) 来源 URL;拿不到就降级隐藏,不臆造。
-- **不编造**:金句 `<blockquote>` / `excerpts` 原文照录不改写(直接照录单段 **≤150 字**,blockquote 明示引用,连续 30 字与原文雷同即版权红线须改写);拿不到的数据(评分/年份)据实留空,不制造假精度。**高后果书事实抽检(`stakes=high`)**:育儿 / 医疗 / 理财 / 法律等读者会照着做、数字错会误导的书(判定见 `method.md §1.5`),蒸完须**人工回原书抽检 ≥5 条可执行数字 / 月龄 / 剂量 / 时长 + 金句**,确认所标 `anchor` 指向处确有其文、数值未被记串(verify 不做此核,见硬门禁③)。抽出错即回改或降 `evidence_level`;**这类可执行数字还须逐条标 `certainty`**(书里白纸黑字 / 跨书合成 / 编者通识,见 §4.5.16 + 门禁 G22)。
+- **URL**:外部信息(作者/书评/同类书/观点对比/跨书外部/心理学科学证据)必须带可点击 http(s) 来源 URL;拿不到就按各块契约降级,不臆造。心理学可检验 claim 不得整块隐藏,证据不足要显式低置信或未复制。
+- **不编造**:金句 `<blockquote>` / `excerpts` 原文照录不改写(直接照录单段 **≤150 字**,blockquote 明示引用,连续 30 字与原文雷同即版权红线须改写);拿不到的数据(评分/年份)据实留空,不制造假精度。`evidence_level` 只表示原书转述忠实度,**不得当作科学有效性**。**高后果书事实抽检(`stakes=high`)**:育儿 / 医疗 / 理财 / 法律等读者会照着做、数字错会误导的书(判定见 `method.md §1.5`),蒸完须**人工回原书抽检 ≥5 条可执行数字 / 月龄 / 剂量 / 时长 + 金句**,确认所标 `anchor` 指向处确有其文、数值未被记串。抽出错即回改或降 `evidence_level`;这类可执行数字还须逐条标 `certainty`(见 §4.5.16/G22)。心理学书另逐 claim 做外部科学证据核查(见 enrich §1.1/G24)。
 - **破折号一律 `--`**:所有给读者看的文字里用两个英文连字符,禁全角 `——`。
 - **底部「回原书」声明**:页面底部固定 AI 拆书当地图、别当目的地的收口声明(骨架已带,别删)。
 - **上站 = 有静态入口 + 有 SEO 头,少一样等于没上站**(2026-08-14 实证,代价:一批蒸馏页零收录):

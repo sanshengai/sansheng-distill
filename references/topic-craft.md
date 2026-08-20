@@ -14,7 +14,7 @@
 - **分歧不抹平,也不硬造**:只有真实对立(CONTRADICTS 或 curated 且有可回指 stance)才进分歧矩阵;松散并列不夸成尖锐分歧(对称 StepA 的 turns verdict 分级 + 一致性反证精神)。
 - **成员圈定 = 人工显式列 slugs**:主题边界是编辑判断(「这 13 本算一个睡眠专题」),由 `topic.manual.json` 的 `members:[slug]` 圈定,不改 distill schema、不重蒸、不自动按 tag 归堆。
 - **触发门槛**:成员 <3 本 → 不生成(build_topic exit 3),每书页入口卡整段删。
-- **可视化**:主题数据形态天然是**表格 / 多列对照卡**(分类分区、书×立场矩阵、维度×书对照),**不套 StepA 的坐标系 SVG**(时间线/ribbon/DAG)。纯 HTML+CSS 表格/卡片,零库零 CDN,更贴数据、更稳。维度对照表每格标来源硬度色点(复用蒸馏页 `.ci-evlevel` 那套 certainty 徽标)。
+- **可视化**:主题数据形态天然是**表格 / 多列对照卡**(分类分区、书×立场矩阵、维度×书对照),**不套 StepA 的坐标系 SVG**(时间线/ribbon/DAG)。纯 HTML+CSS 表格/卡片,零库零 CDN,更贴数据、更稳。维度对照表每格标来源硬度色点(复用蒸馏页 `.ci-evlevel` 那套 certainty 徽标);来源缺失/非法统一显示 `unverified`,绝不静默升级成「原书明确」。
 
 ## 1. 三输入分层(服务「绝不重蒸 + 安全增量重建」)
 
@@ -43,21 +43,31 @@
                     "recommend": "…", "books": ["slug"] } ]   // 分流建议,每条可挂推荐书(深链)
   },
   "books": [ { "slug":"…","title":"…","book_type":"…","pub_year":0,"stakes":"high|normal",  // 🤖 直取各 distill
-               "school_id":"s1",          // 🔶 该书归入哪个流派(manual.book_meta)
+               "school_ids":["s1"],        // 🔶 可归入一个或多个流派(manual.book_meta;旧 school_id 自动兼容)
                "one_liner":"…",           // ✍️ 该书在本主题的一句话定位(manual.book_meta;缺则退化取 distill.napkin/core_question)
                "role_in_topic":"…" } ],   // ✍️ 该书角色(深挖代表作/带过;喂入口卡 + 书目导航)
   "schools": [ { "id":"s1","name":"新生儿安抚派","claim":"该流派的核心主张(可反驳判断句)",   // ✍️ 流派归纳(对称 StepA periods)
-                 "members":["slug"],"anchor_book":"slug",   // anchor_book=该流派深挖代表作
-                 "color_idx":0 } ],
+                  "kind":"theoretical|methodological|applied|mixed",
+                  "evidence_status":"supported|mixed|contested|not_supported|not_testable|unverified",
+                  "members":["slug"],"anchor_book":"slug",   // anchor_book=该流派深挖代表作
+                  "color_idx":0 } ],
   "disputes": [ { "id":"d1","question":"自我安抚能不能训练出来?(可反驳的真问题)","axis":"训练派 vs 反训练派",  // 🔶
+                   "question_type":"conceptual|descriptive|causal|predictive|intervention|methodological|normative",
                   "concept":"自我安抚/自主入睡",        // 关联的 knowledge-index concept 名(可 null)
                   "index_relation":"CONTRADICTS|curated|parallel",  // 🤖 由 index 登记状态判定(§4.3)
                   "positions":[ { "label":"可训练/后天习得",
                                   "books":[ { "slug":"…","stance":"可回指原文的立场句","quote":"原文≤150字","anchor":"第X章" } ] },
                                 { "label":"不可训练/发育里程碑","books":[ {…} ] } ],
-                  "note":"编者依据(curated 分歧必填:指出哪本哪句对立)" } ],   // ✍️ 可选(curated 必填)
+                   "note":"编者依据(curated 分歧必填:指出哪本哪句对立)",
+                   "adjudication": {
+                     "status":"supported|mixed|contested|not_supported|not_testable|unverified",
+                     "book_view":"原书之间到底怎么分歧",
+                     "research_view":"外部研究当前如何裁决",
+                     "boundary_conditions":"在哪些人群/情境下结论可能变化"
+                   },
+                   "sources":["https://…"] } ],   // ✍️ 外证可选;有则只收合法 http(s)
   "dimensions": [ { "id":"dim1","name":"自主入睡起始月龄","note":"…",   // ✍️🔶 维度对照表(topic 独有,吃 certainty)
-                    "cells":[ { "slug":"…","value":"3-4 月","certainty":"book_explicit|cross_book_synthesis|general_knowledge","anchor":"第X章" } ] } ],
+                    "cells":[ { "slug":"…","value":"3-4 月","certainty":"book_explicit|cross_book_synthesis|general_knowledge|unverified","anchor":"第X章" } ] } ],
   "consensus": { "agreements":[ {"text":"跨书共识(可反驳判断句)","books":["slug"]} ],   // ✍️ 可选(对称 StepA critique)
                  "caveats":[ {"text":"这批书的集体局限/该信几分"} ] },
   "reading_guide": [ { "slug":"…","why":"读它能懂什么 / 什么人先读它" } ],   // ✍️ 可选(对称 StepA reading_path)
@@ -75,43 +85,45 @@
 **流程**:① 读 manual.members → 逐个加载 `<data-root>/{slug}/distill.json`(缺失记 warning 并剔除)② 门槛:有效成员 <3 → exit 3(不生成)③ 防覆盖栏:out 已存在且 manual 缺失且无 --force → exit 2 ④ 派生 🤖 字段(§4 规则)⑤ 并入 manual(✍️/🔶)+ index(disputes 立场摊平 / index_relation 判定)+ enrich(external_debate)⑥ 写 topic.json + 打印各段条数 + `_warnings`。
 
 **🤖 确定性派生(纯 Python,集合运算,禁 LLM/联网)**:
-- **books**:从各 distill 直取 `title/book_type/pub_year/stakes`;合并 manual.book_meta 的 `school_id/one_liner/role_in_topic`(缺 one_liner 回退 distill 的 `napkin.one_liner`/`core_question`)。
+- **books**:从各 distill 直取 `title/book_type/pub_year/stakes`;合并 manual.book_meta 的 `school_ids[]/one_liner/role_in_topic`(缺 one_liner 回退 distill 的 `napkin.one_liner`/`core_question`)。旧 `school_id` 自动归一成单元素 `school_ids`,输出只写新字段。
 - **disputes 立场摊平**:对每条 manual dispute,positions[].books[] 里每个 slug **从 knowledge-index 该 `concept` 的 entries 自动拉 `stance/quote/anchor/relation`**;index 无该 concept-slug 时用 manual 内联提供的 stance/quote/anchor(fallback,记 warning)。
 - **index_relation 判定**(§4.3):看该 dispute.concept 在 index 的 entries -- 任一 entry `relation==CONTRADICTS` → `CONTRADICTS`;否则若 manual 标了 `curated:true`(或 positions ≥2 且各有 books)→ `curated`;都不满足 → `parallel`。
-- **certainty 拉取**:dimensions.cells[] 缺 `certainty` 时,尝试从对应 distill 的 `decision_rules[]`/`core_ideas[]` 按 anchor 匹配拉;拉不到默认 `book_explicit`(高后果书单书内数字缺省即书中明确)并记 warning。
+- **certainty 拉取**:dimensions.cells[] 缺 `certainty` 时,尝试从对应 distill 的 `decision_rules[]`/`core_ideas[]` 按 anchor 匹配拉;拉不到或拿到非法值一律写 `unverified` 并记 warning。**禁止默认 `book_explicit`**--「没有来源」不能推成「书中明确」。
 - **统计**:member_count/school_count/dispute_count、schools 补 anchor_book 的 title、color_idx 缺则按序补。
 **✍️ 认知部分(不在脚本内跑 LLM,由 manual 提供)**:topic/slug/subtitle/intro/verdict、schools 的 name+claim+members、disputes 的 question+axis+concept+positions 分组、dimensions 的 name+cells(slug+value)、consensus、reading_guide、book_meta。脚本对这些**只做「读 manual 填入 + 校验(slug∈成员 / certainty 合法 / members⊆成员)/ 无则留空 + 记 warning」**,不臆造。
 
-**校验硬门**(违反 → stderr 报错并计入 warnings,不静默):members 中 distill 缺失;schools[].members / disputes positions slug / dimensions cells slug 不在成员集;certainty ∉ 三枚举;dispute.concept 在 index 找不到且 positions 无内联 stance。
+**校验硬门**(违反 → stderr 报错并计入 warnings,不静默):members 中 distill 缺失;schools[].members / disputes positions slug / dimensions cells slug 不在成员集;dispute.concept 在 index 找不到且 positions 无内联 stance。certainty 缺失/非法不再伪造硬值,统一归一为 `unverified` + warning;心理学 topic 新字段存在时须过相应枚举/URL 校验。
 
 ## 4. 派生规则 + 4 视图数据契约
 
 ### 4.1 schools[](分类地图 · 流派分区卡)
 ```jsonc
-{ "id":"s1","name":"新生儿安抚派","claim":"…","members":["slug"],"anchor_book":"slug","color_idx":0 }
+{ "id":"s1","name":"新生儿安抚派","claim":"…","kind":"applied","evidence_status":"mixed","members":["slug"],"anchor_book":"slug","color_idx":0 }
 ```
 - **来源**:纯 manual(knowledge-index 无「流派」结构,聚合器**不自己发明流派**)。build_topic 只校验 members⊆成员、补 color_idx、把 anchor_book 解析成 title。
-- **呈现**:每流派一张卡(对称 StepA 分期卡):流派名(color_idx 上色左边条)+ claim(可反驳主张)+ 代表作深链(anchor_book)+ 成员书 chip(深链)。手机端单列。
+- **呈现**:每流派一张卡(对称 StepA 分期卡):流派名(color_idx 上色左边条)+ kind + claim(可反驳主张)+ evidence_status 科学证据状态 + 代表作深链(anchor_book)+ 成员书 chip(深链)。一本书可同时出现在多个流派;手机端单列。
 
 ### 4.2 dimensions[](维度对照表 · topic 最硬增量)
 ```jsonc
 { "id":"dim1","name":"自主入睡起始月龄","note":"…",
-  "cells":[ { "slug":"…","value":"3-4 月","certainty":"book_explicit","anchor":"第X章" } ] }
+  "cells":[ { "slug":"…","value":"3-4 月","certainty":"book_explicit|cross_book_synthesis|general_knowledge|unverified","anchor":"第X章" } ] }
 ```
-- **来源**:name/cells.value 纯 manual(distill 的 decision_rules 是自由文本、无维度结构,**无法自动归维**);certainty 优先 manual,缺则 build_topic 从 distill 按 anchor 拉、拉不到默认 book_explicit。
-- **呈现**:一维一表格块(行=维度值、列=书,或一维一张横向对照条);每格 `value` + **来源硬度色点**(复用 `.ci-evlevel` 模型:book_explicit→绿/cross_book_synthesis→金/general_knowledge→muted)。空 cell(某书该维无数据)留白不编。这是「A 相对普通书单最硬的增量」-- 让读者一眼看清「这个数字是书里白纸黑字,还是编者跨书合成」。
+- **来源**:name/cells.value 纯 manual(distill 的 decision_rules 是自由文本、无维度结构,**无法自动归维**);certainty 优先 manual,缺则 build_topic 从 distill 按 anchor 拉、拉不到/非法即 `unverified`。
+- **呈现**:一维一表格块(行=维度值、列=书,或一维一张横向对照条);每格 `value` + **来源硬度色点**(复用 `.ci-evlevel` 模型:book_explicit→绿/cross_book_synthesis→金/general_knowledge→muted/unverified→红并写「未核」)。空 cell(某书该维无数据)留白不编。这是「A 相对普通书单最硬的增量」-- 让读者一眼看清「这个数字是书里白纸黑字,还是编者跨书合成」。
 
 ### 4.3 disputes[](分歧矩阵 · 多列立场对照)
 ```jsonc
-{ "id":"d1","question":"…","axis":"…","concept":"…","index_relation":"CONTRADICTS|curated|parallel",
-  "positions":[ { "label":"…","books":[ {"slug","stance","quote","anchor"} ] } ], "note":"…" }
+{ "id":"d1","question":"…","question_type":"causal","axis":"…","concept":"…","index_relation":"CONTRADICTS|curated|parallel",
+  "positions":[ { "label":"…","books":[ {"slug","stance","quote","anchor"} ] } ], "note":"…",
+  "adjudication":{"status":"mixed","book_view":"…","research_view":"…","boundary_conditions":"…"},
+  "sources":["https://…"] }
 ```
 - **候选来源**:manual 圈定 concept + positions 分组(哪些 slug 站哪边);build_topic 从 knowledge-index 摊各 slug 立场 + 判 index_relation(§3)。
 - **index_relation 三档(诚实标注,对称 StepA verdict)**:
   - `CONTRADICTS` — index 已登记真实对立 → 红旗「已登记分歧」。
   - `curated` — 编者从各书立场对立归纳(index 未登记)→ 金标「编者归纳的分歧轴」,`note` 必给依据。**回补 index 后重跑会升级为 CONTRADICTS**。
   - `parallel` — 松散并列 → **不进分歧矩阵**(降级到维度对照表并置),渲染层跳过。
-- **呈现**:每分歧一张卡:question(判断句)+ index_relation 旗标 + axis + `positions` 多列对照(每列 label + 各书 stance/quote/anchor 深链,对称 StepA turn-cols 的双列扩成 N 列)。**只排可回指立场,禁脚本写「它们在吵架」**。
+- **呈现**:每分歧一张卡:question(判断句)+ question_type + index_relation 旗标 + axis + `positions` 多列对照(每列 label + 各书 stance/quote/anchor 深链)。其后固定三栏:① **原书怎么说**=`adjudication.book_view`;② **外部研究怎么说**=`research_view` + sources;③ **适用边界与风险**=`boundary_conditions`。**作者之间有分歧不等于科学证据 CONTRADICTS**:前者由 positions/index_relation 表达,后者只由 adjudication.status + 外证表达。
 
 ### 4.4 books[](书目导航)
 - 🤖 直取 distill 元数据 + manual role_in_topic/one_liner。呈现对称 StepA renderBooks:每书一行(year? + title + book_type chip + role_in_topic + 深链 `../{slug}/{slug}.html`)。主题书可无 pub_year 排序键则按 manual.members 顺序。

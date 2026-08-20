@@ -6,7 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_mindmap, lint_brandbar,
                          lint_author_html, is_author_page,
-                         lint_topic_html, is_topic_page, lint_source_grounding)  # 纯函数:-> list[str] 违规
+                         lint_topic_html, is_topic_page, lint_source_grounding,
+                         lint_psychology_evidence, lint_psychology_html)  # 纯函数:-> list[str] 违规
 
 SKILL_ROOT = Path(__file__).resolve().parents[2]  # tests -> scripts -> 仓根
 SKELETON = SKILL_ROOT / "templates" / "page-skeleton.html"
@@ -489,6 +490,70 @@ def test_enrich_consistency_clean():
     assert lint_enrich_consistency(page(), enrich) == []
 
 
+# ---------------------------------------------------------------- psychology scientific evidence + rendered cards (G24)
+def test_g24_psychology_evidence_and_cards_clean():
+    assert lint_psychology_evidence(psych_distill(), psych_enrich()) == []
+    assert lint_psychology_html(psych_page(), psych_distill()) == []
+    assert not any("G24" in x for x in lint_html(psych_page(), psych_distill(), psych_enrich()))
+
+
+def test_g24_requires_evidence_page_even_when_enrich_missing():
+    v = lint_html(psych_page(), psych_distill(), None)
+    assert any("G24" in x and "evidence_page" in x for x in v)
+
+
+def test_g24_claim_mapping_must_be_exact_no_missing_or_extra():
+    enrich = psych_enrich()
+    enrich["evidence_page"]["claims"].pop("structured-judgment")
+    enrich["evidence_page"]["claims"]["phantom-claim"] = _psych_claim(
+        status="supported", confidence="low", replication_status="not_attempted",
+        sources=[{"title": "Study", "url": "https://example.org/x", "type": "primary_study", "year": "2025"}])
+    v = lint_html(psych_page(), psych_distill(), enrich)
+    assert any("G24" in x and "不精确一致" in x and "structured-judgment" in x and "phantom-claim" in x for x in v)
+
+
+def test_g24_rejects_illegal_status_confidence_replication_scope_and_source():
+    enrich = psych_enrich()
+    claim = enrich["evidence_page"]["claims"]["structured-judgment"]
+    claim["status"] = "proven"
+    claim["confidence"] = "certain"
+    claim["replication"] = {"status": "yes", "note": ""}
+    claim["scope"] = {"population": "", "context": "x", "limits": "none", "risks": []}
+    claim["sources"] = [{"title": "", "url": "doi:10/x", "type": "", "year": True}]
+    v = lint_html(psych_page(), psych_distill(), enrich)
+    for field in ("status", "confidence", "replication.status", "scope.population",
+                  "scope.limits", "scope.risks", "sources[0].title", "sources[0].url",
+                  "sources[0].type", "sources[0].year"):
+        assert any("G24" in x and field in x for x in v), (field, v)
+
+
+def test_g24_not_testable_still_explicit_but_allows_empty_sources():
+    assert lint_psychology_evidence(psych_distill(), psych_enrich()) == []
+    enrich = psych_enrich()
+    claim = enrich["evidence_page"]["claims"]["dual-process-framework"]
+    claim["confidence"] = "low"
+    claim["replication"]["status"] = "not_attempted"
+    claim.pop("best_evidence")
+    v = lint_html(psych_page(), psych_distill(), enrich)
+    assert any("not_testable" in x and "confidence" in x for x in v)
+    assert any("not_testable" in x and "replication.status" in x for x in v)
+    assert any("best_evidence" in x for x in v)
+    assert not any("dual-process-framework" in x and "sources" in x for x in v)
+
+
+def test_g24_each_claim_requires_exactly_one_three_column_card():
+    v_missing = lint_html(psych_page(omit_claim="structured-judgment"), psych_distill(), psych_enrich())
+    assert any("structured-judgment" in x and "数量为 0" in x for x in v_missing)
+    v_duplicate = lint_html(psych_page(duplicate_claim="structured-judgment"), psych_distill(), psych_enrich())
+    assert any("structured-judgment" in x and "数量为 2" in x for x in v_duplicate)
+    v_column = lint_html(psych_page(drop_column="pe-boundary"), psych_distill(), psych_enrich())
+    assert any("dual-process-framework" in x and "pe-boundary" in x for x in v_column)
+
+
+def test_g24_does_not_require_evidence_cards_for_legacy_books():
+    assert not any("G24" in x for x in lint_html(page(), distill(), None))
+
+
 # ---------------------------------------------------------------- 渲染侧查重(§2.2 / G16)
 def test_html_cover_intro_reuses_napkin_flagged():
     v = lint_html(page(cover_intro="导语:" + NAPKIN_ONE_LINER + "所以很重要。"),
@@ -541,6 +606,69 @@ def distill(**over):
     }
     d.update(over)
     return d
+
+
+def psych_distill(**over):
+    d = distill()
+    d["domain_profile"] = {
+        "domain": "psychology", "subfields": ["judgment-and-decision-making"],
+        "work_kind": "popular_science", "clinical_relevance": "indirect",
+    }
+    d["core_ideas"][0].update(claim_id="dual-process-framework", claim_type="framework")
+    d["decision_rules"][0].update(claim_id="structured-judgment", claim_type="intervention")
+    d.update(over)
+    return d
+
+
+def _psych_claim(*, status, confidence, replication_status, sources):
+    return {
+        "status": status,
+        "best_evidence": "综合当前可获得的最高等级研究与直接复制。",
+        "confidence": confidence,
+        "replication": {"status": replication_status, "note": "复制状态已按主张类型单独判断。"},
+        "scope": {
+            "population": "一般成年人", "context": "非临床判断任务",
+            "limits": ["不外推到所有文化与临床场景"], "risks": ["不应替代专业诊断"],
+        },
+        "sources": sources,
+    }
+
+
+def psych_enrich(**evidence_over):
+    evidence = {
+        "as_of": "2026-08-20",
+        "claims": {
+            "dual-process-framework": _psych_claim(
+                status="not_testable", confidence="not_applicable",
+                replication_status="not_applicable", sources=[]),
+            "structured-judgment": _psych_claim(
+                status="supported", confidence="moderate", replication_status="replicated",
+                sources=[{"title": "A registered synthesis", "url": "https://example.org/study",
+                          "type": "systematic_review", "year": 2024}]),
+        },
+    }
+    evidence.update(evidence_over)
+    return {
+        "author_page": {"name": "x"}, "views_page": {"topics": []}, "reviews": {"items": []},
+        "evidence_page": evidence,
+    }
+
+
+def psych_page(*, omit_claim=None, duplicate_claim=None, drop_column=None):
+    cards = []
+    for claim_id in ("dual-process-framework", "structured-judgment"):
+        if claim_id == omit_claim:
+            continue
+        columns = ["pe-book", "pe-research", "pe-boundary"]
+        if claim_id == "dual-process-framework" and drop_column in columns:
+            columns.remove(drop_column)
+        inner = "".join(f'<div class="{column}">{column}</div>' for column in columns)
+        cards.append(f'<section class="pe-claim" data-claim-id="{claim_id}">{inner}</section>')
+    if duplicate_claim:
+        cards.append('<section class="pe-claim" data-claim-id="structured-judgment">'
+                     '<div class="pe-book"></div><div class="pe-research"></div>'
+                     '<div class="pe-boundary"></div></section>')
+    return page().replace("</body>", "".join(cards) + "</body>")
 
 
 def test_distill_clean_passes():
@@ -949,6 +1077,48 @@ def test_g22_normal_certainty_optional():
 def test_g7_missing_evidence_level_flagged():
     v = lint_distill(distill(core_ideas=[{"idea": "a", "anchor": "第1章", "primary": True, "layman_analogy": "比"}]))
     assert any("G7" in x for x in v)
+
+
+# ---------------------------------------------------------------- psychology domain_profile / claim contract (G23)
+def test_g23_psychology_contract_clean():
+    assert lint_distill(psych_distill()) == []
+
+
+def test_g23_requires_complete_domain_profile():
+    d = psych_distill()
+    d["domain_profile"].pop("subfields")
+    assert any("G23" in x and "subfields" in x for x in lint_distill(d))
+
+
+def test_g23_rejects_declared_unregistered_domain():
+    d = psych_distill()
+    d["domain_profile"]["domain"] = "psychlogy"
+    assert any("G23" in x and "domain_profile.domain" in x for x in lint_distill(d))
+
+
+def test_g23_rejects_unknown_work_kind():
+    d = psych_distill()
+    d["domain_profile"]["work_kind"] = "blog_post"
+    assert any("G23" in x and "work_kind" in x for x in lint_distill(d))
+
+
+def test_g23_requires_legal_claim_id_and_type():
+    d = psych_distill()
+    d["core_ideas"][0]["claim_id"] = "含 空格"
+    d["decision_rules"][0]["claim_type"] = "opinion"
+    v = lint_distill(d)
+    assert any("G23" in x and "claim_id" in x for x in v)
+    assert any("G23" in x and "claim_type" in x for x in v)
+
+
+def test_g23_claim_id_is_globally_unique_across_both_collections():
+    d = psych_distill()
+    d["decision_rules"][0]["claim_id"] = d["core_ideas"][0]["claim_id"]
+    assert any("G23" in x and "全局重复" in x for x in lint_distill(d))
+
+
+def test_g23_does_not_change_legacy_book_behavior():
+    assert not any("G23" in x for x in lint_distill(distill()))
 
 
 # ---------------------------------------------------------------- v4 G20 chain_steps
@@ -1433,6 +1603,12 @@ def test_topic_bad_certainty_flagged():
     d["dimensions"][0]["cells"][0]["certainty"] = "guess"
     v = lint_topic_html(topic_html(), d)
     assert any("certainty" in x for x in v)
+
+
+def test_topic_unverified_certainty_is_legal():
+    d = tjson()
+    d["dimensions"][0]["cells"][0]["certainty"] = "unverified"
+    assert lint_topic_html(topic_html(), d) == []
 
 
 def test_topic_fullwidth_dash_flagged():

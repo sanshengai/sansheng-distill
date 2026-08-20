@@ -27,6 +27,8 @@ import argparse
 import json
 import re
 import sys
+from datetime import date
+from html.parser import HTMLParser
 from pathlib import Path
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -121,7 +123,7 @@ TOPIC_DATA_RE = re.compile(r'<script[^>]*\bid="topic-data"[^>]*>(.*?)</script>',
 TOPIC_VIEW_CLASSES = [("tp-schools", "分类地图"), ("tp-disputes", "分歧矩阵"),
                       ("tp-dims", "维度对照表"), ("tp-books", "书目导航")]
 TOPIC_INDEX_RELATIONS = {"CONTRADICTS", "curated", "parallel"}
-TOPIC_CERTAINTY_VALUES = {"book_explicit", "cross_book_synthesis", "general_knowledge"}
+TOPIC_CERTAINTY_VALUES = {"book_explicit", "cross_book_synthesis", "general_knowledge", "unverified"}
 # 破折号扫描豁免子树(quote=原文照录;external_debate 外证/来源 URL 非转述文字)
 TOPIC_DASH_EXEMPT_KEYS = {"external_debate", "_provenance", "sources", "source", "quote"}
 
@@ -190,6 +192,27 @@ VIDEO_EXEMPT_TOP_KEYS = frozenset({"concepts", "credibility_verdict"})
 # 顶层键别名纠错:弱模型易自造近义键名,报错时直接点名「你写成了 X」
 TOP_KEY_ALIASES = {"book_title": "title", "book_name": "title", "name": "title",
                    "author_name": "author", "book_slug": "slug", "type": "book_type"}
+
+# ---- 心理学科学证据层(G23/G24;仅 domain_profile.domain=psychology 激活)----
+# evidence_level / certainty 只描述原书依据与转述状态，不能替代这组外部科学证据字段。
+PSYCHOLOGY_CLAIM_TYPES = frozenset({
+    "framework", "descriptive", "associational", "causal", "predictive",
+    "intervention", "methodological", "normative",
+})
+PSYCHOLOGY_WORK_KINDS = frozenset({
+    "popular_science", "academic_monograph", "methods_manifesto",
+    "applied_guide", "textbook", "casebook",
+})
+PSYCHOLOGY_CLINICAL_RELEVANCE = frozenset({"none", "indirect", "direct"})
+PSYCHOLOGY_EVIDENCE_STATUS = frozenset({
+    "supported", "mixed", "contested", "not_supported", "not_testable",
+})
+PSYCHOLOGY_CONFIDENCE = frozenset({"high", "moderate", "low", "very_low", "not_applicable"})
+PSYCHOLOGY_REPLICATION_STATUS = frozenset({
+    "replicated", "mixed", "failed", "not_attempted", "not_applicable",
+})
+PSYCHOLOGY_CLAIM_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+HTTP_URL_RE = re.compile(r"^https?://", re.I)
 
 
 def _resolve_active_gates(prof):
@@ -277,6 +300,68 @@ def lint_distill_schema(data: dict) -> list:
             continue
         if _missing(k):
             v.append(f"[schema] 缺顶层必需键 {k!r}(archetype={((prof or {}).get('archetype')) or 'legacy'} 未声明省略)")
+    return v
+
+
+def _is_psychology(data: dict | None) -> bool:
+    """仅显式声明 psychology 的新书激活科学证据层；旧书无 domain_profile 时行为不变。"""
+    prof = data.get("domain_profile") if isinstance(data, dict) else None
+    return isinstance(prof, dict) and prof.get("domain") == "psychology"
+
+
+def _psychology_claim_entries(data: dict) -> list[tuple[str, int, dict]]:
+    """返回两类可审计主张，保留来源位置供错误信息定位。"""
+    out = []
+    for section in ("core_ideas", "decision_rules"):
+        for index, item in enumerate(data.get(section, []) or []):
+            out.append((section, index, item))
+    return out
+
+
+def lint_psychology_distill(data: dict) -> list:
+    """G23：心理学 profile 与逐条 claim 身份/类型契约。"""
+    if "domain_profile" not in data:
+        return []
+    prof = data.get("domain_profile")
+    if not isinstance(prof, dict):
+        return ["[distill] domain_profile 已声明但非对象(G23)"]
+    if prof.get("domain") != "psychology":
+        return [f"[distill] domain_profile.domain {prof.get('domain')!r} 非法"
+                "(G23;当前仅注册 psychology，非心理学旧书应省略整个 domain_profile)"]
+    v = []
+    subfields = prof.get("subfields")
+    if not isinstance(subfields, list) or not subfields \
+       or any(not isinstance(x, str) or not x.strip() for x in subfields):
+        v.append("[distill] domain_profile.subfields 须为非空字符串数组(G23)")
+    elif len({x.strip() for x in subfields}) != len(subfields):
+        v.append("[distill] domain_profile.subfields 含重复项(G23)")
+    work_kind = prof.get("work_kind")
+    if work_kind not in PSYCHOLOGY_WORK_KINDS:
+        v.append("[distill] domain_profile.work_kind "
+                 f"{work_kind!r} 非法(G23;应为 {sorted(PSYCHOLOGY_WORK_KINDS)})")
+    clinical = prof.get("clinical_relevance")
+    if clinical not in PSYCHOLOGY_CLINICAL_RELEVANCE:
+        v.append("[distill] domain_profile.clinical_relevance "
+                 f"{clinical!r} 非法(G23;应为 {sorted(PSYCHOLOGY_CLINICAL_RELEVANCE)})")
+
+    seen = {}
+    for section, index, item in _psychology_claim_entries(data):
+        loc = f"{section}[{index}]"
+        if not isinstance(item, dict):
+            v.append(f"[distill] {loc} 非对象(G23)")
+            continue
+        claim_id = item.get("claim_id")
+        if not isinstance(claim_id, str) or not PSYCHOLOGY_CLAIM_ID_RE.fullmatch(claim_id):
+            v.append(f"[distill] {loc}.claim_id {claim_id!r} 非法"
+                     "(G23;须为小写 ASCII kebab 稳定标识)")
+        elif claim_id in seen:
+            v.append(f"[distill] claim_id {claim_id!r} 全局重复: {seen[claim_id]} 与 {loc}(G23)")
+        else:
+            seen[claim_id] = loc
+        claim_type = item.get("claim_type")
+        if claim_type not in PSYCHOLOGY_CLAIM_TYPES:
+            v.append(f"[distill] {loc}.claim_type {claim_type!r} 非法"
+                     f"(G23;应为 {sorted(PSYCHOLOGY_CLAIM_TYPES)})")
     return v
 
 
@@ -566,6 +651,10 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
     # enrich 降级一致性(数据 null ⟺ 对应块/子视图删除,§1.5)
     if enrich is not None:
         v += lint_enrich_consistency(html, enrich)
+    # G24 心理学科学证据层：即使 enrich 缺失也要失败关闭；非心理学书完全不激活。
+    if distill is not None and _is_psychology(distill):
+        v += lint_psychology_evidence(distill, enrich)
+        v += lint_psychology_html(html, distill)
     # 契约门禁(可选)
     if distill is not None:
         v += lint_distill(distill)
@@ -710,6 +799,202 @@ def lint_enrich_consistency(html: str, enrich: dict) -> list:
     return v
 
 
+def _valid_evidence_year(value) -> bool:
+    """来源年份允许 JSON 数字或四位字符串；排除 bool 与明显不合理年份。"""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        year = value
+    elif isinstance(value, str) and re.fullmatch(r"\d{4}", value.strip()):
+        year = int(value)
+    else:
+        return False
+    return 1800 <= year <= date.today().year + 1
+
+
+def lint_psychology_evidence(data: dict, enrich: dict | None) -> list:
+    """G24：心理学每条 claim 必须有一一对应、结构完整的外部科学证据记录。"""
+    if not _is_psychology(data):
+        return []
+    if not isinstance(enrich, dict):
+        return ["[enrich] 心理学书缺 enrich.json / evidence_page(G24)"]
+    evidence = enrich.get("evidence_page")
+    if not isinstance(evidence, dict):
+        return ["[enrich] 心理学书缺 evidence_page 对象(G24)"]
+
+    v = []
+    as_of = evidence.get("as_of")
+    try:
+        if not isinstance(as_of, str) or date.fromisoformat(as_of).isoformat() != as_of:
+            raise ValueError
+    except ValueError:
+        v.append(f"[enrich] evidence_page.as_of {as_of!r} 非 YYYY-MM-DD 有效日期(G24)")
+
+    expected_ids = {
+        item.get("claim_id") for _, _, item in _psychology_claim_entries(data)
+        if isinstance(item, dict) and isinstance(item.get("claim_id"), str) and item.get("claim_id")
+    }
+    claims = evidence.get("claims")
+    if not isinstance(claims, dict):
+        v.append("[enrich] evidence_page.claims 缺/非对象(G24)")
+        return v
+    actual_ids = set(claims)
+    missing = sorted(expected_ids - actual_ids)
+    extra = sorted(actual_ids - expected_ids)
+    if missing or extra:
+        v.append("[enrich] evidence_page.claims 与 distill claim_id 不精确一致"
+                 f"(G24;缺={missing or '无'}, 多={extra or '无'})")
+
+    for claim_id in sorted(expected_ids & actual_ids):
+        claim = claims[claim_id]
+        prefix = f"evidence_page.claims[{claim_id!r}]"
+        if not isinstance(claim, dict):
+            v.append(f"[enrich] {prefix} 非对象(G24)")
+            continue
+        status = claim.get("status")
+        if status not in PSYCHOLOGY_EVIDENCE_STATUS:
+            v.append(f"[enrich] {prefix}.status {status!r} 非法"
+                     f"(G24;应为 {sorted(PSYCHOLOGY_EVIDENCE_STATUS)})")
+        confidence = claim.get("confidence")
+        if confidence not in PSYCHOLOGY_CONFIDENCE:
+            v.append(f"[enrich] {prefix}.confidence {confidence!r} 非法"
+                     f"(G24;应为 {sorted(PSYCHOLOGY_CONFIDENCE)})")
+        if not isinstance(claim.get("best_evidence"), str) or not claim["best_evidence"].strip():
+            v.append(f"[enrich] {prefix}.best_evidence 缺/空(G24)")
+
+        replication = claim.get("replication")
+        if not isinstance(replication, dict):
+            v.append(f"[enrich] {prefix}.replication 缺/非对象(G24)")
+        else:
+            rstatus = replication.get("status")
+            if rstatus not in PSYCHOLOGY_REPLICATION_STATUS:
+                v.append(f"[enrich] {prefix}.replication.status {rstatus!r} 非法"
+                         f"(G24;应为 {sorted(PSYCHOLOGY_REPLICATION_STATUS)})")
+            if not isinstance(replication.get("note"), str) or not replication["note"].strip():
+                v.append(f"[enrich] {prefix}.replication.note 缺/空(G24)")
+            if status == "not_testable" and rstatus != "not_applicable":
+                v.append(f"[enrich] {prefix} status=not_testable 时 replication.status 必须为 not_applicable(G24)")
+        if status == "not_testable" and confidence != "not_applicable":
+            v.append(f"[enrich] {prefix} status=not_testable 时 confidence 必须为 not_applicable(G24)")
+
+        scope = claim.get("scope")
+        if not isinstance(scope, dict):
+            v.append(f"[enrich] {prefix}.scope 缺/非对象(G24)")
+        else:
+            for field in ("population", "context"):
+                value = scope.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    v.append(f"[enrich] {prefix}.scope.{field} 缺/空(G24)")
+            for field in ("limits", "risks"):
+                value = scope.get(field)
+                if not isinstance(value, list) or any(not isinstance(x, str) or not x.strip() for x in value):
+                    v.append(f"[enrich] {prefix}.scope.{field} 须为字符串数组(G24)")
+            if data["domain_profile"].get("clinical_relevance") in {"direct", "indirect"} \
+               and isinstance(scope.get("risks"), list) and not scope["risks"]:
+                v.append(f"[enrich] {prefix}.scope.risks 在 clinical_relevance="
+                         f"{data['domain_profile'].get('clinical_relevance')} 时至少 1 项(G24)")
+
+        sources = claim.get("sources")
+        if not isinstance(sources, list):
+            v.append(f"[enrich] {prefix}.sources 须为数组(G24)")
+        elif status != "not_testable" and not sources:
+            v.append(f"[enrich] {prefix}.sources 在可检验主张下至少 1 条(G24)")
+        if isinstance(sources, list):
+            for index, source in enumerate(sources):
+                sp = f"{prefix}.sources[{index}]"
+                if not isinstance(source, dict):
+                    v.append(f"[enrich] {sp} 非对象(G24)")
+                    continue
+                if not isinstance(source.get("title"), str) or not source["title"].strip():
+                    v.append(f"[enrich] {sp}.title 缺/空(G24)")
+                url = source.get("url")
+                if not isinstance(url, str) or not HTTP_URL_RE.match(url.strip()):
+                    v.append(f"[enrich] {sp}.url 须为 http(s) URL(G24)")
+                if not isinstance(source.get("type"), str) or not source["type"].strip():
+                    v.append(f"[enrich] {sp}.type 缺/空(G24)")
+                if not _valid_evidence_year(source.get("year")):
+                    v.append(f"[enrich] {sp}.year {source.get('year')!r} 非合理四位年份(G24)")
+    return v
+
+
+class _PsychEvidenceHTMLParser(HTMLParser):
+    """收集 .pe-claim 及其后代 class；只用于结构 lint，不改写 HTML。"""
+    _VOID = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+                       "meta", "param", "source", "track", "wbr"})
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.cards = []
+        self._stack = []
+
+    def handle_starttag(self, tag, attrs):
+        amap = dict(attrs)
+        classes = set((amap.get("class") or "").split())
+        parent_card = self._stack[-1][1] if self._stack else None
+        starts_card = "pe-claim" in classes
+        if starts_card:
+            active_card = {"claim_id": amap.get("data-claim-id"), "classes": set()}
+            self.cards.append(active_card)
+        else:
+            active_card = parent_card
+            if active_card is not None:
+                active_card["classes"].update(classes)
+        if tag.lower() not in self._VOID:
+            self._stack.append((tag.lower(), active_card))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag.lower() not in self._VOID:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index][0] == tag:
+                del self._stack[index:]
+                break
+
+
+def lint_psychology_html(html: str, data: dict) -> list:
+    """G24 渲染契约：每条心理学 claim 精确一张三分栏证据卡。"""
+    if not _is_psychology(data):
+        return []
+    parser = _PsychEvidenceHTMLParser()
+    try:
+        parser.feed(html)
+    except Exception as exc:
+        return [f"[lint] 心理学证据卡 HTML 无法解析: {exc}(G24)"]
+
+    expected_ids = {
+        item.get("claim_id") for _, _, item in _psychology_claim_entries(data)
+        if isinstance(item, dict) and isinstance(item.get("claim_id"), str) and item.get("claim_id")
+    }
+    by_id = {}
+    missing_id_count = 0
+    for card in parser.cards:
+        claim_id = card["claim_id"]
+        if not claim_id:
+            missing_id_count += 1
+        else:
+            by_id.setdefault(claim_id, []).append(card)
+    v = []
+    if missing_id_count:
+        v.append(f"[lint] .pe-claim 有 {missing_id_count} 张缺 data-claim-id(G24)")
+    extra = sorted(set(by_id) - expected_ids)
+    if extra:
+        v.append(f"[lint] .pe-claim 含 distill 未声明的 data-claim-id: {extra}(G24)")
+    required = {"pe-book", "pe-research", "pe-boundary"}
+    for claim_id in sorted(expected_ids):
+        cards = by_id.get(claim_id, [])
+        if len(cards) != 1:
+            v.append(f"[lint] claim_id={claim_id!r} 的 .pe-claim 数量为 {len(cards)},须精确为 1(G24)")
+            continue
+        absent = sorted(required - cards[0]["classes"])
+        if absent:
+            v.append(f"[lint] claim_id={claim_id!r} 的 .pe-claim 缺三分栏 {absent}(G24)")
+    return v
+
+
 def _check_chain_step(items: list, kind: str, n_rings: int) -> list:
     """chain_step 合法性:None 放行;否则须 int(非 bool)且 ∈[1,5];超出实际环数按越界打回。"""
     v = []
@@ -811,6 +1096,8 @@ def lint_distill(data: dict, source_text: str | None = None) -> list:
         v += lint_source_grounding(data, source_text)
     # T0-S schema 完整性(恒校验,先于取值校验:字段整个缺失时下面的 for 循环全部空转)
     v += lint_distill_schema(data)
+    # G23 是 domain 条件门，不受 render_profile.active_gates 控制。
+    v += lint_psychology_distill(data)
     is_video = data.get("source_type") == "video_series"
     # render_profile(2026-07-12 B-1/B-2):无 profile → active=None = legacy 全 Tier-1(向后兼容,旧书不必重蒸)
     prof = data.get("render_profile")
