@@ -32,6 +32,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from validate_psychology_source_audit import validate_source_audit_file
+
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -1255,17 +1257,39 @@ def lint_psychology_html(html: str, data: dict, enrich: dict | None = None) -> l
             if isinstance(replication_note, str) and replication_note.strip() \
                and _match_text_norm(replication_note) not in _match_text_norm(research_text):
                 v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 未呈现 replication.note(G24)")
-            if expected_status != "not_testable":
-                links = [link for link in card["research_links"]
-                         if not link["hidden"] and _node_text(link) and _is_http_url(link.get("href"))]
-                source_urls = {
-                    source.get("url").strip() for source in (evidence.get("sources") or [])
-                    if isinstance(source, dict) and _is_http_url(source.get("url"))
-                }
-                if not links:
-                    v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 缺可见、非空、有效的来源链接(G24)")
-                elif source_urls and not any(link["href"].strip() in source_urls for link in links):
-                    v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 来源链接未回指 evidence_page.sources(G24)")
+            scope = evidence.get("scope") if isinstance(evidence.get("scope"), dict) else {}
+            boundary_text = " ".join(_node_text(node) for node in visible_column_nodes["pe-boundary"])
+            scope_values = [("population", scope.get("population")), ("context", scope.get("context"))]
+            for field in ("limits", "risks"):
+                values = scope.get(field)
+                if isinstance(values, list):
+                    scope_values.extend((f"{field}[{index}]", value) for index, value in enumerate(values))
+            for field, value in scope_values:
+                if isinstance(value, str) and value.strip() \
+                   and _match_text_norm(value) not in _match_text_norm(boundary_text):
+                    v.append(
+                        f"[lint] claim_id={claim_id!r} 的 .pe-boundary 未完整呈现 scope.{field}(G24)"
+                    )
+
+            source_urls = {
+                source.get("url").strip() for source in (evidence.get("sources") or [])
+                if isinstance(source, dict) and _is_http_url(source.get("url"))
+            }
+            visible_link_nodes = [
+                link for link in card["research_links"] if not link["hidden"] and _node_text(link)
+            ]
+            invalid_links = [link for link in visible_link_nodes if not _is_http_url(link.get("href"))]
+            if invalid_links:
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 含可见但无效的来源链接(G24)")
+            rendered_urls = {
+                link["href"].strip() for link in visible_link_nodes if _is_http_url(link.get("href"))
+            }
+            if rendered_urls != source_urls:
+                v.append(
+                    f"[lint] claim_id={claim_id!r} 的 .pe-research 可见来源链接 URL 集合与 "
+                    f"evidence_page.sources 不精确一致；缺 {sorted(source_urls - rendered_urls)}，"
+                    f"多 {sorted(rendered_urls - source_urls)}(G24)"
+                )
     return v
 
 
@@ -2169,7 +2193,54 @@ def topic_smoke(path: Path, screenshot: str | None, topic: dict | None = None) -
     return v
 
 
-def _psychology_smoke(pg, distill: dict | None, evidence_claims: dict | None = None) -> list:
+def _activate_panel_for_smoke(pg, panel_id: str) -> bool:
+    """优先走现役 ``data-panel`` 点击协议；若页面脚本未接线，再做等价 class 切换。"""
+    selector = f'.tab[data-panel="{panel_id}"]'
+    tab = pg.locator(selector)
+    try:
+        if tab.count() == 1 and tab.first.is_visible():
+            tab.first.click()
+            pg.wait_for_timeout(80)
+    except Exception:
+        pass
+    panel = pg.locator(f"#{panel_id}")
+    try:
+        active = panel.count() == 1 and "on" in (panel.first.get_attribute("class") or "").split()
+    except Exception:
+        active = False
+    if not active:
+        try:
+            pg.evaluate(
+                """panelId => {
+                  const tab = document.querySelector(`.tab[data-panel="${panelId}"]`);
+                  if (tab) tab.click();
+                  const panel = document.getElementById(panelId);
+                  if (panel && !panel.classList.contains('on')) {
+                    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === panelId));
+                    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.panel === panelId));
+                  }
+                }""",
+                panel_id,
+            )
+            pg.wait_for_timeout(80)
+            active = panel.count() == 1 and "on" in (panel.first.get_attribute("class") or "").split()
+        except Exception:
+            active = False
+    return active
+
+
+def _current_panel_id(pg) -> str:
+    try:
+        active = pg.locator(".panel.on")
+        if active.count():
+            return active.first.get_attribute("id") or "panel-glance"
+    except Exception:
+        pass
+    return "panel-glance"
+
+
+def _psychology_smoke_visible(pg, distill: dict | None,
+                              evidence_claims: dict | None = None) -> list:
     """用浏览器计算样式复核 G24 可见性。
 
     静态 lint 能稳定拒绝 ``hidden`` / ``aria-hidden`` / 内联隐藏，浏览器层再补
@@ -2244,23 +2315,58 @@ def _psychology_smoke(pg, distill: dict | None, evidence_claims: dict | None = N
         if isinstance(replication_note, str) and replication_note.strip() \
            and _match_text_norm(replication_note) not in _match_text_norm(research_text):
             v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 可见文本未呈现 replication.note(G24)")
-        if expected_status != "not_testable":
-            source_urls = {
-                source.get("url").strip() for source in (evidence.get("sources") or [])
-                if isinstance(source, dict) and _is_http_url(source.get("url"))
-            }
-            visible_links = []
-            links = research.first.locator("a[href]")
-            for index in range(links.count()):
-                link = links.nth(index)
-                href = link.get_attribute("href")
-                if link.is_visible() and (link.inner_text() or "").strip() and _is_http_url(href):
-                    visible_links.append(href.strip())
-            if not visible_links:
-                v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 缺可见有效来源链接(G24)")
-            elif source_urls and not any(url in source_urls for url in visible_links):
-                v.append(f"[渲染] claim_id={claim_id!r} 的可见来源链接未回指 evidence_page.sources(G24)")
+        scope = evidence.get("scope") if isinstance(evidence.get("scope"), dict) else {}
+        boundary = card.locator(".pe-boundary")
+        boundary_text = boundary.first.inner_text() if boundary.count() == 1 and boundary.first.is_visible() else ""
+        scope_values = [("population", scope.get("population")), ("context", scope.get("context"))]
+        for field in ("limits", "risks"):
+            values = scope.get(field)
+            if isinstance(values, list):
+                scope_values.extend((f"{field}[{index}]", value) for index, value in enumerate(values))
+        for field, value in scope_values:
+            if isinstance(value, str) and value.strip() \
+               and _match_text_norm(value) not in _match_text_norm(boundary_text):
+                v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-boundary 未完整呈现 scope.{field}(G24)")
+
+        source_urls = {
+            source.get("url").strip() for source in (evidence.get("sources") or [])
+            if isinstance(source, dict) and _is_http_url(source.get("url"))
+        }
+        rendered_urls = set()
+        invalid_visible_link = False
+        links = research.first.locator("a[href]")
+        for index in range(links.count()):
+            link = links.nth(index)
+            href = link.get_attribute("href")
+            if not link.is_visible() or not (link.inner_text() or "").strip():
+                continue
+            if _is_http_url(href):
+                rendered_urls.add(href.strip())
+            else:
+                invalid_visible_link = True
+        if invalid_visible_link:
+            v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 含可见但无效的来源链接(G24)")
+        if rendered_urls != source_urls:
+            v.append(
+                f"[渲染] claim_id={claim_id!r} 的可见来源链接 URL 集合与 evidence_page.sources 不精确一致；"
+                f"缺 {sorted(source_urls - rendered_urls)}，多 {sorted(rendered_urls - source_urls)}(G24)"
+            )
     return v
+
+
+def _psychology_smoke(pg, distill: dict | None, evidence_claims: dict | None = None) -> list:
+    """把隐藏在 ``panel-judge`` 的真实证据区先切到可见态，复核后恢复原 panel。"""
+    if not _is_psychology(distill):
+        return []
+    original_panel = _current_panel_id(pg)
+    activated = _activate_panel_for_smoke(pg, "panel-judge")
+    try:
+        violations = _psychology_smoke_visible(pg, distill, evidence_claims)
+        if not activated:
+            violations.insert(0, "[渲染] 无法激活 panel-judge 以复核心理学证据卡(G24)")
+        return violations
+    finally:
+        _activate_panel_for_smoke(pg, original_panel or "panel-glance")
 
 
 def smoke(path: Path, screenshot: str | None, distill: dict | None = None,
@@ -2449,6 +2555,27 @@ def smoke(path: Path, screenshot: str | None, distill: dict | None = None,
     return v
 
 
+def lint_required_psychology_source_audit(
+    page_path: str | Path,
+    *,
+    distill_path: str | Path | None = None,
+    source_path: str | Path | None = None,
+    enrich_path: str | Path | None = None,
+) -> list[str]:
+    """项目严格模式专用：同书目录 source-audit 必须存在并绑定本次验证输入。"""
+    page_path = Path(page_path)
+    expected_paths = {}
+    if distill_path is not None:
+        expected_paths["distill"] = Path(distill_path)
+    if source_path is not None:
+        expected_paths["source"] = Path(source_path)
+    if enrich_path is not None:
+        expected_paths["enrich"] = Path(enrich_path)
+    return validate_source_audit_file(
+        page_path.parent / "source-audit.json", expected_paths=expected_paths,
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description="蒸馏页出厂验证 v3:静态 lint + 契约门禁 + Playwright 渲染冒烟")
     ap.add_argument("page")
@@ -2465,7 +2592,8 @@ def main():
     ap.add_argument("--screenshot")
     ap.add_argument("--skip-interact", action="store_true")
     a = ap.parse_args()
-    html = Path(a.page).read_text(encoding="utf-8")
+    page_path = Path(a.page)
+    html = page_path.read_text(encoding="utf-8")
     # 作者演变页(结构不同)走独立门禁,不套蒸馏页 REQUIRED_CLASSES
     if is_author_page(html, a.author_json):
         author, perr = _load_author_json(html, a.author_json)
@@ -2485,13 +2613,23 @@ def main():
     # 蒸馏页(默认路径)
     distill = json.loads(Path(a.distill).read_text(encoding="utf-8")) if a.distill else None
     enrich = None
+    enrich_path = None
     if a.enrich:
-        enrich = json.loads(Path(a.enrich).read_text(encoding="utf-8"))
+        enrich_path = Path(a.enrich)
+        enrich = json.loads(enrich_path.read_text(encoding="utf-8"))
     else:
-        sib = Path(a.page).parent / "enrich.json"
+        sib = page_path.parent / "enrich.json"
         if sib.exists():
+            enrich_path = sib
             enrich = json.loads(sib.read_text(encoding="utf-8"))
     v = lint_html(html, distill, enrich, required_domain=a.require_domain)
+    if a.require_domain == "psychology":
+        v += lint_required_psychology_source_audit(
+            page_path,
+            distill_path=a.distill,
+            source_path=a.source,
+            enrich_path=enrich_path,
+        )
     if a.source:
         if not distill:
             v.append("[source] --source 必须与 --distill 同时使用")
@@ -2501,7 +2639,7 @@ def main():
         evidence_page = enrich.get("evidence_page") if isinstance(enrich, dict) else None
         raw_claims = evidence_page.get("claims") if isinstance(evidence_page, dict) else None
         evidence_claims = raw_claims if isinstance(raw_claims, dict) else {}
-        v += smoke(Path(a.page), a.screenshot, distill, evidence_claims)
+        v += smoke(page_path, a.screenshot, distill, evidence_claims)
     print("\n".join(v) if v else "全部通过")
     return 1 if v else 0
 

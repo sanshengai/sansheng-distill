@@ -29,7 +29,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8")
 
 VERIFY = Path(__file__).with_name("verify_page.py")
-# 通用交付必需产物；book.txt 通常属输入侧，但 psychology 严格批次会额外要求并传给 --source。
+# 通用交付必需产物；psychology 严格批次另强制 book.txt + source-audit.json。
 REQUIRED_ARTIFACTS = ("distill.json", "{slug}.html")
 # 交付卫生:存在即告警(不阻断)。只列 SKILL.md 批量模式**明确要求合并后清理**的中间态 --
 #   `.bak`(update_index 每次写前自动备份)与 `_verify.png`(Step7 正常产物)都是设计行为,不告警,免得淹没真信号。
@@ -67,6 +67,9 @@ def check_one(root: Path, slug: str, fast: bool, required_domain: str | None = N
     source_path = d / "book.txt"
     if required_domain == "psychology" and not source_path.is_file():
         r["blockers"].append("心理学严格批次缺 book.txt，无法执行原文 grounding(--source)")
+        return r
+    if required_domain == "psychology" and not (d / "source-audit.json").is_file():
+        r["blockers"].append("心理学严格批次缺 source-audit.json，无法验证原文审计账本与四份输入 hash")
         return r
     # ② distill.json 可解析
     try:
@@ -111,7 +114,8 @@ def main():
     ap.add_argument("--fast", action="store_true",
                     help="逐本 verify 跳过 Playwright 冒烟(只跑静态 lint + 契约门禁);铺量前预检用,终审别带")
     ap.add_argument("--require-domain", choices=("psychology",),
-                    help="把项目级严格域逐本传播给 verify_page；psychology 还强制 book.txt + --source")
+                    help="把项目级严格域逐本传播给 verify_page；psychology 还强制 book.txt、"
+                         "source-audit.json 与 --source")
     a = ap.parse_args()
     root = Path(a.data_root)
     if not root.is_dir():

@@ -7,7 +7,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from verify_page import (lint_html, lint_distill, lint_enrich_consistency, lint_mindmap, lint_brandbar,
                          lint_author_html, is_author_page,
                          lint_topic_html, is_topic_page, lint_source_grounding,
-                         lint_psychology_evidence, lint_psychology_html)  # 纯函数:-> list[str] 违规
+                         lint_psychology_evidence, lint_psychology_html,
+                         lint_required_psychology_source_audit,
+                         _psychology_smoke)  # 纯函数:-> list[str] 违规
 
 SKILL_ROOT = Path(__file__).resolve().parents[2]  # tests -> scripts -> 仓根
 SKELETON = SKILL_ROOT / "templates" / "page-skeleton.html"
@@ -590,9 +592,11 @@ def test_g24_rejects_template_decoy_and_empty_or_hidden_columns():
     assert any("dual-process-framework" in x and "pe-boundary" in x and "可见真节点" in x for x in v_hidden)
 
     duplicate_column = psych_page().replace(
-        '<div class="pe-boundary">适用边界与风险:一般成年人,非临床判断任务。</div>',
+        '<div class="pe-boundary">适用边界与风险:一般成年人,非临床判断任务。'
+        '不外推到所有文化与临床场景；不应替代专业诊断。</div>',
         '<div class="pe-book">重复的原书栏</div>'
-        '<div class="pe-boundary">适用边界与风险:一般成年人,非临床判断任务。</div>', 1,
+        '<div class="pe-boundary">适用边界与风险:一般成年人,非临床判断任务。'
+        '不外推到所有文化与临床场景；不应替代专业诊断。</div>', 1,
     )
     v_duplicate_column = lint_psychology_html(duplicate_column, psych_distill(), psych_enrich())
     assert any("dual-process-framework" in x and "pe-book" in x and "精确为 1" in x
@@ -653,6 +657,72 @@ def test_g24_research_column_must_render_status_replication_and_valid_source(old
     html = psych_page().replace(old, new, 1)
     v = lint_psychology_html(html, psych_distill(), psych_enrich())
     assert any(needle in x for x in v), v
+
+
+def test_g24_boundary_must_render_every_scope_value():
+    html = psych_page().replace("不外推到所有文化与临床场景；", "", 1)
+    v = lint_psychology_html(html, psych_distill(), psych_enrich())
+    assert any("dual-process-framework" in x and "scope.limits[0]" in x for x in v), v
+
+
+def test_g24_research_link_url_set_must_be_exact_not_merely_overlap():
+    enrich = psych_enrich()
+    enrich["evidence_page"]["claims"]["structured-judgment"]["sources"].append({
+        "title": "A second replication", "url": "https://example.org/replication",
+        "type": "replication", "year": 2025,
+    })
+    missing = lint_psychology_html(psych_page(), psych_distill(), enrich)
+    assert any("structured-judgment" in x and "URL 集合" in x and "replication" in x for x in missing), missing
+
+    source_link = '<a href="https://example.org/study">A registered synthesis</a>'
+    extra_html = psych_page().replace(
+        source_link, source_link + '<a href="https://example.org/extra">无关额外来源</a>', 1,
+    )
+    extra = lint_psychology_html(extra_html, psych_distill(), psych_enrich())
+    assert any("structured-judgment" in x and "URL 集合" in x and "extra" in x for x in extra), extra
+
+
+def test_strict_psychology_page_requires_same_book_source_audit(tmp_path):
+    page_path = tmp_path / "psych-book.html"
+    page_path.write_text("<html></html>", encoding="utf-8")
+    errors = lint_required_psychology_source_audit(page_path)
+    assert any("缺同书目录 source-audit.json" in error for error in errors)
+
+
+def test_g24_smoke_activates_real_hidden_judge_panel_then_restores_glance(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    evidence_block = re.search(
+        r'(<div class="psych-evidence" .*?</div>)</body>', psych_page(), re.S,
+    ).group(1)
+    fixture = f'''<!doctype html><html><head><style>
+      .panel{{display:none}} .panel.on{{display:block}}
+    </style></head><body>
+      <button class="tab on" data-panel="panel-glance">全书速览</button>
+      <button class="tab" data-panel="panel-judge">批判与评价</button>
+      <section class="panel on" id="panel-glance">默认板</section>
+      <section class="panel" id="panel-judge">{evidence_block}</section>
+      <script>
+        document.querySelectorAll('.tab[data-panel]').forEach(tab => tab.addEventListener('click', () => {{
+          document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === tab.dataset.panel));
+          document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === tab));
+        }}));
+      </script>
+    </body></html>'''
+    path = tmp_path / "five-tabs.html"
+    path.write_text(fixture, encoding="utf-8")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page_obj = browser.new_page()
+        page_obj.goto(path.resolve().as_uri())
+        assert not page_obj.locator("#panel-judge .psych-evidence").is_visible()
+        errors = _psychology_smoke(
+            page_obj, psych_distill(), psych_enrich()["evidence_page"]["claims"],
+        )
+        assert errors == []
+        assert page_obj.locator("#panel-glance").is_visible()
+        assert not page_obj.locator("#panel-judge").is_visible()
+        browser.close()
 
 
 def test_g24_does_not_require_evidence_cards_for_legacy_books():
@@ -799,7 +869,10 @@ def psych_page(*, omit_claim=None, duplicate_claim=None, drop_column=None, root_
                 f"外部研究怎么说:状态:{status};{best_evidence}"
                 f"复制:{replication_status} -- 复制状态已按主张类型单独判断。{source}"
             ),
-            "pe-boundary": "适用边界与风险:一般成年人,非临床判断任务。",
+            "pe-boundary": (
+                "适用边界与风险:一般成年人,非临床判断任务。"
+                "不外推到所有文化与临床场景；不应替代专业诊断。"
+            ),
         }
         inner = (f'<h4 class="pe-title">{title}</h4>'
                  f'<span class="pe-status" data-status="{status}">{status}</span>'

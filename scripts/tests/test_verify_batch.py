@@ -31,6 +31,7 @@ def test_check_one_default_keeps_legacy_command_and_psychology_propagates(tmp_pa
     assert "--source" not in commands[-1]
 
     (tmp_path / "legacy-book" / "book.txt").write_text("原书正文", encoding="utf-8")
+    (tmp_path / "legacy-book" / "source-audit.json").write_text("{}", encoding="utf-8")
     assert vb.check_one(tmp_path, "legacy-book", fast=True, required_domain="psychology")["ok"]
     index = commands[-1].index("--require-domain")
     assert commands[-1][index:index + 2] == ["--require-domain", "psychology"]
@@ -55,6 +56,7 @@ def test_strict_batch_requires_book_text_before_invoking_verifier(tmp_path, monk
 def test_strict_batch_blocks_missing_profile_while_default_path_stays_legacy(tmp_path, monkeypatch):
     _artifacts(tmp_path, "missing-profile")
     (tmp_path / "missing-profile" / "book.txt").write_text("原书正文", encoding="utf-8")
+    (tmp_path / "missing-profile" / "source-audit.json").write_text("{}", encoding="utf-8")
 
     def domain_aware_run(cmd, **kwargs):
         if "--require-domain" in cmd:
@@ -70,3 +72,16 @@ def test_strict_batch_blocks_missing_profile_while_default_path_stays_legacy(tmp
     strict = vb.check_one(tmp_path, "missing-profile", fast=True, required_domain="psychology")
     assert not strict["ok"]
     assert any("严格域 psychology" in blocker for blocker in strict["blockers"])
+
+
+def test_strict_batch_requires_source_audit_before_invoking_verifier(tmp_path, monkeypatch):
+    _artifacts(tmp_path, "missing-audit")
+    (tmp_path / "missing-audit" / "book.txt").write_text("原书正文", encoding="utf-8")
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("缺 source-audit.json 时不应调起 verify_page")
+
+    monkeypatch.setattr(vb.subprocess, "run", must_not_run)
+    result = vb.check_one(tmp_path, "missing-audit", fast=True, required_domain="psychology")
+    assert not result["ok"]
+    assert any("缺 source-audit.json" in blocker and "hash" in blocker for blocker in result["blockers"])
