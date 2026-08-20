@@ -512,6 +512,20 @@ def test_g24_claim_mapping_must_be_exact_no_missing_or_extra():
     assert any("G24" in x and "不精确一致" in x and "structured-judgment" in x and "phantom-claim" in x for x in v)
 
 
+def test_g24_non_object_claims_reports_error_without_crashing_html_crosscheck():
+    enrich = psych_enrich()
+    enrich["evidence_page"]["claims"] = []
+    v = lint_html(psych_page(), psych_distill(), enrich)
+    assert any("evidence_page.claims" in x and "非对象" in x for x in v)
+
+
+def test_g24_title_cannot_vacuously_match_when_original_claim_has_no_auditable_title():
+    data = psych_distill()
+    data["core_ideas"][0]["idea"] = "短"
+    v = lint_psychology_html(psych_page(), data, psych_enrich())
+    assert any("dual-process-framework" in x and ".pe-title 未回指" in x for x in v)
+
+
 def test_g24_rejects_illegal_status_confidence_replication_scope_and_source():
     enrich = psych_enrich()
     claim = enrich["evidence_page"]["claims"]["structured-judgment"]
@@ -548,6 +562,97 @@ def test_g24_each_claim_requires_exactly_one_three_column_card():
     assert any("structured-judgment" in x and "数量为 2" in x for x in v_duplicate)
     v_column = lint_html(psych_page(drop_column="pe-boundary"), psych_distill(), psych_enrich())
     assert any("dual-process-framework" in x and "pe-boundary" in x for x in v_column)
+
+
+@pytest.mark.parametrize("root_attrs", [
+    "hidden", 'aria-hidden="true"', 'style="display:none"', 'style="visibility: hidden !important"',
+])
+def test_g24_rejects_invisible_evidence_root(root_attrs):
+    v = lint_psychology_html(psych_page(root_attrs=root_attrs), psych_distill(), psych_enrich())
+    assert any("psych-evidence" in x and "不可见" in x for x in v)
+
+
+def test_g24_rejects_template_decoy_and_empty_or_hidden_columns():
+    templated = psych_page().replace(
+        '<div class="psych-evidence" >', '<template><div class="psych-evidence">', 1
+    ).replace('</body>', '</div></template></body>', 1)
+    v_template = lint_psychology_html(templated, psych_distill(), psych_enrich())
+    assert any("psych-evidence" in x and "不可见" in x for x in v_template)
+
+    empty = psych_page().replace(
+        '原书怎么说:双系统框架把直觉与分析当作两种加工模式', '', 1
+    )
+    v_empty = lint_psychology_html(empty, psych_distill(), psych_enrich())
+    assert any("dual-process-framework" in x and "pe-book" in x and "文本为空" in x for x in v_empty)
+
+    hidden = psych_page().replace('class="pe-boundary"', 'class="pe-boundary" aria-hidden="true"', 1)
+    v_hidden = lint_psychology_html(hidden, psych_distill(), psych_enrich())
+    assert any("dual-process-framework" in x and "pe-boundary" in x and "可见真节点" in x for x in v_hidden)
+
+    duplicate_column = psych_page().replace(
+        '<div class="pe-boundary">适用边界与风险:一般成年人,非临床判断任务。</div>',
+        '<div class="pe-book">重复的原书栏</div>'
+        '<div class="pe-boundary">适用边界与风险:一般成年人,非临床判断任务。</div>', 1,
+    )
+    v_duplicate_column = lint_psychology_html(duplicate_column, psych_distill(), psych_enrich())
+    assert any("dual-process-framework" in x and "pe-book" in x and "精确为 1" in x
+               for x in v_duplicate_column)
+
+
+def test_g24_rejects_title_status_and_best_evidence_mismatch():
+    html = psych_page().replace(
+        '双系统框架把直觉与分析当作两种加工模式', '完全无关的卡片标题', 1
+    ).replace('data-status="supported"', 'data-status="mixed"', 1).replace(
+        '这是框架性分类，不构成可证伪的单一经验主张，因此不可检验。', '只写了模糊外证', 1
+    )
+    v = lint_psychology_html(html, psych_distill(), psych_enrich())
+    assert any("dual-process-framework" in x and "pe-title" in x for x in v)
+    assert any("structured-judgment" in x and "data-status" in x for x in v)
+    assert any("dual-process-framework" in x and "best_evidence" in x for x in v)
+
+
+def test_g24_empirical_claim_cannot_escape_sources_via_not_testable():
+    enrich = psych_enrich()
+    claim = enrich["evidence_page"]["claims"]["structured-judgment"]
+    claim.update({
+        "status": "not_testable", "confidence": "not_applicable", "sources": [],
+        "best_evidence": "该项不可检验，因为暂时不想核对来源。",
+        "replication": {"status": "not_applicable", "note": "不适用。"},
+    })
+    v = lint_psychology_evidence(psych_distill(), enrich)
+    assert any("structured-judgment" in x and "实证型主张" in x and "not_testable" in x for x in v)
+
+
+def test_g24_framework_not_testable_requires_explicit_reason():
+    enrich = psych_enrich()
+    enrich["evidence_page"]["claims"]["dual-process-framework"]["best_evidence"] = \
+        "not_testable not_testable"
+    v = lint_psychology_evidence(psych_distill(), enrich)
+    assert any("dual-process-framework" in x and "不可检验" in x and "理由" in x for x in v)
+
+
+def test_g24_source_type_is_closed_enum_and_url_needs_host():
+    enrich = psych_enrich()
+    source = enrich["evidence_page"]["claims"]["structured-judgment"]["sources"][0]
+    source.update({"type": "blog_post", "url": "https:///missing-host"})
+    v = lint_psychology_evidence(psych_distill(), enrich)
+    assert any("sources[0].type" in x and "非法" in x for x in v)
+    assert any("sources[0].url" in x and "host" in x for x in v)
+
+
+@pytest.mark.parametrize("old,new,needle", [
+    ("状态:supported", "状态:", "evidence_page.status"),
+    ('data-status="supported">supported</span>', 'data-status="supported">错误文字</span>', ".pe-status 可见文字"),
+    ("复制:replicated", "复制:", "replication.status"),
+    ("复制状态已按主张类型单独判断。", "未呈现复制结论。", "replication.note"),
+    ('<a href="https://example.org/study">A registered synthesis</a>', "来源仅写成纯文本", "来源链接"),
+    ('<a href="https://example.org/study">', '<a href="https://example.org/study" hidden>', "来源链接"),
+    ('href="https://example.org/study"', 'href="https:///missing-host"', "来源链接"),
+])
+def test_g24_research_column_must_render_status_replication_and_valid_source(old, new, needle):
+    html = psych_page().replace(old, new, 1)
+    v = lint_psychology_html(html, psych_distill(), psych_enrich())
+    assert any(needle in x for x in v), v
 
 
 def test_g24_does_not_require_evidence_cards_for_legacy_books():
@@ -614,16 +719,27 @@ def psych_distill(**over):
         "domain": "psychology", "subfields": ["judgment-and-decision-making"],
         "work_kind": "popular_science", "clinical_relevance": "indirect",
     }
-    d["core_ideas"][0].update(claim_id="dual-process-framework", claim_type="framework")
-    d["decision_rules"][0].update(claim_id="structured-judgment", claim_type="intervention")
+    d["core_ideas"][0].update(
+        idea="双系统框架把直觉与分析当作两种加工模式",
+        claim_id="dual-process-framework", claim_type="framework",
+    )
+    d["decision_rules"][0].update(
+        when="判断重大且可能受偏差影响时", do="使用结构化判断清单",
+        claim_id="structured-judgment", claim_type="intervention",
+    )
     d.update(over)
     return d
 
 
 def _psych_claim(*, status, confidence, replication_status, sources):
+    best_evidence = (
+        "这是框架性分类，不构成可证伪的单一经验主张，因此不可检验。"
+        if status == "not_testable"
+        else "综合当前可获得的最高等级研究与直接复制。"
+    )
     return {
         "status": status,
-        "best_evidence": "综合当前可获得的最高等级研究与直接复制。",
+        "best_evidence": best_evidence,
         "confidence": confidence,
         "replication": {"status": replication_status, "note": "复制状态已按主张类型单独判断。"},
         "scope": {
@@ -654,21 +770,47 @@ def psych_enrich(**evidence_over):
     }
 
 
-def psych_page(*, omit_claim=None, duplicate_claim=None, drop_column=None):
+def psych_page(*, omit_claim=None, duplicate_claim=None, drop_column=None, root_attrs=""):
     cards = []
     for claim_id in ("dual-process-framework", "structured-judgment"):
         if claim_id == omit_claim:
             continue
+        title = (
+            "双系统框架把直觉与分析当作两种加工模式"
+            if claim_id == "dual-process-framework" else "使用结构化判断清单"
+        )
+        status = "not_testable" if claim_id == "dual-process-framework" else "supported"
+        replication_status = "not_applicable" if claim_id == "dual-process-framework" else "replicated"
+        best_evidence = (
+            "这是框架性分类，不构成可证伪的单一经验主张，因此不可检验。"
+            if claim_id == "dual-process-framework"
+            else "综合当前可获得的最高等级研究与直接复制。"
+        )
+        source = (
+            "" if claim_id == "dual-process-framework"
+            else '<a href="https://example.org/study">A registered synthesis</a>'
+        )
         columns = ["pe-book", "pe-research", "pe-boundary"]
         if claim_id == "dual-process-framework" and drop_column in columns:
             columns.remove(drop_column)
-        inner = "".join(f'<div class="{column}">{column}</div>' for column in columns)
+        content = {
+            "pe-book": "原书怎么说:" + title,
+            "pe-research": (
+                f"外部研究怎么说:状态:{status};{best_evidence}"
+                f"复制:{replication_status} -- 复制状态已按主张类型单独判断。{source}"
+            ),
+            "pe-boundary": "适用边界与风险:一般成年人,非临床判断任务。",
+        }
+        inner = (f'<h4 class="pe-title">{title}</h4>'
+                 f'<span class="pe-status" data-status="{status}">{status}</span>'
+                 + "".join(f'<div class="{column}">{content[column]}</div>' for column in columns))
         cards.append(f'<section class="pe-claim" data-claim-id="{claim_id}">{inner}</section>')
     if duplicate_claim:
         cards.append('<section class="pe-claim" data-claim-id="structured-judgment">'
                      '<div class="pe-book"></div><div class="pe-research"></div>'
                      '<div class="pe-boundary"></div></section>')
-    return page().replace("</body>", "".join(cards) + "</body>")
+    block = f'<div class="psych-evidence" {root_attrs}>{"".join(cards)}</div>'
+    return page().replace("</body>", block + "</body>")
 
 
 def test_distill_clean_passes():
@@ -1121,6 +1263,19 @@ def test_g23_does_not_change_legacy_book_behavior():
     assert not any("G23" in x for x in lint_distill(distill()))
 
 
+def test_g23_project_strict_mode_rejects_omitted_domain_profile_but_default_stays_legacy():
+    legacy = distill()
+    assert not any("G23" in x for x in lint_distill(legacy))
+    strict = lint_distill(legacy, required_domain="psychology")
+    assert any("G23" in x and "严格域 psychology" in x and "domain_profile" in x for x in strict)
+    assert lint_distill(psych_distill(), required_domain="psychology") == []
+
+
+def test_g23_project_strict_mode_threads_through_page_verifier():
+    v = lint_html(page(), distill(), required_domain="psychology")
+    assert any("G23" in x and "domain_profile" in x for x in v)
+
+
 # ---------------------------------------------------------------- v4 G20 chain_steps
 def test_g20_missing_chain_steps_flagged():
     v = lint_distill(distill(arguments={"chain": "x", "hidden_assumptions": [], "counter_examples": []}))
@@ -1499,21 +1654,28 @@ def tjson(**over):
     d = {
         "topic": "测试主题", "slug": "__fixture__", "intro": "三本合成书演示主题聚合。",
         "books": [
-            {"slug": "a-book", "title": "甲", "book_type": "工具", "pub_year": 2010, "stakes": "high", "school_id": "s1"},
-            {"slug": "b-book", "title": "乙", "book_type": "工具", "pub_year": 2015, "stakes": "high", "school_id": "s2"},
-            {"slug": "c-book", "title": "丙", "book_type": "论说", "pub_year": 2020, "stakes": "high", "school_id": "s2"},
+            {"slug": "a-book", "title": "甲", "book_type": "工具", "pub_year": 2010, "stakes": "high", "school_ids": ["s1"]},
+            {"slug": "b-book", "title": "乙", "book_type": "工具", "pub_year": 2015, "stakes": "high", "school_ids": ["s2"]},
+            {"slug": "c-book", "title": "丙", "book_type": "论说", "pub_year": 2020, "stakes": "high", "school_ids": ["s2"]},
         ],
         "schools": [
-            {"id": "s1", "name": "训练派", "claim": "能力可训练。", "members": ["a-book"], "anchor_book": "a-book", "color_idx": 0},
-            {"id": "s2", "name": "温和派", "claim": "能力要等成熟。", "members": ["b-book", "c-book"], "anchor_book": "b-book", "color_idx": 1},
+            {"id": "s1", "name": "训练派", "kind": "applied", "evidence_status": "mixed",
+             "claim": "能力可训练。", "members": ["a-book"], "anchor_book": "a-book", "color_idx": 0},
+            {"id": "s2", "name": "温和派", "kind": "theoretical", "evidence_status": "contested",
+             "claim": "能力要等成熟。", "members": ["b-book", "c-book"], "anchor_book": "b-book", "color_idx": 1},
         ],
         "disputes": [
             {"id": "d1", "question": "能力能否训练?", "axis": "训练 vs 温和", "concept": "自我塑形",
-             "index_relation": "CONTRADICTS",
+             "index_relation": "CONTRADICTS", "question_type": "intervention",
              "positions": [
                  {"label": "可训练", "books": [{"slug": "a-book", "stance": "可练出来", "quote": "练出来的", "anchor": "第3章"}]},
                  {"label": "不可训练", "books": [{"slug": "b-book", "stance": "等成熟", "quote": "教不会花提前开", "anchor": "第5章"}]},
-             ], "note": "index 已登记对立。"},
+             ], "note": "index 已登记对立。",
+             "adjudication": {
+                 "status": "mixed", "book_view": "两本书给出相反建议。",
+                 "research_view": "外部研究结果混合。", "boundary_conditions": "取决于训练任务与人群。",
+             },
+             "sources": [{"title": "A synthesis", "url": "https://example.org/synthesis"}]},
         ],
         "dimensions": [
             {"id": "dim1", "name": "起始时机", "cells": [
@@ -1611,6 +1773,59 @@ def test_topic_unverified_certainty_is_legal():
     assert lint_topic_html(topic_html(), d) == []
 
 
+def test_topic_verified_certainty_requires_anchor():
+    d = tjson()
+    d["dimensions"][0]["cells"][0]["anchor"] = ""
+    v = lint_topic_html(topic_html(), d)
+    assert any("certainty=book_explicit" in x and "anchor" in x for x in v)
+
+
+def test_topic_school_ids_are_unique_referenced_and_bidirectional():
+    duplicate = tjson()
+    duplicate["schools"][1]["id"] = "s1"
+    v_duplicate = lint_topic_html(topic_html(), duplicate)
+    assert any("school.id" in x and "重复" in x for x in v_duplicate)
+
+    orphan = tjson()
+    orphan["books"][0]["school_ids"] = ["ghost"]
+    v_orphan = lint_topic_html(topic_html(), orphan)
+    assert any("不存在的 school" in x and "ghost" in x for x in v_orphan)
+    assert any("未回指" in x and "a-book" in x for x in v_orphan)
+
+
+def test_topic_school_kind_and_evidence_status_are_closed_enums():
+    d = tjson()
+    d["schools"][0].update({"kind": "research_program", "evidence_status": "proven"})
+    v = lint_topic_html(topic_html(), d)
+    assert any("kind" in x and "research_program" in x for x in v)
+    assert any("evidence_status" in x and "proven" in x for x in v)
+
+
+def test_topic_dispute_scientific_contract_and_source_host():
+    d = tjson()
+    dispute = d["disputes"][0]
+    dispute["question_type"] = "opinion"
+    dispute["adjudication"] = {"status": "certain", "book_view": "", "research_view": "r"}
+    dispute["sources"] = [{"url": "https:///missing-host"}]
+    v = lint_topic_html(topic_html(), d)
+    assert any("question_type" in x and "opinion" in x for x in v)
+    assert any("adjudication.status" in x and "非法" in x for x in v)
+    assert any("adjudication.book_view" in x and "缺/空" in x for x in v)
+    assert any("adjudication.boundary_conditions" in x and "缺/空" in x for x in v)
+    assert any("sources[0]" in x and "host" in x for x in v)
+
+
+def test_topic_parallel_is_trace_data_not_a_dispute_card_contract():
+    d = tjson()
+    dispute = d["disputes"][0]
+    dispute["index_relation"] = "parallel"
+    dispute["positions"] = [dispute["positions"][0]]
+    dispute.pop("question_type")
+    dispute.pop("adjudication")
+    dispute.pop("sources")
+    assert lint_topic_html(topic_html(), d) == []
+
+
 def test_topic_fullwidth_dash_flagged():
     v = lint_topic_html(topic_html(), tjson(intro="从甲到乙——这是断裂"))
     assert any("破折号" in x for x in v)
@@ -1633,6 +1848,7 @@ def test_topic_skeleton_static_gate_clean():
     assert topic is not None, "主题骨架应含可解析的内联 #topic-data"
     v = lint_topic_html(html, topic)
     assert v == [], f"主题骨架静态门禁应全过,实际违规: {v}"
+    assert ".filter(d => d.index_relation !== 'parallel'" in html
 
 
 # ================================================================ 品牌浮标 .bd-brandbar(可降级,默认删)

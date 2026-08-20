@@ -17,6 +17,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # Windows 管道默认 cp936,打中文 JSON 前必须强制 UTF-8(本仓库跨脚本契约)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -31,7 +32,7 @@ EVIDENCE_STATUS_VALUES = (
 QUESTION_TYPE_VALUES = (
     "conceptual", "descriptive", "causal", "predictive", "intervention", "methodological", "normative"
 )
-HTTP_URL_RE = re.compile(r"^https?://[^\s]+$", re.I)
+SCHOOL_KIND_VALUES = ("theoretical", "methodological", "applied", "mixed")
 
 PUNCT_RE = re.compile(r"[\s　-〿＀-￯,.!?;:\"'`()\[\]{}<>/\\|~@#$%^&*_+=·、,。!?;:「」『』（）【】]")
 
@@ -45,6 +46,22 @@ def norm(s: str) -> str:
 
 def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def is_http_url(value) -> bool:
+    """不联网，但必须能被 URL parser 解出 http(s) scheme + 非空 host。"""
+    if not isinstance(value, str):
+        return False
+    raw = value.strip()
+    if not raw or any(ch.isspace() for ch in raw):
+        return False
+    try:
+        parsed = urlsplit(raw)
+        host = parsed.hostname
+        parsed.port
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme.lower() in {"http", "https"} and bool(host and host.strip("."))
 
 
 # --------------------------------------------------------------------------- 收集
@@ -103,13 +120,100 @@ def load_index_concepts(index_path):
 
 # --------------------------------------------------------------------------- 派生
 
-def derive_books(members, manual):
+def validate_school_contract(manual, member_set):
+    """在派生 books.school_ids 前拒绝重复 school id 与 book_meta 孤儿引用。
+
+    通过报错停止生成，避免“先从原始 schools 反推，再在 resolve_schools
+    里丢掉无效 school”导致 topic.json 出现无对应 school 的孤儿 ID。
+    """
+    errors = []
+    schools = manual.get("schools", []) or []
+    if not isinstance(schools, list):
+        return ["manual.schools 必须是数组"]
+    ids = set()
+    explicit_members = {}
+    anchors = {}
+    for index, school in enumerate(schools):
+        if not isinstance(school, dict):
+            errors.append(f"manual.schools[{index}] 必须是对象")
+            continue
+        sid = school.get("id") or f"s{index + 1}"
+        if not isinstance(sid, str) or not sid.strip():
+            errors.append(f"manual.schools[{index}].id 必须是非空字符串")
+            continue
+        if sid in ids:
+            errors.append(f"manual.schools 的 id {sid!r} 重复")
+        ids.add(sid)
+        if not isinstance(school.get("name"), str) or not school["name"].strip():
+            errors.append(f"manual.school {sid!r} 缺非空 name(否则解析时会产生孤儿 school_id)")
+        members = school.get("members") or []
+        if not isinstance(members, list):
+            errors.append(f"manual.school {sid!r}.members 必须是数组")
+            members = []
+        valid_members = []
+        seen_members = set()
+        for slug in members:
+            if not isinstance(slug, str) or not slug:
+                errors.append(f"manual.school {sid!r}.members 只能含非空字符串")
+                continue
+            if slug in seen_members:
+                errors.append(f"manual.school {sid!r}.members 含重复成员 {slug!r}")
+            seen_members.add(slug)
+            if slug not in member_set:
+                errors.append(f"manual.school {sid!r}.members 引用非成员 slug {slug!r}")
+            else:
+                valid_members.append(slug)
+        explicit_members.setdefault(sid, set()).update(valid_members)
+        anchor = school.get("anchor_book")
+        if anchor is not None and (not isinstance(anchor, str) or not anchor):
+            errors.append(f"manual.school {sid!r}.anchor_book 必须是非空字符串或省略")
+        elif anchor is not None:
+            anchors[sid] = anchor
+            if anchor not in member_set:
+                errors.append(f"manual.school {sid!r}.anchor_book 引用非成员 slug {anchor!r}")
+
+    book_meta = manual.get("book_meta") or {}
+    if not isinstance(book_meta, dict):
+        errors.append("manual.book_meta 必须是对象")
+        return errors
+    meta_members = {}
+    for slug, meta in book_meta.items():
+        if not isinstance(meta, dict):
+            errors.append(f"manual.book_meta[{slug!r}] 必须是对象")
+            continue
+        if slug not in member_set:
+            continue  # 非成员 meta 不进产物，仍交给既有 warning/人工清理流程。
+        refs = meta.get("school_ids")
+        if refs is None and meta.get("school_id") is not None:
+            refs = [meta.get("school_id")]
+        if refs is None:
+            continue
+        if not isinstance(refs, list) or any(not isinstance(x, str) or not x for x in refs):
+            errors.append(f"manual.book_meta[{slug!r}].school_ids 必须是非空字符串数组")
+            continue
+        if len(refs) != len(set(refs)):
+            errors.append(f"manual.book_meta[{slug!r}].school_ids 含重复引用")
+        for sid in refs:
+            if sid not in ids:
+                errors.append(f"manual.book_meta[{slug!r}].school_ids 引用不存在的 school {sid!r}")
+            else:
+                meta_members.setdefault(sid, set()).add(slug)
+    for sid, anchor in anchors.items():
+        resolved_members = explicit_members.get(sid, set()) | meta_members.get(sid, set())
+        if anchor in member_set and anchor not in resolved_members:
+            errors.append(f"manual.school {sid!r}.anchor_book {anchor!r} 未包含在该 school.members/book_meta 引用中")
+    return errors
+
+
+def derive_books(members, manual, schools=None):
     """🤖 直取 distill 元数据 + 合并 manual.book_meta(one_liner/role_in_topic)
-    + 从 schools 反推 school_ids(按 schools 顺序有序去重)。"""
+    + 从**已解析** schools 反推 school_ids(按 schools 顺序有序去重)。
+    ``schools=None`` 只保留给纯函数旧调用；正式 build 必须传 resolve_schools 产物。"""
     book_meta = manual.get("book_meta") or {}
     # slug -> school_ids(同一本书可属于多个研究传统/分析镜头)
     school_of = {}
-    for i, sc in enumerate(manual.get("schools", []) or []):
+    source_schools = (manual.get("schools", []) or []) if schools is None else schools
+    for i, sc in enumerate(source_schools):
         school_id = sc.get("id") or f"s{i + 1}"
         for s in sc.get("members", []) or []:
             ids = school_of.setdefault(s, [])
@@ -138,16 +242,29 @@ def derive_books(members, manual):
 def resolve_schools(manual, member_set, title_of, warnings):
     """✍️ 分类纯 manual;校验 members⊆成员、补 color_idx、解析 anchor_book title。
 
-    kind 是可扩展的人类可读分类，只校验为非空字符串；evidence_status 与心理学外证
-    状态共用六状态枚举。旧 topic 可缺这两字段，不破坏非心理学主题。
+    kind/evidence_status 使用 topic-craft 的锁定枚举；book_meta.school_ids
+    (及旧 school_id) 与 schools[].members 做并集，保证双向回指一致。
     """
+    meta_members = {}
+    for slug, meta in (manual.get("book_meta") or {}).items():
+        if slug not in member_set or not isinstance(meta, dict):
+            continue
+        refs = meta.get("school_ids")
+        if refs is None and meta.get("school_id") is not None:
+            refs = [meta.get("school_id")]
+        for sid in refs or []:
+            meta_members.setdefault(sid, []).append(slug)
     out = []
     for i, sc in enumerate(manual.get("schools", []) or []):
         name = sc.get("name")
         if not name:
             warnings.append(f"school[{i}] 缺 name,已跳过")
             continue
-        mem = [s for s in (sc.get("members") or []) if s in member_set]
+        sid = sc.get("id") or f"s{i + 1}"
+        mem = []
+        for slug in list(sc.get("members") or []) + meta_members.get(sid, []):
+            if slug in member_set and slug not in mem:
+                mem.append(slug)
         bad = [s for s in (sc.get("members") or []) if s not in member_set]
         for s in bad:
             warnings.append(f"school「{name}」的成员 {s} 不在 members 集,已剔除")
@@ -156,11 +273,9 @@ def resolve_schools(manual, member_set, title_of, warnings):
             warnings.append(f"school「{name}」anchor_book {anchor} 不在 members 集")
             anchor = None
         kind = sc.get("kind")
-        if kind is not None and (not isinstance(kind, str) or not kind.strip()):
-            warnings.append(f"school「{name}」kind 必须是非空字符串,已置空")
+        if kind is not None and kind not in SCHOOL_KIND_VALUES:
+            warnings.append(f"school「{name}」kind「{kind}」∉ {SCHOOL_KIND_VALUES},已置空")
             kind = None
-        elif isinstance(kind, str):
-            kind = kind.strip()
         evidence_status = sc.get("evidence_status")
         if evidence_status is not None and evidence_status not in EVIDENCE_STATUS_VALUES:
             warnings.append(
@@ -169,7 +284,7 @@ def resolve_schools(manual, member_set, title_of, warnings):
             )
             evidence_status = None
         out.append({
-            "id": sc.get("id") or f"s{i + 1}",
+            "id": sid,
             "name": name,
             "kind": kind,
             "evidence_status": evidence_status,
@@ -241,14 +356,14 @@ def _normalize_sources(value, label, warnings):
     out = []
     for i, source in enumerate(value):
         if isinstance(source, str):
-            if HTTP_URL_RE.match(source.strip()):
+            if is_http_url(source):
                 out.append(source.strip())
             else:
                 warnings.append(f"dispute「{label}」sources[{i}] 不是合法 http(s) URL,已剔除")
             continue
         if isinstance(source, dict):
             url = source.get("url")
-            if isinstance(url, str) and HTTP_URL_RE.match(url.strip()):
+            if is_http_url(url):
                 item = dict(source)
                 item["url"] = url.strip()
                 out.append(item)
@@ -421,10 +536,12 @@ def build_topic_json(members, manual, enrich, index_concepts):
     warnings = []
     member_set = {slug for slug, _ in members}
     members_by_slug = {slug: d for slug, d in members}
-    books = derive_books(members, manual)
-    title_of = {b["slug"]: b["title"] for b in books}
-
+    school_errors = validate_school_contract(manual, member_set)
+    if school_errors:
+        raise ValueError("; ".join(school_errors))
+    title_of = {slug: data.get("title") for slug, data in members}
     schools = resolve_schools(manual, member_set, title_of, warnings)
+    books = derive_books(members, manual, schools=schools)
     disputes = resolve_disputes(manual, index_concepts, member_set, warnings)
     dimensions = resolve_dimensions(manual, member_set, members_by_slug, warnings)
     consensus = resolve_consensus(manual, member_set, warnings)
@@ -532,7 +649,11 @@ def main():
             index_path = str(cand)
     index_concepts = load_index_concepts(index_path)
 
-    doc, _ = build_topic_json(members, manual, enrich, index_concepts)
+    try:
+        doc, _ = build_topic_json(members, manual, enrich, index_concepts)
+    except ValueError as exc:
+        print(f"manual schema 错误:{exc}", file=sys.stderr)
+        return 2
     # collect_members 的 warning 并入 provenance
     doc["_provenance"]["warnings"] = warnings0 + doc["_provenance"]["warnings"]
 

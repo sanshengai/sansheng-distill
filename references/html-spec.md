@@ -283,7 +283,7 @@
 | **T6** | **②目录态(默认收起 + 手风琴,替换 v2「默认全展开」)** | `panel-full` 的 `.chapter-toc` 章行**默认收起**,`.bd-chapter` 点击手风琴展开(**允许多章同开**),**必配「全部展开」逃生门**(`.toc-expand[data-toc-toggle]` 存在)。verify 拦:目录态章行默认非展开态 + 全部展开钮存在。**注**:这是 v3 对 v2「章节非 details、默认全展开」的定向反转,勿再套用旧铁律 |
 | **T7** | **金句唯一归宿 = ②金句墙** | 金句只落 `.quote-wall`(quotes 全量);**章内不得出现 `.quote-inline` 行内金句、首屏不得出现 `FQ`/`.featured-quotes` 独立金句条**。verify 拦这两个 v2 遗留结构存在即报警 |
 | **T8** | **核心观点卡展开态必渲三件(硬约束 3)** | `.ci` 展开态必含 `.ci-explain`(explain)+ `.ci-evidence`(evidence)+ `.ci-evlevel`(evidence_level 徽标);缺任一即返工。徽标可见文案固定「原书依据/转述状态」,禁称「证据强度」,避免与心理学外证混淆 |
-| **T9 / G24** | **心理学外证 100% 映射** | psychology 页面必须含 `.psych-evidence`;每个 distill claim_id 恰有一个 `.pe-claim[data-claim-id]`,无多无少;每项含 `.pe-book/.pe-research/.pe-boundary`;enrich 状态/复制/范围/来源契约见 `enrich.md §1.1`。普通书不得因此新增必选块 |
+| **T9 / G24** | **心理学外证 100% 映射** | psychology 页面必须含**唯一、可见** `.psych-evidence`;每个 distill claim_id 恰有一个可见 `.pe-claim[data-claim-id]`,无多无少;每项含 3 个独立、可见、非空真节点 `.pe-book/.pe-research/.pe-boundary`,不得藏进 `template`、`hidden`、`aria-hidden` 或 `display:none/visibility:hidden`。`.pe-title` 回指原书主张,`.pe-status` 对齐结构化状态;`.pe-research` 必须呈现 best_evidence、status、replication,且非 `not_testable` 至少有一个回指 `evidence_page.sources` 的有效可见链接。普通书不得因此新增必选块 |
 
 ### 2.1 交互立法双条款 + 三问出厂检(治 F7/F10 的根,verify + 出厂自查)
 

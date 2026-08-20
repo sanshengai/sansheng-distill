@@ -30,6 +30,7 @@ import sys
 from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlsplit
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -124,6 +125,9 @@ TOPIC_VIEW_CLASSES = [("tp-schools", "分类地图"), ("tp-disputes", "分歧矩
                       ("tp-dims", "维度对照表"), ("tp-books", "书目导航")]
 TOPIC_INDEX_RELATIONS = {"CONTRADICTS", "curated", "parallel"}
 TOPIC_CERTAINTY_VALUES = {"book_explicit", "cross_book_synthesis", "general_knowledge", "unverified"}
+TOPIC_SCHOOL_KINDS = {"theoretical", "methodological", "applied", "mixed"}
+TOPIC_EVIDENCE_STATUS = {"supported", "mixed", "contested", "not_supported", "not_testable", "unverified"}
+TOPIC_QUESTION_TYPES = {"conceptual", "descriptive", "causal", "predictive", "intervention", "methodological", "normative"}
 # 破折号扫描豁免子树(quote=原文照录;external_debate 外证/来源 URL 非转述文字)
 TOPIC_DASH_EXEMPT_KEYS = {"external_debate", "_provenance", "sources", "source", "quote"}
 
@@ -211,8 +215,35 @@ PSYCHOLOGY_CONFIDENCE = frozenset({"high", "moderate", "low", "very_low", "not_a
 PSYCHOLOGY_REPLICATION_STATUS = frozenset({
     "replicated", "mixed", "failed", "not_attempted", "not_applicable",
 })
+PSYCHOLOGY_EMPIRICAL_CLAIM_TYPES = frozenset({
+    "descriptive", "associational", "causal", "predictive", "intervention",
+})
+PSYCHOLOGY_SOURCE_TYPES = frozenset({
+    "meta_analysis", "systematic_review", "registered_report", "replication",
+    "primary_study", "official_correction", "consensus_statement",
+})
 PSYCHOLOGY_CLAIM_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-HTTP_URL_RE = re.compile(r"^https?://", re.I)
+
+
+def _is_http_url(value) -> bool:
+    """只放行可解析且有主机名的 http(s) URL。
+
+    仅检查 ``^https?://`` 会把 ``https:///`` 这类空 host 伪 URL 当成真来源；
+    这里不做联网可达性判断，只锁住结构与 host 的最小安全契约。
+    """
+    if not isinstance(value, str):
+        return False
+    raw = value.strip()
+    if not raw or any(ch.isspace() for ch in raw):
+        return False
+    try:
+        parsed = urlsplit(raw)
+        host = parsed.hostname
+        # 触发非法端口的 ValueError，例如 https://example.org:bad/ 。
+        parsed.port
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme.lower() in {"http", "https"} and bool(host and host.strip("."))
 
 
 def _resolve_active_gates(prof):
@@ -318,13 +349,25 @@ def _psychology_claim_entries(data: dict) -> list[tuple[str, int, dict]]:
     return out
 
 
-def lint_psychology_distill(data: dict) -> list:
-    """G23：心理学 profile 与逐条 claim 身份/类型契约。"""
+def lint_psychology_distill(data: dict, required_domain: str | None = None) -> list:
+    """G23：心理学 profile 与逐条 claim 身份/类型契约。
+
+    ``required_domain`` 是项目级严格门：通用 verifier 无法从一本未声明 profile
+    的书猜出它是心理学，因此由六本心理学项目在调用时显式传
+    ``required_domain="psychology"``。默认 None 保持旧书回归不变。
+    """
+    if required_domain not in (None, "psychology"):
+        return [f"[distill] required_domain {required_domain!r} 未注册(G23)"]
     if "domain_profile" not in data:
+        if required_domain == "psychology":
+            return ["[distill] 严格域 psychology 要求完整 domain_profile，当前缺失(G23)"]
         return []
     prof = data.get("domain_profile")
     if not isinstance(prof, dict):
         return ["[distill] domain_profile 已声明但非对象(G23)"]
+    if required_domain == "psychology" and prof.get("domain") != "psychology":
+        return [f"[distill] 严格域要求 domain_profile.domain='psychology'，"
+                f"当前为 {prof.get('domain')!r}(G23)"]
     if prof.get("domain") != "psychology":
         return [f"[distill] domain_profile.domain {prof.get('domain')!r} 非法"
                 "(G23;当前仅注册 psychology，非心理学旧书应省略整个 domain_profile)"]
@@ -466,7 +509,7 @@ def anchor_ok(s) -> bool:
 
 
 def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None,
-              allow_placeholder: bool = False) -> list:
+              allow_placeholder: bool = False, required_domain: str | None = None) -> list:
     """allow_placeholder=True 仅供校验 templates/ 下的**骨架模板**(天然含 {{槽}}/dummy 示例)时使用;
     校验成品页一律用默认 False -- 成品残留占位符 = Step6 没填槽就交付。"""
     v = []
@@ -651,13 +694,15 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
     # enrich 降级一致性(数据 null ⟺ 对应块/子视图删除,§1.5)
     if enrich is not None:
         v += lint_enrich_consistency(html, enrich)
+    if required_domain and distill is None:
+        v.append(f"[distill] --require-domain {required_domain} 必须与 --distill 同时使用(G23)")
     # G24 心理学科学证据层：即使 enrich 缺失也要失败关闭；非心理学书完全不激活。
     if distill is not None and _is_psychology(distill):
         v += lint_psychology_evidence(distill, enrich)
-        v += lint_psychology_html(html, distill)
+        v += lint_psychology_html(html, distill, enrich)
     # 契约门禁(可选)
     if distill is not None:
-        v += lint_distill(distill)
+        v += lint_distill(distill, required_domain=required_domain)
     return v
 
 
@@ -812,6 +857,29 @@ def _valid_evidence_year(value) -> bool:
     return 1800 <= year <= date.today().year + 1
 
 
+def _states_why_not_testable(value) -> bool:
+    """``not_testable`` 不是免来源开关，必须说明为何该主张不接受经验检验。
+
+    这里只做静态、可重复的最小文本门禁；不判断解释在科学上是否正确。实证型
+    claim 会在上层直接拒绝 ``not_testable``，本函数只服务 framework /
+    methodological / normative。
+    """
+    if not isinstance(value, str) or _effective_len(value) < 8:
+        return False
+    text = value.strip().lower()
+    untestable_markers = (
+        "不可检验", "无法检验", "不可证伪", "非经验主张", "不构成经验主张",
+        "框架性分类", "方法论约定", "规范性判断", "价值判断",
+        "not testable", "not_testable", "non-empirical", "nonempirical",
+    )
+    rationale_markers = (
+        "因为", "由于", "因此", "理由", "不构成", "而非", "属于", "分类", "约定", "价值",
+        "because", "since", "rather than", "does not", "as a ",
+    )
+    return any(marker in text for marker in untestable_markers) \
+        and any(marker in text for marker in rationale_markers)
+
+
 def lint_psychology_evidence(data: dict, enrich: dict | None) -> list:
     """G24：心理学每条 claim 必须有一一对应、结构完整的外部科学证据记录。"""
     if not _is_psychology(data):
@@ -830,10 +898,11 @@ def lint_psychology_evidence(data: dict, enrich: dict | None) -> list:
     except ValueError:
         v.append(f"[enrich] evidence_page.as_of {as_of!r} 非 YYYY-MM-DD 有效日期(G24)")
 
-    expected_ids = {
-        item.get("claim_id") for _, _, item in _psychology_claim_entries(data)
+    expected_claims = {
+        item.get("claim_id"): item for _, _, item in _psychology_claim_entries(data)
         if isinstance(item, dict) and isinstance(item.get("claim_id"), str) and item.get("claim_id")
     }
+    expected_ids = set(expected_claims)
     claims = evidence.get("claims")
     if not isinstance(claims, dict):
         v.append("[enrich] evidence_page.claims 缺/非对象(G24)")
@@ -861,6 +930,13 @@ def lint_psychology_evidence(data: dict, enrich: dict | None) -> list:
                      f"(G24;应为 {sorted(PSYCHOLOGY_CONFIDENCE)})")
         if not isinstance(claim.get("best_evidence"), str) or not claim["best_evidence"].strip():
             v.append(f"[enrich] {prefix}.best_evidence 缺/空(G24)")
+        claim_type = expected_claims[claim_id].get("claim_type")
+        if status == "not_testable" and claim_type in PSYCHOLOGY_EMPIRICAL_CLAIM_TYPES:
+            v.append(f"[enrich] {prefix} 的 claim_type={claim_type} 属实证型主张，"
+                     "不得用 status=not_testable 免除来源(G24)")
+        elif status == "not_testable" and not _states_why_not_testable(claim.get("best_evidence")):
+            v.append(f"[enrich] {prefix}.best_evidence 在 status=not_testable 时须明确说明"
+                     "不可检验/不可证伪的理由(G24)")
 
         replication = claim.get("replication")
         if not isinstance(replication, dict):
@@ -908,67 +984,201 @@ def lint_psychology_evidence(data: dict, enrich: dict | None) -> list:
                 if not isinstance(source.get("title"), str) or not source["title"].strip():
                     v.append(f"[enrich] {sp}.title 缺/空(G24)")
                 url = source.get("url")
-                if not isinstance(url, str) or not HTTP_URL_RE.match(url.strip()):
-                    v.append(f"[enrich] {sp}.url 须为 http(s) URL(G24)")
-                if not isinstance(source.get("type"), str) or not source["type"].strip():
-                    v.append(f"[enrich] {sp}.type 缺/空(G24)")
+                if not _is_http_url(url):
+                    v.append(f"[enrich] {sp}.url 须为含有效 host 的 http(s) URL(G24)")
+                if source.get("type") not in PSYCHOLOGY_SOURCE_TYPES:
+                    v.append(f"[enrich] {sp}.type {source.get('type')!r} 非法"
+                             f"(G24;应为 {sorted(PSYCHOLOGY_SOURCE_TYPES)})")
                 if not _valid_evidence_year(source.get("year")):
                     v.append(f"[enrich] {sp}.year {source.get('year')!r} 非合理四位年份(G24)")
     return v
 
 
+def _inline_hidden(tag: str, attrs: dict) -> bool:
+    """静态 DOM 不可见条件。template 内容天然不渲染；hidden / aria-hidden / 行内
+    display:none / visibility:hidden 都不得被当成 G24 成品卡。"""
+    if tag.lower() in {"template", "script", "style", "noscript"}:
+        return True
+    if "hidden" in attrs or str(attrs.get("aria-hidden") or "").strip().lower() == "true":
+        return True
+    style = re.sub(r"/\*.*?\*/", "", str(attrs.get("style") or ""), flags=re.S)
+    for declaration in style.split(";"):
+        name, sep, value = declaration.partition(":")
+        if not sep:
+            continue
+        name = name.strip().lower()
+        value = re.sub(r"\s*!important\s*$", "", value, flags=re.I).strip().lower()
+        if (name == "display" and value == "none") or (name == "visibility" and value == "hidden"):
+            return True
+    return False
+
+
 class _PsychEvidenceHTMLParser(HTMLParser):
-    """收集 .pe-claim 及其后代 class；只用于结构 lint，不改写 HTML。"""
+    """收集真实 DOM 节点、可见性与可见文本；不把 class token 当成内容证据。"""
     _VOID = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
                        "meta", "param", "source", "track", "wbr"})
+    _CAPTURE_CLASSES = frozenset({"pe-book", "pe-research", "pe-boundary", "pe-title", "pe-status"})
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
+        self.roots = []
         self.cards = []
         self._stack = []
+        self._serial = 0
 
     def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
         amap = dict(attrs)
         classes = set((amap.get("class") or "").split())
-        parent_card = self._stack[-1][1] if self._stack else None
-        starts_card = "pe-claim" in classes
-        if starts_card:
-            active_card = {"claim_id": amap.get("data-claim-id"), "classes": set()}
-            self.cards.append(active_card)
-        else:
-            active_card = parent_card
-            if active_card is not None:
-                active_card["classes"].update(classes)
-        if tag.lower() not in self._VOID:
-            self._stack.append((tag.lower(), active_card))
+        parent = self._stack[-1] if self._stack else None
+        hidden = bool(parent and parent["hidden"]) or _inline_hidden(tag, amap)
+        root = parent["root"] if parent else None
+        card = parent["card"] if parent else None
+
+        self._serial += 1
+        node_id = self._serial
+        if "psych-evidence" in classes:
+            root = {"node_id": node_id, "hidden": hidden, "cards": []}
+            self.roots.append(root)
+        if "pe-claim" in classes:
+            card = {
+                "node_id": node_id, "claim_id": amap.get("data-claim-id"), "hidden": hidden,
+                "root": root, "columns": {name: [] for name in ("pe-book", "pe-research", "pe-boundary")},
+                "titles": [], "statuses": [], "research_links": [],
+            }
+            self.cards.append(card)
+            if root is not None:
+                root["cards"].append(card)
+
+        in_research = bool(parent and parent.get("in_research"))
+        captures = []
+        if card is not None:
+            matched = classes & self._CAPTURE_CLASSES
+            if matched:
+                node = {"node_id": node_id, "hidden": hidden, "attrs": amap, "text": []}
+                captures.append(node)
+                for cls in matched:
+                    if cls in card["columns"]:
+                        card["columns"][cls].append(node)
+                    elif cls == "pe-title":
+                        card["titles"].append(node)
+                    elif cls == "pe-status":
+                        card["statuses"].append(node)
+            if "pe-research" in matched:
+                in_research = True
+            if tag == "a" and in_research:
+                link = {
+                    "node_id": node_id, "hidden": hidden, "attrs": amap, "text": [],
+                    "href": amap.get("href"),
+                }
+                card["research_links"].append(link)
+                captures.append(link)
+
+        if tag not in self._VOID:
+            self._stack.append({"tag": tag, "hidden": hidden, "root": root, "card": card,
+                                "captures": captures, "in_research": in_research})
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
         if tag.lower() not in self._VOID:
             self.handle_endtag(tag)
 
+    def handle_data(self, data):
+        # 隐藏后代的文本不得给可见父栏“充字数”。
+        if not self._stack or self._stack[-1]["hidden"]:
+            return
+        for frame in self._stack:
+            for node in frame["captures"]:
+                node["text"].append(data)
+
     def handle_endtag(self, tag):
         tag = tag.lower()
         for index in range(len(self._stack) - 1, -1, -1):
-            if self._stack[index][0] == tag:
+            if self._stack[index]["tag"] == tag:
                 del self._stack[index:]
                 break
 
 
-def lint_psychology_html(html: str, data: dict) -> list:
-    """G24 渲染契约：每条心理学 claim 精确一张三分栏证据卡。"""
+def _node_text(node: dict) -> str:
+    return re.sub(r"\s+", " ", "".join(node.get("text") or [])).strip()
+
+
+def _claim_title_candidates(section: str, item: dict) -> list[str]:
+    """从 distill 取人类可读的主张标题。decision rule 的 title/claim 可显式给，
+    旧 schema 则接受 when/do 任一条长文本回指。"""
+    keys = ("title", "claim", "idea") if section == "core_ideas" else ("title", "claim", "do", "when")
+    return [str(item[k]).strip() for k in keys if isinstance(item.get(k), str) and item[k].strip()]
+
+
+def _match_text_norm(value) -> str:
+    return re.sub(r"[^\w]", "", str(value or ""), flags=re.UNICODE).lower()
+
+
+def _text_matches_any(rendered: str, candidates: list[str]) -> bool:
+    rendered_n = _match_text_norm(rendered)
+    useful = [_match_text_norm(x) for x in candidates if _effective_len(x) >= 4]
+    # 原书没有可审计的人类标题时不能让任意渲染标题“真空匹配”通过。
+    return bool(useful) and any(candidate in rendered_n or rendered_n in candidate for candidate in useful)
+
+
+def _research_has_status(rendered: str, status: str) -> bool:
+    """允许状态代码或稳定中文标签，但必须在外证栏可见文本中真实出现。"""
+    labels = {
+        "supported": ("supported", "有支持", "证据支持"),
+        "mixed": ("mixed", "证据混合", "结果混合"),
+        "contested": ("contested", "有争议", "仍有争议"),
+        "not_supported": ("not_supported", "不支持", "尚未支持"),
+        "not_testable": ("not_testable", "不可检验", "不适用检验"),
+    }
+    raw = str(rendered or "").lower()
+    if re.search(rf"(?<![a-z_]){re.escape(status.lower())}(?![a-z_])", raw):
+        return True
+    normalized = _match_text_norm(rendered)
+    return any(_match_text_norm(label) in normalized for label in labels.get(status, ())[1:])
+
+
+def _research_has_replication_status(rendered: str, status: str) -> bool:
+    labels = {
+        "replicated": ("replicated", "已复制", "复制成功", "重复成功"),
+        "mixed": ("mixed", "复制结果混合", "重复结果混合"),
+        "failed": ("failed", "复制失败", "重复失败"),
+        "not_attempted": ("not_attempted", "尚未复制", "未尝试复制", "未直接复制"),
+        "not_applicable": ("not_applicable", "复制不适用", "不适用复制"),
+    }
+    raw = str(rendered or "").lower()
+    if re.search(rf"(?<![a-z_]){re.escape(status.lower())}(?![a-z_])", raw):
+        return True
+    normalized = _match_text_norm(rendered)
+    return any(_match_text_norm(label) in normalized for label in labels.get(status, ())[1:])
+
+
+def lint_psychology_html(html: str, data: dict, enrich: dict | None = None) -> list:
+    """G24 渲染契约：可见根卡 + 每条 claim 精确一张可见、有真文本的三分栏卡。"""
     if not _is_psychology(data):
         return []
     parser = _PsychEvidenceHTMLParser()
     try:
         parser.feed(html)
+        parser.close()
     except Exception as exc:
         return [f"[lint] 心理学证据卡 HTML 无法解析: {exc}(G24)"]
 
-    expected_ids = {
-        item.get("claim_id") for _, _, item in _psychology_claim_entries(data)
+    expected = {
+        item.get("claim_id"): (section, item)
+        for section, _, item in _psychology_claim_entries(data)
         if isinstance(item, dict) and isinstance(item.get("claim_id"), str) and item.get("claim_id")
     }
+    raw_evidence_claims = (((enrich or {}).get("evidence_page") or {}).get("claims") or {}) \
+        if isinstance(enrich, dict) and isinstance((enrich or {}).get("evidence_page"), dict) else {}
+    evidence_claims = raw_evidence_claims if isinstance(raw_evidence_claims, dict) else {}
+    v = []
+
+    if len(parser.roots) != 1:
+        v.append(f"[lint] .psych-evidence 根卡数量为 {len(parser.roots)},须精确为 1(G24)")
+    root = parser.roots[0] if len(parser.roots) == 1 else None
+    if root is not None and root["hidden"]:
+        v.append("[lint] .psych-evidence 根卡不可见(template/hidden/aria-hidden/inline style)(G24)")
+
     by_id = {}
     missing_id_count = 0
     for card in parser.cards:
@@ -977,21 +1187,85 @@ def lint_psychology_html(html: str, data: dict) -> list:
             missing_id_count += 1
         else:
             by_id.setdefault(claim_id, []).append(card)
-    v = []
     if missing_id_count:
         v.append(f"[lint] .pe-claim 有 {missing_id_count} 张缺 data-claim-id(G24)")
-    extra = sorted(set(by_id) - expected_ids)
+    extra = sorted(set(by_id) - set(expected))
     if extra:
         v.append(f"[lint] .pe-claim 含 distill 未声明的 data-claim-id: {extra}(G24)")
-    required = {"pe-book", "pe-research", "pe-boundary"}
-    for claim_id in sorted(expected_ids):
+
+    required = ("pe-book", "pe-research", "pe-boundary")
+    for claim_id in sorted(expected):
         cards = by_id.get(claim_id, [])
         if len(cards) != 1:
             v.append(f"[lint] claim_id={claim_id!r} 的 .pe-claim 数量为 {len(cards)},须精确为 1(G24)")
             continue
-        absent = sorted(required - cards[0]["classes"])
-        if absent:
-            v.append(f"[lint] claim_id={claim_id!r} 的 .pe-claim 缺三分栏 {absent}(G24)")
+        card = cards[0]
+        if card["hidden"]:
+            v.append(f"[lint] claim_id={claim_id!r} 的 .pe-claim 不可见"
+                     "(template/hidden/aria-hidden/inline style)(G24)")
+        if root is None or card["root"] is not root or card["node_id"] == root.get("node_id"):
+            v.append(f"[lint] claim_id={claim_id!r} 的 .pe-claim 必须是唯一 .psych-evidence 根卡的真实后代(G24)")
+
+        visible_column_nodes = {}
+        for cls in required:
+            nodes = [node for node in card["columns"][cls] if not node["hidden"]]
+            visible_column_nodes[cls] = nodes
+            if not nodes:
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-claim 缺可见真节点 .{cls}(G24)")
+            elif len(nodes) != 1:
+                v.append(f"[lint] claim_id={claim_id!r} 的可见 .{cls} 数量为 {len(nodes)},须精确为 1(G24)")
+            elif not any(_node_text(node) for node in nodes):
+                v.append(f"[lint] claim_id={claim_id!r} 的 .{cls} 可见文本为空(G24)")
+        first_nodes = [nodes[0]["node_id"] for nodes in visible_column_nodes.values() if nodes]
+        if len(first_nodes) == 3 and len(set(first_nodes)) != 3:
+            v.append(f"[lint] claim_id={claim_id!r} 的 pe-book/pe-research/pe-boundary 必须是 3 个独立节点(G24)")
+
+        titles = [node for node in card["titles"] if not node["hidden"] and _node_text(node)]
+        if len(titles) != 1:
+            v.append(f"[lint] claim_id={claim_id!r} 的可见 .pe-title 数量为 {len(titles)},须精确为 1 且非空(G24)")
+        else:
+            section, item = expected[claim_id]
+            if not _text_matches_any(_node_text(titles[0]), _claim_title_candidates(section, item)):
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-title 未回指 distill 原书主张(G24)")
+
+        statuses = [node for node in card["statuses"] if not node["hidden"] and _node_text(node)]
+        if len(statuses) != 1:
+            v.append(f"[lint] claim_id={claim_id!r} 的可见 .pe-status 数量为 {len(statuses)},须精确为 1 且非空(G24)")
+        elif isinstance(evidence_claims.get(claim_id), dict):
+            actual_status = statuses[0]["attrs"].get("data-status")
+            evidence = evidence_claims[claim_id]
+            expected_status = evidence.get("status")
+            if actual_status != expected_status:
+                v.append(f"[lint] claim_id={claim_id!r} .pe-status[data-status]={actual_status!r} "
+                         f"与 evidence_page.status={expected_status!r} 不一致(G24)")
+            if isinstance(expected_status, str) and not _research_has_status(_node_text(statuses[0]), expected_status):
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-status 可见文字未呈现 evidence_page.status(G24)")
+            best = evidence.get("best_evidence")
+            research_text = " ".join(_node_text(node) for node in visible_column_nodes["pe-research"])
+            if isinstance(best, str) and best.strip() and _match_text_norm(best) not in _match_text_norm(research_text):
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 未渲染 evidence_page.best_evidence(G24)")
+            if isinstance(expected_status, str) and not _research_has_status(research_text, expected_status):
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 未呈现 evidence_page.status(G24)")
+            replication = evidence.get("replication")
+            replication_status = replication.get("status") if isinstance(replication, dict) else None
+            replication_note = replication.get("note") if isinstance(replication, dict) else None
+            if isinstance(replication_status, str) \
+               and not _research_has_replication_status(research_text, replication_status):
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 未呈现 replication.status(G24)")
+            if isinstance(replication_note, str) and replication_note.strip() \
+               and _match_text_norm(replication_note) not in _match_text_norm(research_text):
+                v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 未呈现 replication.note(G24)")
+            if expected_status != "not_testable":
+                links = [link for link in card["research_links"]
+                         if not link["hidden"] and _node_text(link) and _is_http_url(link.get("href"))]
+                source_urls = {
+                    source.get("url").strip() for source in (evidence.get("sources") or [])
+                    if isinstance(source, dict) and _is_http_url(source.get("url"))
+                }
+                if not links:
+                    v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 缺可见、非空、有效的来源链接(G24)")
+                elif source_urls and not any(link["href"].strip() in source_urls for link in links):
+                    v.append(f"[lint] claim_id={claim_id!r} 的 .pe-research 来源链接未回指 evidence_page.sources(G24)")
     return v
 
 
@@ -1086,7 +1360,8 @@ def lint_source_grounding(data: dict, source_text: str) -> list:
     return v
 
 
-def lint_distill(data: dict, source_text: str | None = None) -> list:
+def lint_distill(data: dict, source_text: str | None = None,
+                 required_domain: str | None = None) -> list:
     """distill.json 契约门禁(§7 可机拦部分 G7-G22):evidence_level(G7)/ 章标题(G8)/ narrative(G9)/ §5.1 六类 anchor /
     excerpts(G14)/ primary·featured(G15)/ layman_analogy(G10)/ soul_module(G11)/ self_check(G12)/
     action_chain(G13)/ cover_intro(G16)/ detail(G17)/ credibility_verdict(G18)/ core_question(G19)/ chain_steps(G20)/
@@ -1097,7 +1372,7 @@ def lint_distill(data: dict, source_text: str | None = None) -> list:
     # T0-S schema 完整性(恒校验,先于取值校验:字段整个缺失时下面的 for 循环全部空转)
     v += lint_distill_schema(data)
     # G23 是 domain 条件门，不受 render_profile.active_gates 控制。
-    v += lint_psychology_distill(data)
+    v += lint_psychology_distill(data, required_domain=required_domain)
     is_video = data.get("source_type") == "video_series"
     # render_profile(2026-07-12 B-1/B-2):无 profile → active=None = legacy 全 Tier-1(向后兼容,旧书不必重蒸)
     prof = data.get("render_profile")
@@ -1572,6 +1847,20 @@ def _load_topic_json(html: str, topic_json_path: str | None):
         return None, [f"[topic] 内联 #topic-data JSON 解析失败: {e}"]
 
 
+def _lint_topic_sources(value, label: str, *, required: bool = False) -> list:
+    """topic sources 可为 URL 字符串或含 url 的对象；统一做 host 级解析。"""
+    if value is None and not required:
+        return []
+    if not isinstance(value, list):
+        return [f"[topic] {label} 须为 sources 数组"]
+    v = []
+    for index, source in enumerate(value):
+        url = source if isinstance(source, str) else (source.get("url") if isinstance(source, dict) else None)
+        if not _is_http_url(url):
+            v.append(f"[topic] {label}[{index}] 须为含有效 host 的 http(s) URL")
+    return v
+
+
 def lint_topic_html(html: str, topic: dict | None) -> list:
     """主题聚合页出厂门禁(独立于蒸馏页 REQUIRED_CLASSES;照 topic-craft.md §0 铁律):
     4 视图容器齐(分类地图/分歧矩阵/维度对照表/书目导航)/ 零外链(仅 external_debate 出处 <a href> 可外链)/
@@ -1603,55 +1892,238 @@ def lint_topic_html(html: str, topic: dict | None) -> list:
     if topic is None:
         v.append("[topic] 取不到 topic.json(未传 --topic-json 且无内联 #topic-data),数据类门禁跳过")
         return v
+    if not isinstance(topic, dict):
+        v.append("[topic] topic.json 顶层须为对象")
+        return v
     # 触发门槛:成员 <3 不该生成主题页(topic-craft §0)
     books = topic.get("books", []) or []
+    if not isinstance(books, list):
+        v.append("[topic] books 须为数组")
+        books = []
     if len(books) < 3:
         v.append(f"[topic] 成员书仅 {len(books)} 本(<3),不满足主题聚合触发门槛")
-    # 深链 slug 格式(成员书 + 各视图引用皆走 ../{slug}/{slug}.html)
+    # 成员书 slug + school_ids 参照完整性
+    book_slugs, seen_books = [], set()
     for b in books:
+        if not isinstance(b, dict):
+            v.append("[topic] books[] 有非对象条目")
+            continue
         s = b.get("slug")
         if not s:
             v.append("[topic] books[] 有条目缺 slug(深链无法生成)")
         elif not _slug_ok(s):
             v.append(f"[topic] 书 slug {s!r} 非法(会破坏深链 ../{{slug}}/{{slug}}.html)")
+        elif s in seen_books:
+            v.append(f"[topic] books[].slug {s!r} 重复")
+        else:
+            seen_books.add(s)
+            book_slugs.append(s)
+
+    schools = topic.get("schools", []) or []
+    if not isinstance(schools, list):
+        v.append("[topic] schools 须为数组")
+        schools = []
+    school_by_id, school_ids = {}, set()
+    for index, sc in enumerate(schools):
+        if not isinstance(sc, dict):
+            v.append(f"[topic] schools[{index}] 非对象")
+            continue
+        sid = sc.get("id")
+        if not isinstance(sid, str) or not sid.strip():
+            v.append(f"[topic] schools[{index}].id 缺/空")
+        elif sid in school_ids:
+            v.append(f"[topic] school.id {sid!r} 重复(必须全局唯一)")
+        else:
+            school_ids.add(sid)
+            school_by_id[sid] = sc
+        if sc.get("kind") not in TOPIC_SCHOOL_KINDS:
+            v.append(f"[topic] school {sid or index} kind {sc.get('kind')!r} 非法;"
+                     f"应为 {sorted(TOPIC_SCHOOL_KINDS)}")
+        if sc.get("evidence_status") not in TOPIC_EVIDENCE_STATUS:
+            v.append(f"[topic] school {sid or index} evidence_status {sc.get('evidence_status')!r} 非法;"
+                     f"应为 {sorted(TOPIC_EVIDENCE_STATUS)}")
+        members = sc.get("members")
+        if not isinstance(members, list):
+            v.append(f"[topic] school {sid or index}.members 须为数组")
+            members = []
+        seen_members = set()
+        for slug in members:
+            if not isinstance(slug, str) or not slug:
+                v.append(f"[topic] school {sid or index}.members 含非空字符串以外的条目")
+                continue
+            if slug in seen_members:
+                v.append(f"[topic] school {sid or index}.members 含重复 slug {slug!r}")
+            seen_members.add(slug)
+            if slug not in seen_books:
+                v.append(f"[topic] school {sid or index} 引用非成员 slug {slug!r}")
+        anchor_book = sc.get("anchor_book")
+        if anchor_book and anchor_book not in members:
+            v.append(f"[topic] school {sid or index}.anchor_book {anchor_book!r} 必须同时在 members 内")
+
+    for b in books:
+        if not isinstance(b, dict):
+            continue
+        slug = b.get("slug")
+        ids = b.get("school_ids")
+        if not isinstance(ids, list):
+            legacy = "(旧 school_id 不再是 topic.json 产物字段)" if "school_id" in b else ""
+            v.append(f"[topic] book {slug!r}.school_ids 须为数组{legacy}")
+            continue
+        seen_refs = set()
+        for sid in ids:
+            if not isinstance(sid, str) or not sid:
+                v.append(f"[topic] book {slug!r}.school_ids 只能含非空字符串")
+                continue
+            if sid in seen_refs:
+                v.append(f"[topic] book {slug!r}.school_ids 含重复引用 {sid!r}")
+            seen_refs.add(sid)
+            if sid not in school_ids:
+                v.append(f"[topic] book {slug!r}.school_ids 引用不存在的 school {sid!r}")
+            elif slug not in (school_by_id[sid].get("members") or []):
+                v.append(f"[topic] book {slug!r} 声明 school {sid!r}，但该 school.members 未回指此书")
+    for sid, sc in school_by_id.items():
+        for slug in sc.get("members", []) or []:
+            book = next((b for b in books if isinstance(b, dict) and b.get("slug") == slug), None)
+            if book is not None and sid not in (book.get("school_ids") or []):
+                v.append(f"[topic] school {sid!r}.members 含 {slug!r}，但该书 school_ids 未回指")
+
+    # 深链 slug 格式 + 参照完整性(各视图引用皆走 ../{slug}/{slug}.html)
     ref_slugs = []
-    for sc in topic.get("schools", []) or []:
+    for sc in schools:
+        if not isinstance(sc, dict):
+            continue
         ref_slugs.extend(sc.get("members", []) or [])
         if sc.get("anchor_book"):
             ref_slugs.append(sc["anchor_book"])
-    for d in topic.get("disputes", []) or []:
-        for pos in d.get("positions", []) or []:
+    disputes = topic.get("disputes", []) or []
+    if not isinstance(disputes, list):
+        v.append("[topic] disputes 须为数组")
+        disputes = []
+    for d in disputes:
+        if not isinstance(d, dict):
+            continue
+        positions = d.get("positions", []) or []
+        if not isinstance(positions, list):
+            continue
+        for pos in positions:
+            if not isinstance(pos, dict):
+                continue
             for b in pos.get("books", []) or []:
-                ref_slugs.append(b.get("slug"))
-    for dim in topic.get("dimensions", []) or []:
+                if isinstance(b, dict):
+                    ref_slugs.append(b.get("slug"))
+    dimensions = topic.get("dimensions", []) or []
+    if not isinstance(dimensions, list):
+        v.append("[topic] dimensions 须为数组")
+        dimensions = []
+    for dim in dimensions:
+        if not isinstance(dim, dict):
+            continue
         for c in dim.get("cells", []) or []:
-            ref_slugs.append(c.get("slug"))
-    for g in topic.get("reading_guide", []) or []:
-        ref_slugs.append(g.get("slug"))
+            if isinstance(c, dict):
+                ref_slugs.append(c.get("slug"))
+    reading_guide = topic.get("reading_guide", []) or []
+    if not isinstance(reading_guide, list):
+        v.append("[topic] reading_guide 须为数组")
+        reading_guide = []
+    for g in reading_guide:
+        if isinstance(g, dict):
+            ref_slugs.append(g.get("slug"))
     for row in (topic.get("verdict") or {}).get("guidance", []) or []:
         ref_slugs.extend(row.get("books", []) or [])
     for s in ref_slugs:
         if s and not _slug_ok(s):
             v.append(f"[topic] 引用 slug {s!r} 非法(会破坏深链)")
-    # 分歧矩阵:index_relation 枚举 + 可回指(≥2 立场列有 books,books 有 stance;禁空对立)
-    for d in topic.get("disputes", []) or []:
+        elif s and s not in seen_books:
+            v.append(f"[topic] 引用 slug {s!r} 不在 books 成员集")
+
+    # 分歧矩阵:新 schema 完整性。parallel 可作旧数据/追溯记录保留，但不按分歧卡要求≥2派。
+    seen_dispute_ids = set()
+    for d in disputes:
+        if not isinstance(d, dict):
+            v.append("[topic] disputes[] 有非对象条目")
+            continue
         did = d.get("id", "?")
+        if did in seen_dispute_ids:
+            v.append(f"[topic] dispute.id {did!r} 重复")
+        else:
+            seen_dispute_ids.add(did)
         rel = d.get("index_relation")
         if rel not in TOPIC_INDEX_RELATIONS:
             v.append(f"[topic] 分歧 {did} index_relation {rel!r} ∉ {{CONTRADICTS,curated,parallel}}")
-        filled = [pos for pos in (d.get("positions") or []) if (pos.get("books") or [])]
-        if len(filled) < 2:
+        question_type = d.get("question_type")
+        if question_type not in TOPIC_QUESTION_TYPES and (rel != "parallel" or question_type is not None):
+            v.append(f"[topic] 分歧 {did} question_type {question_type!r} 非法;"
+                     f"应为 {sorted(TOPIC_QUESTION_TYPES)}")
+        positions = d.get("positions") or []
+        if not isinstance(positions, list):
+            v.append(f"[topic] 分歧 {did}.positions 须为数组")
+            positions = []
+        filled = []
+        for position_index, pos in enumerate(positions):
+            if not isinstance(pos, dict):
+                v.append(f"[topic] 分歧 {did}.positions[{position_index}] 非对象")
+                continue
+            if pos.get("books"):
+                if not isinstance(pos.get("books"), list):
+                    v.append(f"[topic] 分歧 {did}.positions[{position_index}].books 须为数组")
+                    continue
+                filled.append(pos)
+        if rel != "parallel" and len(filled) < 2:
             v.append(f"[topic] 分歧 {did} 立场列 <2(需 ≥2 派对照才算分歧,topic-craft §4.3)")
         for pos in filled:
             for b in pos.get("books", []) or []:
-                if not b.get("stance"):
+                if not isinstance(b, dict):
+                    v.append(f"[topic] 分歧 {did} positions.books[] 非对象")
+                    continue
+                if rel != "parallel" and not b.get("stance"):
                     v.append(f"[topic] 分歧 {did} 的 {b.get('slug')} 缺 stance(禁无可回指立场的空对立)")
+        if rel == "curated" and (not isinstance(d.get("note"), str) or not d["note"].strip()):
+            v.append(f"[topic] curated 分歧 {did} 缺 note(必须交代编者归纳依据)")
+
+        adjudication = d.get("adjudication")
+        if rel != "parallel" and not isinstance(adjudication, dict):
+            v.append(f"[topic] 分歧 {did}.adjudication 须为完整四字段对象")
+        if isinstance(adjudication, dict):
+            status = adjudication.get("status")
+            if status not in TOPIC_EVIDENCE_STATUS:
+                v.append(f"[topic] 分歧 {did}.adjudication.status {status!r} 非法")
+            for field in ("book_view", "research_view", "boundary_conditions"):
+                value = adjudication.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    v.append(f"[topic] 分歧 {did}.adjudication.{field} 缺/空")
+        sources = d.get("sources")
+        v += _lint_topic_sources(sources, f"分歧 {did}.sources", required=(rel != "parallel"))
+        if isinstance(adjudication, dict) and adjudication.get("status") in {
+                "supported", "mixed", "contested", "not_supported"} \
+                and isinstance(sources, list) and not sources:
+            v.append(f"[topic] 分歧 {did} 的外证状态为 {adjudication.get('status')}，sources 至少 1 条")
     # 维度对照表:certainty 枚举
-    for dim in topic.get("dimensions", []) or []:
-        for c in dim.get("cells", []) or []:
+    for dim in dimensions:
+        if not isinstance(dim, dict):
+            v.append("[topic] dimensions[] 有非对象条目")
+            continue
+        cells = dim.get("cells", []) or []
+        if not isinstance(cells, list):
+            v.append(f"[topic] 维度「{dim.get('name')}」cells 须为数组")
+            continue
+        for c in cells:
+            if not isinstance(c, dict):
+                v.append(f"[topic] 维度「{dim.get('name')}」cells[] 有非对象条目")
+                continue
             cert = c.get("certainty")
             if cert not in TOPIC_CERTAINTY_VALUES:
-                v.append(f"[topic] 维度「{dim.get('name')}」cell {c.get('slug')} certainty {cert!r} ∉ 三枚举")
+                v.append(f"[topic] 维度「{dim.get('name')}」cell {c.get('slug')} certainty {cert!r} 非法")
+            elif cert != "unverified" and (not isinstance(c.get("anchor"), str) or not c["anchor"].strip()):
+                v.append(f"[topic] 维度「{dim.get('name')}」cell {c.get('slug')} certainty={cert} 却缺 anchor")
+
+    external = topic.get("external_debate")
+    if isinstance(external, dict):
+        v += _lint_topic_sources(external.get("sources"), "external_debate.sources")
+        for qi, q in enumerate(external.get("open_questions", []) or []):
+            for ci, camp in enumerate((q or {}).get("camps", []) or []):
+                if isinstance(camp, dict) and camp.get("source") is not None and not _is_http_url(camp.get("source")):
+                    v.append(f"[topic] external_debate.open_questions[{qi}].camps[{ci}].source "
+                             "须为含有效 host 的 http(s) URL")
     # 破折号:转述文字禁全角 —/―(quote 原文·external 外证照录豁免)
     n_dash = sum(len(FULLWIDTH_DASH_RE.findall(s))
                  for s in _collect_author_strings(topic, TOPIC_DASH_EXEMPT_KEYS))
@@ -1679,9 +2151,14 @@ def topic_smoke(path: Path, screenshot: str | None, topic: dict | None = None) -
         if (t.get("schools") or []) and pg.locator("#schools-host .sch-card").count() < 1:
             v.append("[topic渲染] 分类地图未出流派卡(.sch-card)")
         renderable_disp = [d for d in (t.get("disputes") or [])
-                           if any((pos.get("books") or []) for pos in (d.get("positions") or []))]
-        if renderable_disp and pg.locator("#disputes-host .dsp-card").count() < 1:
-            v.append("[topic渲染] 分歧矩阵未出分歧卡(.dsp-card;数据有可渲染分歧却未渲染)")
+                           if d.get("index_relation") != "parallel"
+                           and any((pos.get("books") or []) for pos in (d.get("positions") or []))]
+        actual_disputes = pg.locator("#disputes-host .dsp-card").count()
+        if actual_disputes != len(renderable_disp):
+            v.append("[topic渲染] .dsp-card 数量与非 parallel 可渲染分歧不一致"
+                     f"(实际 {actual_disputes},应为 {len(renderable_disp)};parallel 不得渲染)")
+        if pg.locator('#disputes-host .dsp-card[data-index-relation="parallel"]').count():
+            v.append("[topic渲染] parallel 松散并列被错渲成分歧卡")
         if (t.get("dimensions") or []) and pg.locator("#dims-host .dim-card").count() < 1:
             v.append("[topic渲染] 维度对照表未出维度卡(.dim-card)")
         if (t.get("books") or []) and pg.locator("#books-host .book-row").count() < 1:
@@ -1692,7 +2169,102 @@ def topic_smoke(path: Path, screenshot: str | None, topic: dict | None = None) -
     return v
 
 
-def smoke(path: Path, screenshot: str | None) -> list:
+def _psychology_smoke(pg, distill: dict | None, evidence_claims: dict | None = None) -> list:
+    """用浏览器计算样式复核 G24 可见性。
+
+    静态 lint 能稳定拒绝 ``hidden`` / ``aria-hidden`` / 内联隐藏，浏览器层再补
+    样式表、class 与祖先规则导致的 ``display:none`` / ``visibility:hidden``。
+    不做 URL 可达性请求；来源仍只校验已渲染链接与结构化 URL 的一致性。
+    """
+    if not _is_psychology(distill):
+        return []
+    v = []
+    roots = pg.locator(".psych-evidence")
+    if roots.count() != 1:
+        v.append(f"[渲染] .psych-evidence 根卡数量为 {roots.count()},须精确为 1(G24)")
+        return v
+    root = roots.first
+    if not root.is_visible():
+        v.append("[渲染] .psych-evidence 根卡经计算样式判定不可见(G24)")
+
+    evidence_claims = evidence_claims if isinstance(evidence_claims, dict) else {}
+    expected = {
+        item.get("claim_id"): item
+        for _, _, item in _psychology_claim_entries(distill or {})
+        if isinstance(item, dict) and isinstance(item.get("claim_id"), str) and item.get("claim_id")
+    }
+    for claim_id in sorted(expected):
+        cards = root.locator(f'.pe-claim[data-claim-id="{claim_id}"]')
+        if cards.count() != 1:
+            v.append(f"[渲染] claim_id={claim_id!r} 的可见域内 .pe-claim 数量为 "
+                     f"{cards.count()},须精确为 1(G24)")
+            continue
+        card = cards.first
+        if not card.is_visible():
+            v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-claim 经计算样式判定不可见(G24)")
+            continue
+        for cls in ("pe-book", "pe-research", "pe-boundary"):
+            nodes = card.locator(f".{cls}")
+            if nodes.count() != 1:
+                v.append(f"[渲染] claim_id={claim_id!r} 的 .{cls} 数量为 {nodes.count()},须精确为 1(G24)")
+                continue
+            node = nodes.first
+            if not node.is_visible():
+                v.append(f"[渲染] claim_id={claim_id!r} 的 .{cls} 经计算样式判定不可见(G24)")
+            elif not (node.inner_text() or "").strip():
+                v.append(f"[渲染] claim_id={claim_id!r} 的 .{cls} 可见文本为空(G24)")
+
+        titles = card.locator(".pe-title")
+        if titles.count() != 1 or not titles.first.is_visible() \
+           or not (titles.first.inner_text() or "").strip():
+            v.append(f"[渲染] claim_id={claim_id!r} 缺唯一、可见且非空的 .pe-title(G24)")
+        statuses = card.locator(".pe-status")
+        if statuses.count() != 1 or not statuses.first.is_visible() \
+           or not (statuses.first.inner_text() or "").strip():
+            v.append(f"[渲染] claim_id={claim_id!r} 缺唯一、可见且非空的 .pe-status(G24)")
+
+        evidence = evidence_claims.get(claim_id)
+        research = card.locator(".pe-research")
+        if not isinstance(evidence, dict) or research.count() != 1 or not research.first.is_visible():
+            continue
+        research_text = research.first.inner_text() or ""
+        expected_status = evidence.get("status")
+        replication = evidence.get("replication") if isinstance(evidence.get("replication"), dict) else {}
+        best = evidence.get("best_evidence")
+        if isinstance(best, str) and best.strip() \
+           and _match_text_norm(best) not in _match_text_norm(research_text):
+            v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 可见文本未呈现 best_evidence(G24)")
+        if isinstance(expected_status, str) and not _research_has_status(research_text, expected_status):
+            v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 可见文本未呈现 status(G24)")
+        replication_status = replication.get("status")
+        if isinstance(replication_status, str) \
+           and not _research_has_replication_status(research_text, replication_status):
+            v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 可见文本未呈现 replication.status(G24)")
+        replication_note = replication.get("note")
+        if isinstance(replication_note, str) and replication_note.strip() \
+           and _match_text_norm(replication_note) not in _match_text_norm(research_text):
+            v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 可见文本未呈现 replication.note(G24)")
+        if expected_status != "not_testable":
+            source_urls = {
+                source.get("url").strip() for source in (evidence.get("sources") or [])
+                if isinstance(source, dict) and _is_http_url(source.get("url"))
+            }
+            visible_links = []
+            links = research.first.locator("a[href]")
+            for index in range(links.count()):
+                link = links.nth(index)
+                href = link.get_attribute("href")
+                if link.is_visible() and (link.inner_text() or "").strip() and _is_http_url(href):
+                    visible_links.append(href.strip())
+            if not visible_links:
+                v.append(f"[渲染] claim_id={claim_id!r} 的 .pe-research 缺可见有效来源链接(G24)")
+            elif source_urls and not any(url in source_urls for url in visible_links):
+                v.append(f"[渲染] claim_id={claim_id!r} 的可见来源链接未回指 evidence_page.sources(G24)")
+    return v
+
+
+def smoke(path: Path, screenshot: str | None, distill: dict | None = None,
+          evidence_claims: dict | None = None) -> list:
     from playwright.sync_api import sync_playwright
     v, errors = [], []
     with sync_playwright() as p:
@@ -1703,6 +2275,8 @@ def smoke(path: Path, screenshot: str | None) -> list:
         pg.wait_for_timeout(1200)
         if errors:
             v.append(f"[渲染] console 错误: {errors[:3]}")
+        if _is_psychology(distill):
+            v += _psychology_smoke(pg, distill, evidence_claims)
         # 五 tab 切换
         tabs = pg.locator(".tab")
         n = tabs.count()
@@ -1885,6 +2459,9 @@ def main():
                     help="author.json 路径:传入即按作者演变页门禁校验;缺省时若页面含内联 #author-data 自动识别")
     ap.add_argument("--topic-json", dest="topic_json",
                     help="topic.json 路径:传入即按主题聚合页门禁校验;缺省时若页面含内联 #topic-data 自动识别")
+    ap.add_argument("--require-domain", choices=("psychology",),
+                    help="项目级严格门:强制 --distill 声明完整的指定 domain_profile;"
+                         "默认关闭以保持旧书回归")
     ap.add_argument("--screenshot")
     ap.add_argument("--skip-interact", action="store_true")
     a = ap.parse_args()
@@ -1914,14 +2491,17 @@ def main():
         sib = Path(a.page).parent / "enrich.json"
         if sib.exists():
             enrich = json.loads(sib.read_text(encoding="utf-8"))
-    v = lint_html(html, distill, enrich)
+    v = lint_html(html, distill, enrich, required_domain=a.require_domain)
     if a.source:
         if not distill:
             v.append("[source] --source 必须与 --distill 同时使用")
         else:
             v += lint_source_grounding(distill, Path(a.source).read_text(encoding="utf-8"))
     if not a.skip_interact:
-        v += smoke(Path(a.page), a.screenshot)
+        evidence_page = enrich.get("evidence_page") if isinstance(enrich, dict) else None
+        raw_claims = evidence_page.get("claims") if isinstance(evidence_page, dict) else None
+        evidence_claims = raw_claims if isinstance(raw_claims, dict) else {}
+        v += smoke(Path(a.page), a.screenshot, distill, evidence_claims)
     print("\n".join(v) if v else "全部通过")
     return 1 if v else 0
 

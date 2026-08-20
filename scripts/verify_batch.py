@@ -14,6 +14,7 @@
 用法:
   python verify_batch.py --data-root "$DATA" --slugs yinbaodian,zhanyan-zhijian,yilei,nizhuan
   python verify_batch.py --data-root "$DATA" --slugs-from booklist.txt --fast
+  python verify_batch.py --data-root "$DATA" --slugs-from psychology.txt --require-domain psychology
 
 退出码:0 = 全部可上线 / 1 = 有书未过闸 / 2 = 参数或环境错
 """
@@ -23,8 +24,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 VERIFY = Path(__file__).with_name("verify_page.py")
-# 交付必需产物(书籍路径);book.txt / diagnose.json 属输入侧,不在交付清单
+# 通用交付必需产物；book.txt 通常属输入侧，但 psychology 严格批次会额外要求并传给 --source。
 REQUIRED_ARTIFACTS = ("distill.json", "{slug}.html")
 # 交付卫生:存在即告警(不阻断)。只列 SKILL.md 批量模式**明确要求合并后清理**的中间态 --
 #   `.bak`(update_index 每次写前自动备份)与 `_verify.png`(Step7 正常产物)都是设计行为,不告警,免得淹没真信号。
@@ -45,7 +50,7 @@ def _read_slugs(a) -> list:
     sys.exit(2)
 
 
-def check_one(root: Path, slug: str, fast: bool) -> dict:
+def check_one(root: Path, slug: str, fast: bool, required_domain: str | None = None) -> dict:
     """返回 {slug, ok, blockers[], warns[]}。ok=False 即这本不许上线。"""
     d = root / slug
     r = {"slug": slug, "ok": False, "blockers": [], "warns": []}
@@ -59,6 +64,10 @@ def check_one(root: Path, slug: str, fast: bool) -> dict:
         stage = "只跑到 Step0" if not (d / "distill.json").exists() else "停在 Step6 之前"
         r["blockers"].append(f"缺产物 {missing}({stage},管线没跑完)")
         return r
+    source_path = d / "book.txt"
+    if required_domain == "psychology" and not source_path.is_file():
+        r["blockers"].append("心理学严格批次缺 book.txt，无法执行原文 grounding(--source)")
+        return r
     # ② distill.json 可解析
     try:
         data = json.loads((d / "distill.json").read_text(encoding="utf-8"))
@@ -68,6 +77,10 @@ def check_one(root: Path, slug: str, fast: bool) -> dict:
     n_ch = len(data.get("chapters") or [])
     # ③ Step7 出厂验证(禁跳)
     cmd = [sys.executable, str(VERIFY), str(d / f"{slug}.html"), "--distill", str(d / "distill.json")]
+    if required_domain:
+        cmd.extend(["--require-domain", required_domain])
+    if required_domain == "psychology":
+        cmd.extend(["--source", str(source_path)])
     if fast:
         cmd.append("--skip-interact")
     try:
@@ -97,6 +110,8 @@ def main():
     ap.add_argument("--slugs-from", dest="slugs_from", help="从文件读 slug 名单(一行一个,# 注释)")
     ap.add_argument("--fast", action="store_true",
                     help="逐本 verify 跳过 Playwright 冒烟(只跑静态 lint + 契约门禁);铺量前预检用,终审别带")
+    ap.add_argument("--require-domain", choices=("psychology",),
+                    help="把项目级严格域逐本传播给 verify_page；psychology 还强制 book.txt + --source")
     a = ap.parse_args()
     root = Path(a.data_root)
     if not root.is_dir():
@@ -105,7 +120,7 @@ def main():
     slugs = _read_slugs(a)
     print(f"预期交付 {len(slugs)} 本{'(fast:跳过冒烟)' if a.fast else ''}\n" + "-" * 72)
 
-    results = [check_one(root, s, a.fast) for s in slugs]
+    results = [check_one(root, s, a.fast, a.require_domain) for s in slugs]
     for r in results:
         mark = "OK  " if r["ok"] else "FAIL"
         ch = f"{r.get('n_ch', 0)} 章" if r["ok"] or r.get("n_ch") else "--"

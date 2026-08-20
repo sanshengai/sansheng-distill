@@ -320,8 +320,8 @@ a.tp-chip:hover{background:var(--tint-accent)}
   { "slug": "tz-zhehong", "title": "折中综合论", "book_type": "论说", "pub_year": 2020, "stakes": "high", "school_ids": ["s1", "s2"], "one_liner": "不站队,按阶段在两派之间取用", "role_in_topic": "带过:适合收尾的循证综合" }
  ],
  "schools": [
-  { "id": "s1", "name": "结构训练派", "kind": "应用框架", "evidence_status": "mixed", "claim": "行为是可被外部流程精密塑形的,家长要主动设计训练系统。", "members": ["tz-jiegou", "tz-zhehong"], "anchor_book": "tz-jiegou", "color_idx": 0 },
-  { "id": "s2", "name": "温和渐进派", "kind": "理论框架", "evidence_status": "contested", "claim": "能力要等发育成熟自然长出,对抗式训练弊大于利。", "members": ["tz-wenhe", "tz-zhehong"], "anchor_book": "tz-wenhe", "color_idx": 1 }
+  { "id": "s1", "name": "结构训练派", "kind": "applied", "evidence_status": "mixed", "claim": "行为是可被外部流程精密塑形的,家长要主动设计训练系统。", "members": ["tz-jiegou", "tz-zhehong"], "anchor_book": "tz-jiegou", "color_idx": 0 },
+  { "id": "s2", "name": "温和渐进派", "kind": "theoretical", "evidence_status": "contested", "claim": "能力要等发育成熟自然长出,对抗式训练弊大于利。", "members": ["tz-wenhe", "tz-zhehong"], "anchor_book": "tz-wenhe", "color_idx": 1 }
  ],
  "disputes": [
   { "id": "d1", "question": "核心能力能不能靠训练提前教会?", "question_type": "causal", "axis": "结构训练派 vs 温和渐进派", "concept": "自我塑形能力",
@@ -339,6 +339,8 @@ a.tp-chip:hover{background:var(--tint-accent)}
      { "label": "两三周", "books": [ { "slug": "tz-jiegou", "stance": "结构训练两三周内应见明显改善,否则调整方案。", "quote": "", "anchor": "第6章" } ] },
      { "label": "至少六周", "books": [ { "slug": "tz-wenhe", "stance": "温和法至少六周才见效,要求极大耐心。", "quote": "", "anchor": "第4章" } ] }
     ],
+    "adjudication": { "status": "unverified", "book_view": "两书对合理见效时长给出了不同数字。", "research_view": "尚无外部证据裁决。", "boundary_conditions": "干预类型、强度与衡量指标不同时不可直接比较。" },
+    "sources": [],
     "note": "编者归纳:index 未登记此轴,但两书在「合理见效时长」上给出对立数字(2-3 周 vs 6 周+),依据见各自 anchor。" }
  ],
  "dimensions": [
@@ -399,6 +401,13 @@ a.tp-chip:hover{background:var(--tint-accent)}
   const CERT_LABEL = { book_explicit: '原书明确', cross_book_synthesis: '跨书归纳', general_knowledge: '通识补充', unverified: '未核实' };
   const STATUS_LABEL = { supported: '支持', mixed: '证据混合', contested: '有争议', not_supported: '不支持', not_testable: '暂不可检验', unverified: '未核实' };
   const QUESTION_TYPE_LABEL = { conceptual: '概念', descriptive: '描述', causal: '因果', predictive: '预测', intervention: '干预', methodological: '方法论', normative: '规范判断' };
+  const safeHttpUrl = value => {
+    if (typeof value !== 'string' || !/^https?:\/\/[^/\s]/i.test(value.trim())) return null;
+    try {
+      const parsed = new URL(value.trim());
+      return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname ? parsed.href : null;
+    } catch (e) { return null; }
+  };
   const schoolName = id => { const s = (T.schools || []).find(x => x.id === id); return s ? s.name : null; };
   // 新产物用 school_ids[];已上线旧 topic 仍可只有 school_id。
   const schoolIds = b => {
@@ -430,7 +439,7 @@ a.tp-chip:hover{background:var(--tint-accent)}
     const R = el('div', { class: 'cardR' });
     const nBooks = (T.books || []).length;
     const nSchools = (T.schools || []).length;
-    const nDisputes = (T.disputes || []).length;
+    const nDisputes = (T.disputes || []).filter(d => d.index_relation !== 'parallel').length;
     const stat = el('div', { class: 'tp-stat' });
     const cell = (n, k) => { const c = el('div', { class: 'st-cell' }); c.appendChild(el('span', { class: 'st-n' }, String(n))); c.appendChild(el('span', { class: 'st-k' }, k)); return c; };
     stat.appendChild(cell(nBooks, '本经典'));
@@ -517,13 +526,13 @@ a.tp-chip:hover{background:var(--tint-accent)}
 
   /* ===== ③ 分歧矩阵(书间立场 / 科学外证 / 适用边界三层分开) ===== */
   function renderDisputes() {
-    const disputes = (T.disputes || []).filter(d => (d.positions || []).some(p => (p.books || []).length));
+    const disputes = (T.disputes || []).filter(d => d.index_relation !== 'parallel' && (d.positions || []).some(p => (p.books || []).length));
     if (!disputes.length) return;
     show('sec-disputes');
     const host = document.getElementById('disputes-host');
     const FLAG = { CONTRADICTS: '书间已登记分歧', curated: '书间分歧(编者归纳)' };
     disputes.forEach(d => {
-      const card = el('div', { class: 'dsp-card' });
+      const card = el('div', { class: 'dsp-card', 'data-index-relation': d.index_relation || '' });
       const head = el('div', { class: 'dsp-head' });
       head.appendChild(el('span', { class: 'dsp-q' }, d.question || ''));
       const rel = d.index_relation === 'CONTRADICTS' ? 'CONTRADICTS' : 'curated';
@@ -572,8 +581,8 @@ a.tp-chip:hover{background:var(--tint-accent)}
         else researchLayer.appendChild(el('p', { class: 'dsp-layer-copy' }, '尚无外部证据裁决'));
         const sourceHost = el('div', { class: 'dsp-sources' });
         sources.forEach((source, i) => {
-          const href = typeof source === 'string' ? source : (source && source.url);
-          if (!href || !/^https?:\/\//i.test(href)) return;
+          const href = safeHttpUrl(typeof source === 'string' ? source : (source && source.url));
+          if (!href) return;
           const label = (source && typeof source === 'object' && (source.title || source.citation)) || ('来源 ' + (i + 1));
           sourceHost.appendChild(el('a', { href, target: '_blank', rel: 'noopener' }, label + ' ↗'));
         });
@@ -720,7 +729,8 @@ a.tp-chip:hover{background:var(--tint-accent)}
         const p = el('p', { class: 'ed-camp' });
         if (c.who) p.appendChild(el('b', null, (c.who) + ': '));
         p.appendChild(document.createTextNode(c.say || ''));
-        if (c.source) { p.appendChild(document.createTextNode('  ')); p.appendChild(el('a', { href: c.source, target: '_blank', rel: 'noopener' }, '来源 ↗')); }
+        const href = safeHttpUrl(c.source);
+        if (href) { p.appendChild(document.createTextNode('  ')); p.appendChild(el('a', { href, target: '_blank', rel: 'noopener' }, '来源 ↗')); }
         box.appendChild(p);
       });
       host.appendChild(box);

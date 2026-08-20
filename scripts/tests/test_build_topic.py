@@ -2,6 +2,7 @@
 import sys
 import json
 from pathlib import Path
+import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import build_topic as bt
 
@@ -21,11 +22,18 @@ def _members(n=3):
 
 def _manual(**over):
     m = {"topic": "T", "slug": "t", "members": ["b0", "b1", "b2"],
-         "schools": [{"id": "s1", "name": "派一", "members": ["b0"], "anchor_book": "b0"},
-                     {"id": "s2", "name": "派二", "members": ["b1", "b2"], "anchor_book": "b1"}],
-         "disputes": [{"id": "d1", "question": "Q?", "concept": "C",
+         "schools": [{"id": "s1", "name": "派一", "kind": "applied", "evidence_status": "mixed",
+                      "members": ["b0"], "anchor_book": "b0"},
+                     {"id": "s2", "name": "派二", "kind": "theoretical", "evidence_status": "contested",
+                      "members": ["b1", "b2"], "anchor_book": "b1"}],
+         "disputes": [{"id": "d1", "question": "Q?", "concept": "C", "question_type": "causal",
                        "positions": [{"label": "L1", "members": ["b0"]},
-                                     {"label": "L2", "members": ["b1"]}]}],
+                                     {"label": "L2", "members": ["b1"]}],
+                       "adjudication": {
+                           "status": "mixed", "book_view": "两书相反",
+                           "research_view": "外部结果混合", "boundary_conditions": "依任务而变",
+                       },
+                       "sources": ["https://example.org/synthesis"]}],
          "dimensions": [{"name": "维度", "cells": [{"slug": "b0", "value": "3月"}]}]}
     m.update(over)
     return m
@@ -90,6 +98,7 @@ def test_resolve_disputes_scientific_layer_normalized_and_sources_filtered():
             "https://example.org/review",
             {"title": "Meta", "url": "https://example.org/meta"},
             "ftp://example.org/bad",
+            "https:///missing-host",
         ],
     }])
     w = []
@@ -103,6 +112,7 @@ def test_resolve_disputes_scientific_layer_normalized_and_sources_filtered():
         "https://example.org/review", {"title": "Meta", "url": "https://example.org/meta"}
     ]
     assert any("ftp" in x or "sources[2]" in x for x in w)
+    assert any("sources[3]" in x for x in w)
 
 
 def test_resolve_disputes_old_string_adjudication_gets_honest_defaults():
@@ -192,14 +202,14 @@ def test_resolve_schools_member_out_of_set_dropped():
 
 def test_resolve_schools_kind_and_evidence_status_passthrough_and_validate():
     m = _manual(schools=[
-        {"id": "s1", "name": "研究传统", "kind": "research_program", "evidence_status": "mixed",
+        {"id": "s1", "name": "研究传统", "kind": "theoretical", "evidence_status": "mixed",
          "members": ["b0"], "anchor_book": "b0"},
         {"id": "s2", "name": "坏数据", "kind": [], "evidence_status": "certain",
          "members": ["b1"], "anchor_book": "b1"},
     ])
     w = []
     out = bt.resolve_schools(m, {"b0", "b1", "b2"}, {"b0": "甲", "b1": "乙"}, w)
-    assert out[0]["kind"] == "research_program" and out[0]["evidence_status"] == "mixed"
+    assert out[0]["kind"] == "theoretical" and out[0]["evidence_status"] == "mixed"
     assert out[1]["kind"] is None and out[1]["evidence_status"] is None
     assert any("kind" in x for x in w) and any("evidence_status" in x for x in w)
 
@@ -210,6 +220,37 @@ def test_build_topic_json_shape_and_provenance():
     assert doc["_provenance"]["school_count"] == 2
     assert doc["_provenance"]["dispute_count"] == 1
     assert len(doc["books"]) == 3
+
+
+def test_build_topic_rejects_duplicate_school_ids_before_derivation():
+    m = _manual()
+    m["schools"].append({"id": "s1", "name": "重名派", "members": ["b2"]})
+    with pytest.raises(ValueError, match="id 's1' 重复"):
+        bt.build_topic_json(_members(3), m, {}, _idx_contra())
+
+
+@pytest.mark.parametrize("book_meta,needle", [
+    ({"b0": {"school_ids": ["ghost"]}}, "不存在的 school 'ghost'"),
+    ({"b0": {"school_ids": ["s1", "s1"]}}, "重复引用"),
+])
+def test_build_topic_rejects_orphan_or_duplicate_book_school_refs(book_meta, needle):
+    m = _manual(book_meta=book_meta)
+    with pytest.raises(ValueError, match=needle):
+        bt.build_topic_json(_members(3), m, {}, _idx_contra())
+
+
+@pytest.mark.parametrize("members,anchor,needle", [
+    (["b0", "ghost"], "b0", "引用非成员 slug 'ghost'"),
+    (["b0", "b0"], "b0", "重复成员 'b0'"),
+    (["b0"], "b1", "未包含在该 school.members/book_meta 引用中"),
+])
+def test_build_topic_rejects_orphan_duplicate_or_detached_school_members(members, anchor, needle):
+    m = _manual(schools=[{
+        "id": "s1", "name": "派一", "kind": "applied", "evidence_status": "mixed",
+        "members": members, "anchor_book": anchor,
+    }])
+    with pytest.raises(ValueError, match=needle):
+        bt.build_topic_json(_members(3), m, {}, _idx_contra())
 
 
 # ---------------------------------------------------------------- main 集成(门槛 / 防覆盖)

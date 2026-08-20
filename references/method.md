@@ -117,7 +117,7 @@ schema(distill.json 顶层,Step1 产;下游 Step6 选模板变体 / Step2 按 na
 
 ### 1.6 domain_profile:心理学科学证据轴(v6.2)
 
-`domain_profile` 是可选顶层对象,只在需要把「作者/原书主张」与「外部科学证据」分开的领域启用。本版先注册 `domain:"psychology"`;旧书与非心理学书不写,行为完全不变:
+`domain_profile` 在通用旧库中是可选顶层对象,只在需要把「作者/原书主张」与「外部科学证据」分开的领域启用。本版先注册 `domain:"psychology"`;旧书与非心理学书不写,行为完全不变。**已知心理学批次出厂必须用 `verify_page.py --require-domain psychology`，批量闸则用 `verify_batch.py --require-domain psychology`**,把项目严格门传播到每一本；这样即使某本书漏写整个对象也会被 G23 拒绝。默认模式不猜领域,因而不破坏旧库:
 
 ```jsonc
 "domain_profile": {
@@ -494,7 +494,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 - `claim_id`:本书内唯一、稳定的 ASCII kebab 标识,如 `loss-aversion-generalizes`;后续修文案不改 ID。
 - `claim_type` ∈ `framework|descriptive|associational|causal|predictive|intervention|methodological|normative`。按主张最强语义定型,不得把相关性包装成因果、把规范建议包装成实证结论。
 
-这一步只是在原书层给可核查主张建立主键,**不是**给主张判真。Step3 的 `evidence_page.claims` 必须逐一覆盖这些 ID;框架型、规范型和不可检验主张也保留,并在外证层如实标 `not_testable`。
+这一步只是在原书层给可核查主张建立主键,**不是**给主张判真。Step3 的 `evidence_page.claims` 必须逐一覆盖这些 ID;框架型、方法论型和规范型主张也保留,确实不接受经验检验时可在外证层标 `not_testable` 并写明理由。`descriptive|associational|causal|predictive|intervention` 属实证型,不得用 `not_testable` 逃掉来源。
 
 ---
 
@@ -865,7 +865,7 @@ Pass 1 已产 `action_chain` 的 `label` + `explain`(骨架);Pass 2 在写 narra
 > **v4 新增门禁 G19-G21**(2026-07-05,深度分析批次 B):G19 查 `core_question` 存在 + ≤40 字疑问句 + 不复用 cover_intro/one_liner;G20 查 `arguments.chain_steps` 4-8 步、每步 ≤14 字;G21 查 `chapters[].hook` 若产则 ≤20 字。`pillar` 合法性(∈ [1,5] 或 `null`)一并由 verify 机拦(不单列 G 号)。三条均机械可判。原 **G8-G18 判定不变**。
 > **v4 批次 B-2 门禁(2026-07-05,餐巾纸四件套)**:**G4 扩展 a** 查 `napkin.formula_read` 存在 + ≤80 字 + 含运算符/语义词(书/视频必产);**G4 扩展 b** 查 `napkin.sketch` 若产则 `type/caption/nodes/edges` 齐全、`nodes` ∈ [6,12]、node.label 集合 ≠ 公式右侧项(sketch 可降级,缺失不拦)。两扩展均并入 G4、机械可判(见 §7.3)。原 **G8-G21 判定不变**。
 > **v6.1 门禁 G22(2026-07-15,高后果书确定性)**:`stakes=high`(§1.5)时,`decision_rules[]` + `core_ideas[]` 每条可执行建议必带 `certainty`(§4.5.16 三枚举)。**这是独立 stakes 闸,不随 `render_profile.active_gates`**(后果轴与形态轴正交)—— verify 按 `distill.stakes=="high"` 单独激活、不登记进 archetype 注册表(避免污染 profile 完整性校验 `_lint_profile_integrity`)。`stakes=normal` 书 certainty 可选、不检。事实抽检(SKILL 铁律「不编造」)与 G22 配套:G22 机拦「有没有标 certainty」,抽检管「标得对不对 + 数字真不真」。原 **G1-G21 判定不变**。
-> **v6.2 条件门禁 G23(心理学 claim 契约)**:`domain_profile.domain=="psychology"` 时,domain_profile 结构 + 每条 core_idea/decision_rule 的唯一 `claim_id` 与八类 `claim_type` 必须合规。与 G22 一样,G23 不写入 archetype 的 `active_gates`;它由领域轴独立激活。G23 只保证「所有待核主张有稳定主键且没有偷换主张类型」,科学证据覆盖由 enrich + Step7 **G24** 单独判定。
+> **v6.2 条件门禁 G23(心理学 claim 契约)**:`domain_profile.domain=="psychology"` 时,domain_profile 结构 + 每条 core_idea/decision_rule 的唯一 `claim_id` 与八类 `claim_type` 必须合规。与 G22 一样,G23 不写入 archetype 的 `active_gates`;它由领域轴独立激活。对已知心理学项目调用 `--require-domain psychology`,可把「漏掉整个 domain_profile」也失败关闭;不传时旧书行为不变。G23 只保证「所有待核主张有稳定主键且没有偷换主张类型」,科学证据覆盖由 enrich + Step7 **G24** 单独判定。
 > **v4 批次 C 门禁 / 自查(2026-07-05,逐章交互 + UI 精修)**:
 >   - **破折号统一(Q7-12,机检)**:verify 机拦「页面可见转述正文出现全角 `——`/`—`」(原文照录 blockquote/qw-card 豁免);写 narrative/summary/卡片文案时破折号一律 `--`(§3.5.2 Pass 2 文风约束)。
 >   - **cs-badge 死徽标(Q7-9,机检)**:`chain_step` 关联做法数为 0 → **不渲染 `.cs-badge`**;verify 拦页面出现「0 条…做法」的 `.cs-badge`。

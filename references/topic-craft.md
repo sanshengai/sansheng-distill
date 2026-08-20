@@ -88,11 +88,11 @@
 - **books**:从各 distill 直取 `title/book_type/pub_year/stakes`;合并 manual.book_meta 的 `school_ids[]/one_liner/role_in_topic`(缺 one_liner 回退 distill 的 `napkin.one_liner`/`core_question`)。旧 `school_id` 自动归一成单元素 `school_ids`,输出只写新字段。
 - **disputes 立场摊平**:对每条 manual dispute,positions[].books[] 里每个 slug **从 knowledge-index 该 `concept` 的 entries 自动拉 `stance/quote/anchor/relation`**;index 无该 concept-slug 时用 manual 内联提供的 stance/quote/anchor(fallback,记 warning)。
 - **index_relation 判定**(§4.3):看该 dispute.concept 在 index 的 entries -- 任一 entry `relation==CONTRADICTS` → `CONTRADICTS`;否则若 manual 标了 `curated:true`(或 positions ≥2 且各有 books)→ `curated`;都不满足 → `parallel`。
-- **certainty 拉取**:dimensions.cells[] 缺 `certainty` 时,尝试从对应 distill 的 `decision_rules[]`/`core_ideas[]` 按 anchor 匹配拉;拉不到或拿到非法值一律写 `unverified` 并记 warning。**禁止默认 `book_explicit`**--「没有来源」不能推成「书中明确」。
+- **certainty 校验**:dimensions.cells[] 缺/非法 `certainty` 时一律写 `unverified` 并记 warning;非 `unverified` 还必须以 anchor 精确回指对应 distill 的 `decision_rules[]`/`core_ideas[]`,回指失败同样降级。**禁止默认或推断 `book_explicit`**--「没有来源」不能推成「书中明确」。
 - **统计**:member_count/school_count/dispute_count、schools 补 anchor_book 的 title、color_idx 缺则按序补。
 **✍️ 认知部分(不在脚本内跑 LLM,由 manual 提供)**:topic/slug/subtitle/intro/verdict、schools 的 name+claim+members、disputes 的 question+axis+concept+positions 分组、dimensions 的 name+cells(slug+value)、consensus、reading_guide、book_meta。脚本对这些**只做「读 manual 填入 + 校验(slug∈成员 / certainty 合法 / members⊆成员)/ 无则留空 + 记 warning」**,不臆造。
 
-**校验硬门**(违反 → stderr 报错并计入 warnings,不静默):members 中 distill 缺失;schools[].members / disputes positions slug / dimensions cells slug 不在成员集;dispute.concept 在 index 找不到且 positions 无内联 stance。certainty 缺失/非法不再伪造硬值,统一归一为 `unverified` + warning;心理学 topic 新字段存在时须过相应枚举/URL 校验。
+**校验硬门**:builder 在派生前直接拒绝重复 `schools[].id`、school 内重复/非成员 slug、脱离本 school 的 `anchor_book`，以及 `book_meta.school_ids` 重复或引用不存在 school(退出 2,不落 topic.json),避免生成孤儿引用;其余 members 中 distill 缺失、其他视图 slug 不在成员集、concept/stance/anchor 问题进入明确 warning/降级。verify 再完整校验 school 双向回指与唯一性、`kind/evidence_status/question_type/adjudication/certainty` 枚举和必需字段;所有外证 URL 必须经 URL parser 得到 `http(s)` + 非空 host,但不做联网可达性探测。
 
 ## 4. 派生规则 + 4 视图数据契约
 
@@ -122,7 +122,7 @@
 - **index_relation 三档(诚实标注,对称 StepA verdict)**:
   - `CONTRADICTS` — index 已登记真实对立 → 红旗「已登记分歧」。
   - `curated` — 编者从各书立场对立归纳(index 未登记)→ 金标「编者归纳的分歧轴」,`note` 必给依据。**回补 index 后重跑会升级为 CONTRADICTS**。
-  - `parallel` — 松散并列 → **不进分歧矩阵**(降级到维度对照表并置),渲染层跳过。
+  - `parallel` — 松散并列 → **不进分歧矩阵**(降级到维度对照表并置)。builder 会剔除;为兼容旧 topic.json,verify 可接受其作为追溯数据,但模板与渲染冒烟均保证绝不生成 `.dsp-card`。
 - **呈现**:每分歧一张卡:question(判断句)+ question_type + index_relation 旗标 + axis + `positions` 多列对照(每列 label + 各书 stance/quote/anchor 深链)。其后固定三栏:① **原书怎么说**=`adjudication.book_view`;② **外部研究怎么说**=`research_view` + sources;③ **适用边界与风险**=`boundary_conditions`。**作者之间有分歧不等于科学证据 CONTRADICTS**:前者由 positions/index_relation 表达,后者只由 adjudication.status + 外证表达。
 
 ### 4.4 books[](书目导航)
