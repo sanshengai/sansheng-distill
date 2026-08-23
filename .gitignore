@@ -6,11 +6,14 @@
 # --- user's book/distill data (copyright originals + local outputs) ---
 distill-data/
 **/distill-data/
+biography-data/
+**/biography-data/
 
 # --- python ---
 __pycache__/
 *.pyc
 .pytest_cache/
+.local/
 .venv/
 venv/
 

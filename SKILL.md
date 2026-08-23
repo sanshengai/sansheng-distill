@@ -1,6 +1,6 @@
 ---
 name: sansheng-distill
-description: Use when 用户要把一本书全文、单个视频（按 1 集）、YouTube/B站视频系列，或一个视频博主/人物的全部作品（跨媒介人物思想蒸馏）做成深度蒸馏资料；触发词：蒸馏这本书、拆书、蒸馏视频、视频系列蒸馏、蒸馏 UP 主、蒸馏这个博主、人物思想蒸馏。只要字幕摘要、单篇文章写作或「一页」世界史专项时不用此 Skill。
+description: Use when 用户要把一本书全文、单个视频（按 1 集）、YouTube/B站视频系列、一个创作者的全部作品，或历史人物的生平材料做成可追溯的深度蒸馏资料；触发词：蒸馏这本书、拆书、蒸馏视频、视频系列蒸馏、蒸馏 UP 主、人物思想蒸馏、人物传记证据库、历史人物事实核验、传记事实入库。只要字幕摘要、单篇文章写作时不用此 Skill；制作「一页」产品或网站时，本 Skill 只负责公共资料与证据契约，产品规则、页面工程和发布交给对应产品/网站能力。
 ---
 
 # sansheng-distill -- 书籍/视频蒸馏引擎(v3 浏览型)
@@ -28,8 +28,11 @@ description: Use when 用户要把一本书全文、单个视频（按 1 集）�
 | 一本书全文 | 主管线 Step0-B（下表） |
 | 单个视频（按 1 集）/ 一个视频系列 | 主管线 Step0-V（下表） |
 | **一个博主/人物的全部作品（跨媒介思想蒸馏）** | **StepC · creator_corpus 路径（`references\creator-craft.md`）** |
+| **一个历史人物的生平、作品、关系、争议与引语（证据型传记）** | **Biography · biography_corpus 路径（`references\biography-craft.md`）** |
 
-判断口诀：分析单位是「作品」→ 主管线；分析单位是「人」→ StepC。用户说「蒸馏这个 UP 主 / 这个人 / 他的思想体系」即 StepC。StepA/StepB 是主管线的可选聚合步，与 StepC 不冲突。
+判断口诀：分析单位是「作品」→ 主管线；分析单位是「一个创作者自己的思想输出」→ StepC；分析单位是「一个人的历史生平及其证据」→ `biography_corpus`。StepA/StepB 是主管线的可选聚合步，与后两条人物路径不冲突。
+
+> **人物路径边界**：`creator_corpus` 归并一个创作者跨媒介表达出的观点族，回答「他的思想体系是什么、如何变化」；`biography_corpus` 汇合多来源的史实观察、分歧与外部核验，回答「发生过什么、证据在哪里、哪些仍有争议」。把传记做成「一页」产品、网站页面、SEO 或正式部署属于下游产品与工程，不在本 Skill 内实现。
 
 > 🪶 **用轻量模型 / 弱 agent 跑本 skill(如 Gemini Flash 级、Antigravity 客户端)→ 先读 `references\flash-mode.md`。**
 > 那份卡不降低任何质量标准,只把「靠自觉」的环节换成「可自检的判据」,并钉死六个最容易滑落的点。
@@ -125,9 +128,19 @@ $DATA\
 
 - **做什么**:全量采集 → 来源卡建库 → 去重聚类(观点族/主题/关系/时间线) → 总体蒸馏(系统/模型/张力/谱系) → **外部交叉核验 + 通俗化两道闸(必做)** → 产出与网站 creator-distill 契约一致的 10 份数据 JSON + 作者简介。
 - **读哪个 reference**:`creator-craft.md`(§0 路由 / §1 总原则「输入全量采集、分析完整建库、展示去重重构」/ §3 P0-P9 阶段管线与批次门 / §5 密度下限 / §6 外部交叉核验 / §7 通俗化两道闸 / §8 展示层信息架构 / §9 数据流规则)。
-- **产物**:`{人物项目目录}` 五层数据(L0-L4) + 网站数据包(契约测试参照 `个人网站\web\tests\creatorDistill.data.test.ts`);页面渲染与部署归 `sandy-website`。
-- **先例与模板**:Dan Koe 项目(`Cowork\其他\Dan Koe\`),首次执行已验证全流程;其来源卡规范、证据索引结构、导出器均可作模板复用。
+- **产物**:`{人物项目目录}` 五层数据(L0-L4) + 下游网站数据包；页面渲染、契约测试与部署由消费该数据包的产品工程负责。
+- **先例与模板**:`references\creator-craft.md` 记录了经多人物实测收敛的来源卡、证据索引与导出契约；公开测试使用合成 fixture，不依赖任何私有项目目录。
 - **与 StepA 的区别**:StepA 聚合「同一作者已蒸的 ≥2 本书」(只读 distill.json,绝不重蒸);StepC 从零蒸「一个人的全部语料」。人物出了书且书已单蒸,两者可共存。
+
+## Biography · 证据型人物传记(biography_corpus 候选路径)
+
+当目标是复原人物生平，而不是总结其自有作品中的思想时，使用 `biography_corpus`。这条路径不生成书籍蒸馏 HTML，也不复用 StepC 的观点族 schema。
+
+- **做什么**：为每个人物初始化独立 store → 建 Source Unit 与逐条 Observation → 由正式 reviewer 签署 admission / resolution → 形成六类 Canonical → 编写 Editorial → 补外部核验 → 以同一语义审计器执行 audit / strict-data / publish-ready → 把只读投影交给下游产品。
+- **读哪个 reference**：`biography-craft.md`。当前实验契约为 `0.9.0-candidate`，机器形状以 `biography-contract-v0.9.0.schema.json` 为准，跨文件闭包以 `scripts\biography_contract.py` 为唯一实现。仓库 SemVer 与数据契约版本是两个独立版本域；候选契约在稳定前可能调整。
+- **模型边界**：GLM-5.3 或其他外部模型可以并行做查漏、冲突扫描和修订建议，但只能写 `recommendation_only`；正式事实裁决只允许 manifest 中登记的 `human` 或 `main_agent` reviewer 签署。
+- **跨人物隔离**：每个人物都有独立 slug、稳定 subject ID、ID namespace、路由、资源目录和 CSS scope；共享资源必须显式登记为只读并绑定摘要，禁止从另一个人物项目继承隐式默认值。
+- **与「一页」产品的边界**：本路径交付公共数据契约、初始化骨架与门禁，不规定某个站点的信息架构、视觉、SEO 或发布流程。下游只读 Canonical / Editorial 投影，不能把页面状态反写事实层。
 
 ---
 
@@ -188,6 +201,6 @@ $DATA\
 
 ## 环境依赖
 
-- Python:`pip install ebooklib beautifulsoup4 pymupdf pillow pytest playwright` + `playwright install chromium`(Step7 需 chromium;`pillow` 用于真封面 / 缩略图的压缩与 base64 内联)。
+- Python **>= 3.10**:`pip install ebooklib beautifulsoup4 pymupdf pillow pytest playwright` + `playwright install chromium`(Step7 需 chromium;`pillow` 用于真封面 / 缩略图的压缩与 base64 内联)。`biography_corpus` 候选路径另需 `jsonschema>=4`。
 - azw3 / mobi 输入需 calibre 的 `ebook-convert`(`winget install calibre.calibre`);epub/pdf/txt 不需要。
 - **视频系列**(取材 cascade 见 `method.md §V.0`):`yt-dlp`(YouTube 抓字幕 + 抓评论;B站评论走公开 API 免依赖)。B站/抖音的转写需一个字幕/ASR 上游工具(如 `video-to-subtitle-summary`,读其 `AI_DOUYIN_API_KEY`);fetch_comments 的 B站评论无需 key。**无字幕 / 需画面语义**走一个 Gemini 视频分析工具,如独立公开 skill [`sansheng-gemini-video`](https://github.com/sanshengai/sansheng-gemini-video)(读 env `GOOGLE_API_KEY`),装上即可;不装不影响书籍蒸馏与有字幕视频。

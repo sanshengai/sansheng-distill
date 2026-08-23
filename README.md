@@ -1,6 +1,6 @@
-# sansheng-distill · 书籍蒸馏引擎
+# sansheng-distill · 书籍、视频与人物资料蒸馏引擎
 
-> 把一本书(或一组视频),熬成一张能点、能跳、越读越厚的**单文件交互网页**。
+> 把一本书或一组视频熬成可浏览的知识地图，也把一个人的生平材料整理成可追溯的证据库。
 
 **中文** | [English](./README_EN.md)
 
@@ -12,7 +12,7 @@
 
 ## 这是什么
 
-丢给它一本书(`.epub` / `.pdf` / `.txt` / `.azw3` / `.mobi`),或一组视频,它跑完一条多步管线,吐出**一个可以直接双击打开的单文件 HTML 页** —— 不联网、不依赖服务器,一个文件就是全部。
+丢给它一本书(`.epub` / `.pdf` / `.txt` / `.azw3` / `.mobi`),或一组视频,它跑完一条多步管线,吐出**一个可以直接双击打开的单文件 HTML 页** -- 不联网、不依赖服务器,一个文件就是全部。若输入目标是历史人物而非单部作品，它会改走 `biography_corpus`，产出来源、观察、裁决、规范事实、争议与外部核验相互反链的结构化资料库。
 
 它不是"摘要"。摘要是把书压短、读完就扔;蒸馏是把书**拆成一张知识地图**:凝练成一句公式、一张可点的思维导图、一章章能单独展开的精读、一组读完回看的自检问句,再联网补上作者档案、正反书评、跨书观点,并和你蒸过的其他书自动互链。**AI 拆书是拿来当地图,不是替你读原书** —— 这句话一直挂在页面底部。
 
@@ -73,11 +73,29 @@ python scripts/verify_page.py path/to/work.html \
 
 首个案例是 Dan Koe:162 条视频 + 212 封 Letters + 25 章书,合成 399 份来源、1,836 条证据、299 个观点族。
 
+## 还可以建立证据型人物传记库
+
+人物的「思想作品库」和「历史传记库」不是一回事。`creator_corpus` 从一个创作者自己的视频、文章、书和播客中归并观点族；新的 `biography_corpus` 则汇合档案、书信、研究、馆藏与可靠网页，逐条回答：发生过什么、证据在哪、不同来源为何冲突、哪些结论仍应保留争议。
+
+这条路径采用单向证据链 `Source Unit -> Observation -> MergeDecision -> Canonical -> Editorial -> Projection`，并提供实验性 v2 候选 schema、初始化器和三层门禁。当前数据契约版本是 `0.9.0-candidate`；它与仓库 SemVer 属于两个独立版本域，稳定前仍可能调整。GLM-5.3 等外部模型可以并行查漏或给出修订建议，但只能留下 `recommendation_only`；正式裁决必须由 manifest 登记的 `human` 或 `main_agent` reviewer 签署。每个人物的 namespace、路由、资产和 CSS scope 独立，批量审计会拦截跨人物串线。
+
+```bash
+python scripts/biography_store.py init \
+  --store-root ./biography-data/sample-scholar \
+  --slug sample-scholar --subject-id per-sample-scholar \
+  --catalog-name "Sample Scholar" --language en
+
+python scripts/biography_store.py audit \
+  --store-root ./biography-data/sample-scholar --mode strict-data
+```
+
+完整工作流与产品边界见 [`references/biography-craft.md`](./references/biography-craft.md)。本仓负责公共资料契约与验证，不负责某个「一页」站点的视觉、SEO 或部署；下游产品只能读取投影，不能反写事实层。
+
 ## 什么时候用
 
-对 Claude 说 *"蒸馏这本书"* *"拆这本书"* *"distill this book"* *"蒸馏这个视频系列"* *"蒸馏这个博主"*,或直接丢一个电子书文件让它做蒸馏页 —— Claude 会接起这个 skill,跑完整条管线。
+对 Claude 说 *"蒸馏这本书"* *"拆这本书"* *"distill this book"* *"蒸馏这个视频系列"* *"蒸馏这个博主"* *"建立人物传记证据库"* *"核验这个历史人物的生平材料"*,或直接丢一个电子书文件让它做蒸馏页 -- Claude 会接起这个 skill,选择对应管线。
 
-**不适合**:写文章、剪视频、只想要字幕或一段普通摘要。
+**不适合**:写文章、剪视频、只想要字幕或一段普通摘要，也不单独承担网站页面工程与发布。
 
 ## 安装
 
@@ -120,8 +138,10 @@ git clone https://gh-proxy.com/https://github.com/sanshengai/sansheng-distill.gi
 ## 快速上手
 
 ```bash
+python --version             # 需要 Python >= 3.10
 pip install ebooklib beautifulsoup4 pymupdf pillow playwright
 playwright install chromium
+# 只有 biography_corpus 候选路径另需：pip install "jsonschema>=4"
 # .azw3 / .mobi 输入还需 calibre 的 `ebook-convert`
 cp .env.example .env        # 然后填 DISTILL_DATA_DIR(蒸视频再填视频那几个 key)
 ```
@@ -172,6 +192,7 @@ cp .env.example .env        # 然后填 DISTILL_DATA_DIR(蒸视频再填视频�
 | 依赖 | 用途 | 何时需要 |
 |---|---|---|
 | `ebooklib` · `beautifulsoup4` · `pymupdf` · `pillow` · `playwright`(+ `playwright install chromium`)| 解书 + 出厂验证 | 必需 |
+| `jsonschema>=4`（MIT） | 人物传记实验性 v2 候选 schema 与跨文件审计入口 | 仅 `biography_corpus` 路径 |
 | `calibre`(`ebook-convert`)| 转 `.azw3` / `.mobi` | 仅这两种格式输入时 |
 | `yt-dlp` | 抓字幕 / 评论 | 仅视频系列路径 |
 | 一个字幕 / ASR 工具 | 转写无字幕视频 | 仅蒸"非 YouTube 且无字幕"的视频系列时 |

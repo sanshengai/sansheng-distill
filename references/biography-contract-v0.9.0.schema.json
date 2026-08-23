@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/sanshengai/sansheng-distill/v0.8.0/references/biography-contract-v0.9.0.schema.json",
+  "title": "Biography contract v0.9.0 candidate registry",
+  "description": "Manifest、来源、治理账本与六类 Canonical 的结构单一真源；跨文件闭包由 biography_contract.py 消费本注册表后统一验证。",
+  "$ref": "#/$defs/ManifestV2",
+  "$defs": {
+    "Slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "LocalRef": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[:\\\\\\x00-\\x1F])[^/]+(?:/[^/]+)*$"},
+    "PersonId": {"type": "string", "pattern": "^per-[a-z0-9-]+$"},
+    "ObservationId": {"type": "string", "pattern": "^obs-[a-z0-9-]+$"},
+    "CanonicalStatus": {"enum": ["active", "hold", "merged_redirect"]},
+    "StringIdArray": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "EvidenceRefs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ObservationId"}, "uniqueItems": true},
+    "InterpretationRefs": {"type": "array", "items": {"$ref": "#/$defs/ObservationId"}, "uniqueItems": true},
+    "VerificationRefs": {"type": "array", "items": {"type": "string", "pattern": "^ver-[a-z0-9-]+$"}, "uniqueItems": true},
+
+    "Certainty": {"enum": ["confirmed", "probable", "disputed", "unknown"]},
+    "Sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "SourceLocator": {
+      "type": "object",
+      "required": ["locator_type", "value"],
+      "properties": {
+        "locator_type": {"enum": ["page", "leaf", "juan", "line", "entry", "accession", "chapter_position", "web_fragment"]},
+        "value": {"type": "string", "minLength": 1},
+        "edition_id": {"type": "string", "minLength": 1},
+        "witness_id": {"type": "string", "minLength": 1},
+        "juan": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "page": {"type": ["string", "integer"], "minLength": 1},
+        "leaf": {"type": "string", "minLength": 1},
+        "line": {"type": "string", "minLength": 1},
+        "entry": {"type": "string", "minLength": 1},
+        "accession": {"type": "string", "minLength": 1},
+        "url_fragment": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {"if": {"properties": {"locator_type": {"const": "page"}}, "required": ["locator_type"]}, "then": {"required": ["page"], "not": {"required": ["leaf"]}}},
+        {"if": {"properties": {"locator_type": {"const": "leaf"}}, "required": ["locator_type"]}, "then": {"required": ["leaf"], "not": {"required": ["page"]}}},
+        {"if": {"properties": {"locator_type": {"const": "accession"}}, "required": ["locator_type"]}, "then": {"required": ["accession"]}}
+      ],
+      "additionalProperties": false
+    },
+    "TemporalConversion": {
+      "type": "object",
+      "required": ["method", "normalized_calendar_system", "basis_evidence_refs", "certainty"],
+      "properties": {
+        "method": {"type": "string", "minLength": 1},
+        "normalized_calendar_system": {"enum": ["gregorian", "proleptic_gregorian"]},
+        "basis_evidence_refs": {"$ref": "#/$defs/EvidenceRefs"},
+        "certainty": {"$ref": "#/$defs/Certainty"}
+      },
+      "additionalProperties": false
+    },
+    "TemporalSpan": {
+      "type": "object",
+      "required": ["calendar_system", "original_text", "display_label", "precision"],
+      "properties": {
+        "calendar_system": {"enum": ["gregorian", "julian", "proleptic_gregorian", "chinese_lunisolar", "regnal", "unknown"]},
+        "original_text": {"type": "string", "minLength": 1},
+        "display_label": {"type": "string", "minLength": 1},
+        "start": {"type": ["string", "null"], "format": "date"},
+        "end": {"type": ["string", "null"], "format": "date"},
+        "precision": {"enum": ["exact_day", "day", "month", "season", "year", "range", "approximate", "unknown"]},
+        "conversion": {"$ref": "#/$defs/TemporalConversion"}
+      },
+      "allOf": [
+        {"if": {"properties": {"calendar_system": {"enum": ["julian", "chinese_lunisolar", "regnal"]}}, "required": ["calendar_system"], "anyOf": [{"required": ["start"]}, {"required": ["end"]}]}, "then": {"required": ["conversion"]}},
+        {"if": {"properties": {"precision": {"enum": ["exact_day", "day"]}}, "required": ["precision"]}, "then": {"required": ["start"]}},
+        {"if": {"properties": {"precision": {"enum": ["month", "season", "year"]}}, "required": ["precision"]}, "then": {"dependentRequired": {"start": ["end"], "end": ["start"]}}},
+        {"if": {"properties": {"precision": {"const": "range"}}, "required": ["precision"]}, "then": {"required": ["start", "end"]}}
+      ],
+      "additionalProperties": false
+    },
+
+    "NameForm": {
+      "type": "object",
+      "required": ["name_form_id", "text", "kind", "language", "script", "evidence_refs", "certainty"],
+      "properties": {
+        "name_form_id": {"type": "string", "pattern": "^name-[a-z0-9-]+$"},
+        "text": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["primary", "native", "romanized", "alias", "birth_name", "courtesy_name", "art_name", "posthumous_name", "pseudonym"]},
+        "language": {"type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"},
+        "script": {"type": "string", "pattern": "^[A-Z][a-z]{3}$"},
+        "display_role": {"const": "secondary"},
+        "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"},
+        "valid_during": {"$ref": "#/$defs/TemporalSpan"},
+        "certainty": {"$ref": "#/$defs/Certainty"},
+        "derivation": {"type": "object", "required": ["method", "basis_evidence_refs"], "properties": {"method": {"type": "string", "minLength": 1}, "basis_evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}}, "additionalProperties": false},
+        "note": {"type": ["string", "null"]}
+      },
+      "allOf": [{"if": {"properties": {"kind": {"const": "romanized"}}, "required": ["kind"]}, "then": {"required": ["derivation"]}}],
+      "additionalProperties": false
+    },
+    "NameForms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/NameForm"},
+      "contains": {"type": "object", "required": ["kind"], "properties": {"kind": {"const": "primary"}}},
+      "minContains": 1,
+      "maxContains": 1
+    },
+    "LegacyObjectId": {
+      "type": "object",
+      "required": ["id", "kind", "reason"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["people", "events", "works", "relations", "controversies", "quotes"]},
+        "reason": {"type": "string", "minLength": 1},
+        "introduced_before": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "IdAlias": {
+      "type": "object",
+      "required": ["alias_id", "target_id", "kind", "public", "reason"],
+      "properties": {
+        "alias_id": {"type": "string", "minLength": 1},
+        "target_id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["people", "events", "works", "relations", "controversies", "quotes"]},
+        "public": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "SubjectV2": {
+      "type": "object",
+      "required": ["slug", "subject_id", "id_namespace", "language"],
+      "properties": {
+        "slug": {"$ref": "#/$defs/Slug"},
+        "subject_id": {"$ref": "#/$defs/PersonId"},
+        "id_namespace": {"$ref": "#/$defs/Slug"},
+        "language": {"type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"},
+        "legacy_object_ids": {"type": "array", "items": {"$ref": "#/$defs/LegacyObjectId"}, "uniqueItems": true},
+        "id_aliases": {"type": "array", "items": {"$ref": "#/$defs/IdAlias"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "CanonicalFiles": {
+      "type": "object",
+      "required": ["people", "events", "works", "relations", "controversies", "quotes"],
+      "properties": {
+        "people": {"$ref": "#/$defs/LocalRef"}, "events": {"$ref": "#/$defs/LocalRef"},
+        "works": {"$ref": "#/$defs/LocalRef"}, "relations": {"$ref": "#/$defs/LocalRef"},
+        "controversies": {"$ref": "#/$defs/LocalRef"}, "quotes": {"$ref": "#/$defs/LocalRef"}
+      },
+      "additionalProperties": false
+    },
+    "EditorialFiles": {
+      "type": "object",
+      "required": ["chapter_order", "chapters", "overview", "layout", "dossier", "media"],
+      "properties": {
+        "chapter_order": {"$ref": "#/$defs/LocalRef"}, "chapters": {"$ref": "#/$defs/LocalRef"},
+        "overview": {"$ref": "#/$defs/LocalRef"}, "layout": {"$ref": "#/$defs/LocalRef"},
+        "dossier": {"$ref": "#/$defs/LocalRef"}, "media": {"$ref": "#/$defs/LocalRef"}
+      },
+      "additionalProperties": false
+    },
+    "SourceRegistryDescriptor": {
+      "type": "object", "required": ["ref", "schema_version"],
+      "properties": {"ref": {"$ref": "#/$defs/LocalRef"}, "schema_version": {"const": "biography-source-audit-v1"}},
+      "additionalProperties": false
+    },
+    "LedgerDescriptor": {
+      "type": "object", "required": ["kind", "ref", "schema_version", "required_for_publication"],
+      "properties": {
+        "kind": {"enum": ["observations", "merge_decisions", "external_verifications", "source_coverage_decisions", "work_classifications", "work_duplicate_decisions", "work_identity_decisions", "quote_attribution_audits", "prose_risk_reviews", "changesets", "model_recommendations", "media_assets"]},
+        "ref": {"$ref": "#/$defs/LocalRef"}, "schema_version": {"type": "string", "minLength": 1},
+        "required_for_publication": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "FormalReviewerRegistration": {
+      "type": "object", "required": ["reviewer_id", "authority"],
+      "properties": {"reviewer_id": {"type": "string", "minLength": 1}, "authority": {"enum": ["human", "main_agent"]}},
+      "additionalProperties": false
+    },
+    "GovernanceV2": {
+      "type": "object", "required": ["formal_reviewers", "source_registry", "ledgers"],
+      "properties": {
+        "formal_reviewers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/FormalReviewerRegistration"}},
+        "source_registry": {"$ref": "#/$defs/SourceRegistryDescriptor"},
+        "ledgers": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/LedgerDescriptor"}}
+      },
+      "additionalProperties": false
+    },
+    "SharedResource": {
+      "type": "object", "required": ["resource_id", "kind", "ref", "owner", "read_only", "sha256"],
+      "properties": {
+        "resource_id": {"type": "string", "pattern": "^series-[a-z0-9-]+$"}, "kind": {"enum": ["asset", "css", "component", "tokens"]},
+        "ref": {"type": "string", "pattern": "^@series/[A-Za-z0-9._/-]+$"}, "owner": {"const": "biography-series"},
+        "read_only": {"const": true}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "ProjectionV2": {
+      "type": "object", "required": ["projection_id", "canonical_library_id", "route_base", "asset_base", "asset_target", "css_scope", "shared_resources"],
+      "properties": {
+        "projection_id": {"type": "string", "pattern": "^projection-[a-z0-9-]+-store$"},
+        "canonical_library_id": {"type": "string", "pattern": "^canonical-[a-z0-9-]+-store$"},
+        "route_base": {"type": "string", "pattern": "^/(?:[A-Za-z0-9._~-]+/)+$"},
+        "asset_base": {"type": "string", "pattern": "^/(?:[A-Za-z0-9._~-]+/)+$"},
+        "asset_target": {"$ref": "#/$defs/LocalRef"},
+        "css_scope": {"type": "string", "minLength": 1},
+        "asset_source_ref": {"$ref": "#/$defs/LocalRef"},
+        "media_ledger_ref": {"$ref": "#/$defs/LocalRef"},
+        "css_source_ref": {"$ref": "#/$defs/LocalRef"},
+        "css_target": {"$ref": "#/$defs/LocalRef"},
+        "dossier_config_ref": {"$ref": "#/$defs/LocalRef"},
+        "retired_public_files": {"type": "array", "items": {"$ref": "#/$defs/LocalRef"}, "uniqueItems": true},
+        "shared_resource_root": {"$ref": "#/$defs/LocalRef"},
+        "shared_resources": {"type": "array", "items": {"$ref": "#/$defs/SharedResource"}}
+      },
+      "allOf": [{"if": {"properties": {"shared_resources": {"minItems": 1}}, "required": ["shared_resources"]}, "then": {"required": ["shared_resource_root"]}}],
+      "additionalProperties": false
+    },
+    "PublicationV2": {
+      "type": "object", "required": ["status", "href", "catalog_summary"],
+      "properties": {
+        "status": {"enum": ["draft", "review", "published"]},
+        "href": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^/(?:[A-Za-z0-9._~-]+/)+$"}]},
+        "catalog_name": {"type": "string", "minLength": 1}, "catalog_summary": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "ManifestV2": {
+      "type": "object",
+      "required": ["schema_version", "biography_contract_version", "subject", "content_version", "canonical", "editorial", "governance", "projection", "publication", "required_files"],
+      "properties": {
+        "schema_version": {"const": "biography-store-manifest-v2"}, "biography_contract_version": {"const": "0.9.0-candidate"},
+        "subject": {"$ref": "#/$defs/SubjectV2"}, "content_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$"},
+        "canonical": {"$ref": "#/$defs/CanonicalFiles"}, "editorial": {"$ref": "#/$defs/EditorialFiles"},
+        "governance": {"$ref": "#/$defs/GovernanceV2"}, "projection": {"$ref": "#/$defs/ProjectionV2"},
+        "publication": {"$ref": "#/$defs/PublicationV2"},
+        "required_files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/LocalRef"}, "uniqueItems": true}
+      },
+      "not": {"required": ["latin_name"]}, "additionalProperties": false
+    },
+
+    "CorpusSubjectV1": {
+      "type": "object",
+      "required": ["slug", "store_ref", "subject_id", "id_namespace", "route_base"],
+      "properties": {
+        "slug": {"$ref": "#/$defs/Slug"}, "store_ref": {"$ref": "#/$defs/LocalRef"},
+        "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "route_base": {"type": "string", "pattern": "^/(?:[A-Za-z0-9._~-]+/)+$"}
+      },
+      "additionalProperties": false
+    },
+    "BiographyCorpusV1": {
+      "type": "object",
+      "required": ["schema_version", "subjects"],
+      "properties": {
+        "schema_version": {"const": "biography-corpus-v1"},
+        "subjects": {"type": "array", "items": {"$ref": "#/$defs/CorpusSubjectV1"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+
+    "SourceUnitV1": {
+      "type": "object", "required": ["source_id", "source_type", "observation_refs", "verification_refs"],
+      "properties": {
+        "source_id": {"type": "string", "minLength": 1},
+        "source_type": {"enum": ["book", "article", "archive", "manuscript", "museum_object", "database", "website", "oral_history", "other"]},
+        "title": {"type": "string", "minLength": 1},
+        "editions": {"type": "array", "items": {"$ref": "#/$defs/SourceEdition"}, "uniqueItems": true},
+        "witnesses": {"type": "array", "items": {"$ref": "#/$defs/SourceWitness"}, "uniqueItems": true},
+        "observation_refs": {"type": "array", "items": {"$ref": "#/$defs/ObservationId"}, "uniqueItems": true},
+        "verification_refs": {"type": "array", "items": {"type": "string", "pattern": "^ver-[a-z0-9-]+$"}, "uniqueItems": true}
+      },
+      "allOf": [
+        {"if": {"properties": {"source_type": {"enum": ["book", "archive", "manuscript", "museum_object"]}}, "required": ["source_type"]}, "then": {"required": ["witnesses"], "properties": {"witnesses": {"minItems": 1}}}}
+      ],
+      "additionalProperties": true
+    },
+    "SourceEdition": {
+      "type": "object", "required": ["edition_id", "label"],
+      "properties": {"edition_id": {"type": "string", "pattern": "^ed-[a-z0-9-]+$"}, "label": {"type": "string", "minLength": 1}, "publication": {"type": "string"}, "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}},
+      "additionalProperties": false
+    },
+    "SourceWitness": {
+      "type": "object", "required": ["witness_id", "label", "witness_type"],
+      "properties": {"witness_id": {"type": "string", "pattern": "^wit-[a-z0-9-]+$"}, "label": {"type": "string", "minLength": 1}, "witness_type": {"enum": ["manuscript", "print", "inscription", "facsimile", "digital_surrogate", "translation"]}, "edition_id": {"type": "string", "pattern": "^ed-[a-z0-9-]+$"}, "holding": {"type": "string"}, "accession_id": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "SourceRegistryV1": {
+      "type": "object", "required": ["schema_version", "registry_id", "subject_id", "id_namespace", "source_units"],
+      "properties": {
+        "schema_version": {"const": "biography-source-audit-v1"}, "registry_id": {"type": "string", "minLength": 1},
+        "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "source_units": {"type": "array", "items": {"$ref": "#/$defs/SourceUnitV1"}}
+      },
+      "additionalProperties": true
+    },
+    "ObservationV2": {
+      "type": "object",
+      "required": ["schema_version", "observation_id", "subject_id", "id_namespace", "source_id", "anchor", "observation_type", "statement_kind", "statement", "verification_status"],
+      "properties": {
+        "schema_version": {"const": "biography-observation-v2"}, "observation_id": {"$ref": "#/$defs/ObservationId"},
+        "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "source_id": {"type": "string", "minLength": 1}, "anchor": {"$ref": "#/$defs/SourceLocator"},
+        "observation_type": {"type": "string", "minLength": 1}, "statement_kind": {"type": "string", "minLength": 1},
+        "statement": {"type": "string", "minLength": 1}, "verification_status": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "FormalReview": {
+      "type": "object", "required": ["authority", "reviewer_id", "reviewed_at", "recommendation_refs"],
+      "properties": {
+        "authority": {"enum": ["human", "main_agent"]}, "reviewer_id": {"type": "string", "minLength": 1},
+        "reviewed_at": {"type": "string", "format": "date-time"},
+        "recommendation_refs": {"type": "array", "items": {"type": "string", "pattern": "^rec-[a-z0-9-]+$"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "MigrationBasis": {
+      "type": "object", "required": ["source_schema_version", "legacy_decision_id", "original_reviewed_at", "migrated_at", "note"],
+      "properties": {
+        "source_schema_version": {"type": "string", "minLength": 1}, "legacy_decision_id": {"type": "string", "minLength": 1},
+        "original_reviewed_at": {"oneOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+        "migrated_at": {"type": "string", "format": "date-time"}, "note": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "MergeDecisionV2": {
+      "type": "object",
+      "required": ["schema_version", "decision_id", "subject_id", "id_namespace", "scope", "observation_ids", "target_ids", "superseded_ids", "verdict", "reason", "conflicts", "review", "changeset_id", "migration_basis", "status"],
+      "properties": {
+        "schema_version": {"const": "biography-merge-decision-v2"}, "decision_id": {"type": "string", "pattern": "^md-[a-z0-9-]+$"},
+        "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "scope": {"enum": ["observation_admission", "canonical_resolution"]},
+        "observation_ids": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ObservationId"}, "uniqueItems": true},
+        "target_ids": {"$ref": "#/$defs/StringIdArray"}, "superseded_ids": {"$ref": "#/$defs/StringIdArray"},
+        "verdict": {"enum": ["accept", "hold", "reject", "adopt", "create", "enrich", "correct", "merge"]},
+        "reason": {"type": "string", "minLength": 1}, "conflicts": {"type": "array", "items": {"type": "string"}},
+        "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"},
+        "migration_basis": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/MigrationBasis"}]},
+        "status": {"enum": ["signed", "superseded"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"scope": {"const": "observation_admission"}}, "required": ["scope"]}, "then": {"properties": {"verdict": {"enum": ["accept", "hold", "reject"]}, "target_ids": {"maxItems": 0}, "superseded_ids": {"maxItems": 0}}}},
+        {"if": {"properties": {"scope": {"const": "canonical_resolution"}}, "required": ["scope"]}, "then": {"properties": {"verdict": {"enum": ["adopt", "create", "enrich", "correct", "merge"]}, "target_ids": {"minItems": 1}}}},
+        {"if": {"properties": {"scope": {"const": "canonical_resolution"}, "verdict": {"const": "merge"}}, "required": ["scope", "verdict"]}, "then": {"properties": {"superseded_ids": {"minItems": 1}}}},
+        {"if": {"properties": {"scope": {"const": "canonical_resolution"}, "verdict": {"enum": ["adopt", "create", "enrich", "correct"]}}, "required": ["scope", "verdict"]}, "then": {"properties": {"superseded_ids": {"maxItems": 0}}}},
+        {"if": {"properties": {"verdict": {"const": "adopt"}}, "required": ["verdict"]}, "then": {"properties": {"migration_basis": {"$ref": "#/$defs/MigrationBasis"}}}, "else": {"properties": {"migration_basis": {"type": "null"}}}}
+      ],
+      "additionalProperties": false
+    },
+    "ExternalVerificationV1": {
+      "type": "object", "required": ["schema_version", "verification_id", "subject_id", "id_namespace", "target_ids", "source_ids", "verdict", "review", "changeset_id", "status"],
+      "properties": {
+        "schema_version": {"const": "biography-external-verification-v1"}, "verification_id": {"type": "string", "pattern": "^ver-[a-z0-9-]+$"},
+        "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "target_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "verdict": {"enum": ["confirmed", "probable", "disputed", "unresolved"]}, "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"},
+        "status": {"enum": ["signed", "superseded"]}
+      },
+      "additionalProperties": true
+    },
+    "SourceCoverageDecisionV1": {
+      "type": "object", "required": ["schema_version", "decision_id", "subject_id", "id_namespace", "source_id", "disposition", "review", "changeset_id", "status"],
+      "properties": {"schema_version": {"const": "biography-source-coverage-decision-v1"}, "decision_id": {"type": "string", "pattern": "^srcdec-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "source_id": {"type": "string", "minLength": 1}, "disposition": {"enum": ["covered", "partially_covered", "hold", "excluded"]}, "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"}, "status": {"enum": ["signed", "superseded"]}},
+      "additionalProperties": true
+    },
+    "WorkClassificationV1": {
+      "type": "object", "required": ["schema_version", "classification_id", "subject_id", "id_namespace", "work_id", "entity_level", "review", "changeset_id", "status"],
+      "properties": {"schema_version": {"const": "biography-work-classification-v1"}, "classification_id": {"type": "string", "pattern": "^workclass-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "work_id": {"type": "string", "pattern": "^work-[a-z0-9-]+$"}, "entity_level": {"enum": ["intellectual_work", "textual_expression", "material_manifestation"]}, "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"}, "status": {"enum": ["signed", "superseded"]}},
+      "additionalProperties": true
+    },
+    "WorkIdentityDecisionV1": {
+      "type": "object", "required": ["schema_version", "decision_id", "cluster_id", "subject_id", "id_namespace", "work_ids", "disposition", "review", "changeset_id", "status"],
+      "properties": {"schema_version": {"const": "biography-work-identity-decision-v1"}, "decision_id": {"type": "string", "pattern": "^workid-[a-z0-9-]+$"}, "cluster_id": {"type": "string", "pattern": "^workcluster-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "work_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^work-[a-z0-9-]+$"}, "uniqueItems": true}, "disposition": {"enum": ["merge", "keep_separate", "manifestation", "version_or_translation"]}, "master_work_id": {"type": ["string", "null"], "pattern": "^work-[a-z0-9-]+$"}, "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"}, "status": {"enum": ["signed", "superseded"]}},
+      "additionalProperties": true
+    },
+    "QuoteAttributionAuditV1": {
+      "type": "object", "required": ["schema_version", "audit_id", "subject_id", "id_namespace", "quote_id", "verdict", "evidence_refs", "review", "changeset_id", "status"],
+      "properties": {"schema_version": {"const": "biography-quote-attribution-audit-v1"}, "audit_id": {"type": "string", "pattern": "^quoteaudit-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "quote_id": {"type": "string", "pattern": "^quote-[a-z0-9-]+$"}, "verdict": {"enum": ["verified", "probable", "misattributed", "unresolved"]}, "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"}, "status": {"enum": ["signed", "superseded"]}},
+      "additionalProperties": true
+    },
+    "ProseRiskReviewV1": {
+      "type": "object", "required": ["schema_version", "review_id", "subject_id", "id_namespace", "paragraph_id", "text_sha256", "verdict", "evidence_refs", "review", "changeset_id", "status"],
+      "properties": {"schema_version": {"const": "biography-prose-risk-review-v1"}, "review_id": {"type": "string", "pattern": "^prosereview-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "paragraph_id": {"type": "string", "minLength": 1}, "text_sha256": {"$ref": "#/$defs/Sha256"}, "verdict": {"enum": ["approved", "revise", "rejected"]}, "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"}, "status": {"enum": ["signed", "superseded"]}},
+      "additionalProperties": true
+    },
+    "ChangeSetV1": {
+      "type": "object", "required": ["schema_version", "changeset_id", "subject_id", "id_namespace", "artifact_ref", "applied_at", "applied_hash", "status"],
+      "properties": {"schema_version": {"const": "biography-changeset-v1"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "artifact_ref": {"$ref": "#/$defs/LocalRef"}, "applied_at": {"type": "string", "format": "date-time"}, "applied_hash": {"$ref": "#/$defs/Sha256"}, "status": {"enum": ["applied", "superseded"]}},
+      "additionalProperties": false
+    },
+    "ModelRecommendationV1": {
+      "type": "object", "required": ["schema_version", "recommendation_id", "subject_id", "id_namespace", "model", "role", "task", "input_scope_ref", "input_scope_sha256", "response_ref", "response_sha256", "created_at"],
+      "properties": {"schema_version": {"const": "biography-model-recommendation-v1"}, "recommendation_id": {"type": "string", "pattern": "^rec-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "model": {"type": "string", "minLength": 1}, "role": {"const": "recommendation_only"}, "task": {"type": "string", "minLength": 1}, "input_scope_ref": {"$ref": "#/$defs/LocalRef"}, "input_scope_sha256": {"$ref": "#/$defs/Sha256"}, "response_ref": {"$ref": "#/$defs/LocalRef"}, "response_sha256": {"$ref": "#/$defs/Sha256"}, "created_at": {"type": "string", "format": "date-time"}},
+      "additionalProperties": true
+    },
+    "MediaAssetV1": {
+      "type": "object", "required": ["schema_version", "asset_id", "subject_id", "id_namespace", "kind", "source_id", "file_ref", "sha256", "metadata_sha256", "authenticity_status", "object_attribution_status", "depicted_person_ids", "creator_ids", "rights_status", "license", "source_url", "review", "changeset_id", "status"],
+      "properties": {"schema_version": {"const": "biography-media-asset-v1"}, "asset_id": {"type": "string", "pattern": "^media-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"}, "kind": {"enum": ["portrait", "manuscript", "document", "object", "place", "diagram"]}, "source_id": {"type": "string", "minLength": 1}, "file_ref": {"$ref": "#/$defs/LocalRef"}, "sha256": {"$ref": "#/$defs/Sha256"}, "metadata_sha256": {"$ref": "#/$defs/Sha256"}, "authenticity_status": {"enum": ["verified", "probable", "unverified", "disputed"]}, "object_attribution_status": {"enum": ["verified", "probable", "unverified", "disputed", "not_applicable"]}, "depicted_person_ids": {"type": "array", "items": {"$ref": "#/$defs/PersonId"}, "uniqueItems": true}, "creator_ids": {"type": "array", "items": {"$ref": "#/$defs/PersonId"}, "uniqueItems": true}, "rights_status": {"enum": ["cleared", "public_domain", "licensed", "restricted", "unknown"]}, "license": {"type": "string", "minLength": 1}, "source_url": {"type": "string", "format": "uri"}, "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"}, "status": {"enum": ["active", "hold", "retired"]}},
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "portrait"}}, "required": ["kind"]}, "then": {"properties": {"depicted_person_ids": {"minItems": 1}}}}
+      ],
+      "additionalProperties": true
+    },
+    "ReaderExplanation": {
+      "type": "object", "required": ["claim", "importance", "misconception", "evidence_refs", "interpretation_refs", "verification_refs", "related_event_ids"],
+      "properties": {
+        "claim": {"type": "string", "minLength": 1}, "importance": {"type": "string", "minLength": 1},
+        "misconception": {"type": "string", "minLength": 1}, "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"},
+        "interpretation_refs": {"$ref": "#/$defs/InterpretationRefs"}, "verification_refs": {"$ref": "#/$defs/VerificationRefs"},
+        "related_event_ids": {"type": "array", "items": {"type": "string", "pattern": "^evt-[a-z0-9-]+$"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "QuoteSpeaker": {
+      "type": "object", "required": ["type"],
+      "properties": {"type": {"enum": ["author", "person", "persona", "narrator", "unknown"]}, "person_id": {"$ref": "#/$defs/PersonId"}, "label": {"type": "string", "minLength": 1}},
+      "allOf": [
+        {"if": {"properties": {"type": {"enum": ["author", "person"]}}, "required": ["type"]}, "then": {"required": ["person_id"]}},
+        {"if": {"properties": {"type": {"enum": ["persona", "narrator", "unknown"]}}, "required": ["type"]}, "then": {"not": {"required": ["person_id"]}}}
+      ],
+      "additionalProperties": false
+    },
+    "QuoteTextForm": {
+      "type": "object", "required": ["text_form_id", "kind", "text", "language", "script", "locator", "evidence_refs"],
+      "properties": {"text_form_id": {"type": "string", "pattern": "^qtext-[a-z0-9-]+$"}, "kind": {"enum": ["base", "variant", "translation"]}, "text": {"type": "string", "minLength": 1}, "language": {"type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"}, "script": {"type": "string", "pattern": "^[A-Z][a-z]{3}$"}, "witness_id": {"type": "string", "pattern": "^wit-[a-z0-9-]+$"}, "base_text_form_id": {"type": "string", "pattern": "^qtext-[a-z0-9-]+$"}, "translation_direction": {"type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*->[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"}, "translator_ids": {"type": "array", "items": {"$ref": "#/$defs/PersonId"}, "uniqueItems": true}, "locator": {"$ref": "#/$defs/SourceLocator"}, "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}},
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "translation"}}, "required": ["kind"]}, "then": {"required": ["base_text_form_id", "translation_direction"]}, "else": {"not": {"anyOf": [{"required": ["base_text_form_id"]}, {"required": ["translation_direction"]}, {"required": ["translator_ids"]}]}}}
+      ],
+      "additionalProperties": false
+    },
+    "RelationParticipant": {
+      "type": "object", "required": ["person_id", "role"],
+      "properties": {"person_id": {"$ref": "#/$defs/PersonId"}, "role": {"type": "string", "minLength": 1}},
+      "additionalProperties": false
+    },
+    "ControversyPosition": {
+      "type": "object", "required": ["position_id", "label", "claim", "evidence_refs", "source_ids"],
+      "properties": {"position_id": {"type": "string", "pattern": "^pos-[a-z0-9-]+$"}, "label": {"type": "string", "minLength": 1}, "claim": {"type": "string", "minLength": 1}, "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true}},
+      "additionalProperties": false
+    },
+
+    "CanonicalPersonV2": {
+      "type": "object", "required": ["person_id", "subject_id", "id_namespace", "status"],
+      "properties": {
+        "person_id": {"$ref": "#/$defs/PersonId"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "canonical_name": {"type": "string", "minLength": 1}, "name_forms": {"$ref": "#/$defs/NameForms"}, "role": {"type": "string"},
+        "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "interpretation_refs": {"$ref": "#/$defs/InterpretationRefs"}, "verification_refs": {"$ref": "#/$defs/VerificationRefs"},
+        "status": {"$ref": "#/$defs/CanonicalStatus"}, "merged_into": {"$ref": "#/$defs/PersonId"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"enum": ["active", "hold"]}}, "required": ["status"]}, "then": {"required": ["canonical_name", "evidence_refs"]}},
+        {"if": {"properties": {"status": {"const": "merged_redirect"}}, "required": ["status"]}, "then": {"required": ["merged_into"]}}
+      ], "additionalProperties": true
+    },
+    "CanonicalEventV2": {
+      "type": "object", "required": ["event_id", "subject_id", "id_namespace", "status"],
+      "properties": {
+        "event_id": {"type": "string", "pattern": "^evt-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "title": {"type": "string", "minLength": 1}, "date": {"$ref": "#/$defs/TemporalSpan"},
+        "person_id": {"$ref": "#/$defs/PersonId"}, "actors": {"$ref": "#/$defs/StringIdArray"}, "work_ids": {"$ref": "#/$defs/StringIdArray"},
+        "relation_ids": {"$ref": "#/$defs/StringIdArray"}, "controversy_ids": {"$ref": "#/$defs/StringIdArray"},
+        "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "interpretation_refs": {"$ref": "#/$defs/InterpretationRefs"}, "verification_refs": {"$ref": "#/$defs/VerificationRefs"},
+        "status": {"$ref": "#/$defs/CanonicalStatus"}, "merged_into": {"type": "string", "pattern": "^evt-[a-z0-9-]+$"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "active"}}, "required": ["status"]}, "then": {"required": ["title", "date", "person_id", "actors", "evidence_refs"]}},
+        {"if": {"properties": {"status": {"const": "hold"}}, "required": ["status"]}, "then": {"required": ["evidence_refs"]}},
+        {"if": {"properties": {"status": {"const": "merged_redirect"}}, "required": ["status"]}, "then": {"required": ["merged_into"]}}
+      ], "additionalProperties": true
+    },
+    "CanonicalWorkV2": {
+      "type": "object", "required": ["work_id", "subject_id", "id_namespace", "status"],
+      "properties": {
+        "work_id": {"type": "string", "pattern": "^work-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "title": {"type": "string", "minLength": 1}, "entity_level": {"enum": ["intellectual_work", "textual_expression", "material_manifestation"]}, "work_type": {"type": "string", "minLength": 1},
+        "embodies_work_id": {"type": "string", "pattern": "^work-[a-z0-9-]+$"}, "manifestation_of_id": {"type": "string", "pattern": "^work-[a-z0-9-]+$"},
+        "material": {"type": "object", "required": ["holding", "accession_id", "witness_id"], "properties": {"holding": {"type": "string", "minLength": 1}, "accession_id": {"type": "string", "minLength": 1}, "witness_id": {"type": "string", "pattern": "^wit-[a-z0-9-]+$"}}, "additionalProperties": false},
+        "collaborator_ids": {"$ref": "#/$defs/StringIdArray"}, "event_ids": {"$ref": "#/$defs/StringIdArray"},
+        "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "interpretation_refs": {"$ref": "#/$defs/InterpretationRefs"}, "verification_refs": {"$ref": "#/$defs/VerificationRefs"},
+        "reader_explanation": {"$ref": "#/$defs/ReaderExplanation"}, "status": {"$ref": "#/$defs/CanonicalStatus"},
+        "merged_into": {"type": "string", "pattern": "^work-[a-z0-9-]+$"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "active"}}, "required": ["status"]}, "then": {"required": ["title", "entity_level", "work_type", "evidence_refs"]}},
+        {"if": {"properties": {"entity_level": {"const": "textual_expression"}}, "required": ["entity_level"]}, "then": {"required": ["embodies_work_id"]}},
+        {"if": {"properties": {"entity_level": {"const": "material_manifestation"}}, "required": ["entity_level"]}, "then": {"required": ["manifestation_of_id", "material"]}},
+        {"if": {"properties": {"entity_level": {"const": "intellectual_work"}}, "required": ["entity_level"]}, "then": {"not": {"anyOf": [{"required": ["embodies_work_id"]}, {"required": ["manifestation_of_id"]}]}}},
+        {"if": {"properties": {"status": {"const": "hold"}}, "required": ["status"]}, "then": {"required": ["evidence_refs"]}},
+        {"if": {"properties": {"status": {"const": "merged_redirect"}}, "required": ["status"]}, "then": {"required": ["merged_into"]}}
+      ], "additionalProperties": true
+    },
+    "CanonicalRelationV2": {
+      "type": "object", "required": ["relation_id", "subject_id", "id_namespace", "status"],
+      "properties": {
+        "relation_id": {"type": "string", "pattern": "^rel-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "relation_type": {"enum": ["parent_child", "siblings", "spouses", "kinship", "teacher_student", "friends", "colleagues", "patronage", "correspondence", "allies", "opponents", "other"]},
+        "participants": {"type": "array", "items": {"$ref": "#/$defs/RelationParticipant"}},
+        "person_ids": {"type": "array", "items": {"$ref": "#/$defs/PersonId"}, "uniqueItems": true},
+        "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "interpretation_refs": {"$ref": "#/$defs/InterpretationRefs"}, "verification_refs": {"$ref": "#/$defs/VerificationRefs"},
+        "certainty": {"enum": ["confirmed", "probable", "disputed", "unknown"]}, "status": {"$ref": "#/$defs/CanonicalStatus"},
+        "merged_into": {"type": "string", "pattern": "^rel-[a-z0-9-]+$"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "active"}}, "required": ["status"]}, "then": {"required": ["relation_type", "participants", "person_ids", "evidence_refs", "certainty"], "properties": {"participants": {"minItems": 2}, "person_ids": {"minItems": 2}}}},
+        {"if": {"properties": {"status": {"const": "hold"}}, "required": ["status"]}, "then": {"required": ["evidence_refs", "certainty"]}},
+        {"if": {"properties": {"status": {"const": "merged_redirect"}}, "required": ["status"]}, "then": {"required": ["merged_into"]}}
+      ], "additionalProperties": true
+    },
+    "CanonicalControversyV2": {
+      "type": "object", "required": ["controversy_id", "subject_id", "id_namespace", "status"],
+      "properties": {
+        "controversy_id": {"type": "string", "pattern": "^ctr-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "question": {"type": "string", "minLength": 1}, "positions": {"type": "array", "items": {"$ref": "#/$defs/ControversyPosition"}, "uniqueItems": true}, "consensus": {"enum": ["none", "partial", "majority", "resolved", "unknown"]},
+        "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"}, "interpretation_refs": {"$ref": "#/$defs/InterpretationRefs"}, "verification_refs": {"$ref": "#/$defs/VerificationRefs"},
+        "status": {"$ref": "#/$defs/CanonicalStatus"}, "merged_into": {"type": "string", "pattern": "^ctr-[a-z0-9-]+$"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "active"}}, "required": ["status"]}, "then": {"required": ["question", "positions", "consensus", "evidence_refs"], "properties": {"positions": {"minItems": 2}}}},
+        {"if": {"properties": {"status": {"const": "hold"}}, "required": ["status"]}, "then": {"required": ["question", "evidence_refs"]}},
+        {"if": {"properties": {"status": {"const": "merged_redirect"}}, "required": ["status"]}, "then": {"required": ["merged_into"]}}
+      ], "additionalProperties": true
+    },
+    "CanonicalQuoteV2": {
+      "type": "object", "required": ["quote_id", "subject_id", "id_namespace", "status"],
+      "properties": {
+        "quote_id": {"type": "string", "pattern": "^quote-[a-z0-9-]+$"}, "subject_id": {"$ref": "#/$defs/PersonId"}, "id_namespace": {"$ref": "#/$defs/Slug"},
+        "author_id": {"$ref": "#/$defs/PersonId"}, "work_id": {"type": "string", "pattern": "^work-[a-z0-9-]+$"}, "speaker": {"$ref": "#/$defs/QuoteSpeaker"}, "claimed_speaker_ids": {"type": "array", "items": {"$ref": "#/$defs/PersonId"}, "uniqueItems": true}, "attribution_status": {"enum": ["verified", "probable", "misattributed", "unresolved"]},
+        "text_forms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/QuoteTextForm"}, "contains": {"type": "object", "required": ["kind"], "properties": {"kind": {"const": "base"}}}, "minContains": 1, "maxContains": 1},
+        "evidence_refs": {"$ref": "#/$defs/EvidenceRefs"},
+        "interpretation_refs": {"$ref": "#/$defs/InterpretationRefs"}, "verification_refs": {"$ref": "#/$defs/VerificationRefs"},
+        "status": {"$ref": "#/$defs/CanonicalStatus"}, "merged_into": {"type": "string", "pattern": "^quote-[a-z0-9-]+$"}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "active"}}, "required": ["status"]}, "then": {"required": ["speaker", "claimed_speaker_ids", "attribution_status", "text_forms", "evidence_refs"]}},
+        {"if": {"properties": {"attribution_status": {"const": "misattributed"}}, "required": ["attribution_status"]}, "then": {"properties": {"claimed_speaker_ids": {"minItems": 1}}}},
+        {"if": {"properties": {"status": {"const": "hold"}}, "required": ["status"]}, "then": {"required": ["evidence_refs"]}},
+        {"if": {"properties": {"status": {"const": "merged_redirect"}}, "required": ["status"]}, "then": {"required": ["merged_into"]}}
+      ], "additionalProperties": true
+    }
+  }
+}

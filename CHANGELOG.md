@@ -4,6 +4,18 @@
 
 ## [未发布]
 
+### biography_corpus：新增可迁移、可审计的证据型人物传记路径
+
+这一版把「人物思想蒸馏」与「历史人物事实建库」正式拆成两条路线。用户现在可以从零初始化一个独立人物 store，把来源、逐条观察、正式裁决、六类规范事实、编辑叙事和外部核验连成可回查的证据链，再把确定性投影交给自己的产品。
+
+- 新增实验性 v2 传记候选契约 `0.9.0-candidate`：manifest 显式声明人物身份、文件映射、治理账本、投影与发布状态；JSON Schema 和跨文件语义审计共同检查证据闭包、exact-once 裁决、redirect、关系、争议、引语、历史日期与作品版本。仓库 v0.8.0 与数据契约使用独立版本域，候选契约在稳定前仍可能调整。
+- 新增单一 `biography_store.py` 入口，提供 `init`、`audit`、`verify` 与 `audit-corpus`；编译、导出和测试复用同一审计谓词，不再各写一套近似门禁。
+- 外部模型（包括 GLM-5.3）只能提交 `recommendation_only`，正式裁决须由 manifest allowlist 中的 `human` 或 `main_agent` reviewer 签署。
+- 每个人物的 slug、namespace、路由、资源目录和 CSS scope 独立；跨人物共享资源必须显式只读并绑定摘要，corpus 审计会拦截串线和 ID 冲突。
+- 风险正文、正式变更、模型建议与媒体元数据都绑定可重算的内容摘要；本地引用拒绝绝对路径、穿越、反斜杠、ADS、控制字符与 Windows 设备名，避免“账本在、内容已换”和跨目录读取。
+- 来源见证、历史日期换算、关系端点角色、引语声称者/实际说话者/译文链以及媒体真实性均进入跨文件语义审计；公开模式拒绝未核真实性或权利未清的媒体。
+- 书籍、视频与既有 `creator_corpus` 路径保持兼容；人物传记契约只负责资料与验证，不绑定任何特定网站的页面、SEO 或部署实现。
+
 ## [0.7.0] -- 2026-08-21
 
 ### 心理学：新增原书主张与外部科学证据双层契约
@@ -231,6 +243,12 @@ Hormozi 页上线后复核发现的架构级缺口，Dan Koe 那一版同病且�
 
 装法与网页演示见 README。这是叁笙自己每天在用、清洗脱敏后开源的 Claude Code 技能。
 
+[0.7.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.7.0
+[0.6.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.6.0
+[0.5.1]: https://github.com/sanshengai/sansheng-distill/tree/v0.5.1
+[0.5.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.5.0
+[0.4.1]: https://github.com/sanshengai/sansheng-distill/tree/v0.4.1
 [0.4.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.4.0
 [0.3.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.3.0
+[0.2.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.2.0
 [0.1.0]: https://github.com/sanshengai/sansheng-distill/tree/v0.1.0

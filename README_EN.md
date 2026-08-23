@@ -1,6 +1,6 @@
-# sansheng-distill · Book Distillation Engine
+# sansheng-distill · Book, Video, and Biography Distillation Engine
 
-> Turn a book (or a video series) into a single-file, clickable, ever-deepening **interactive web page**.
+> Turn books and video series into browsable knowledge maps, or organize a person's life materials into an auditable evidence corpus.
 
 [中文](./README.md) | **English**
 
@@ -12,7 +12,7 @@
 
 ## What it is
 
-Feed it a book (`.epub` / `.pdf` / `.txt` / `.azw3` / `.mobi`), or a set of videos, and it runs a multi-step pipeline that produces **one self-contained HTML page you can just double-click open** -- no network, no server, one file is everything.
+Feed it a book (`.epub` / `.pdf` / `.txt` / `.azw3` / `.mobi`), or a set of videos, and it runs a multi-step pipeline that produces **one self-contained HTML page you can just double-click open** -- no network, no server, one file is everything. If the target is a historical person rather than one work, it routes to `biography_corpus` and produces a structured store in which sources, observations, decisions, canonical facts, disputes, and external verifications remain traceable to each other.
 
 It is not a "summary." A summary shortens a book and you toss it after reading; a distillation turns the book into **a knowledge map**: a one-line formula, a clickable mind-map, chapter-by-chapter deep reads you can expand, a set of read-and-review self-check questions, plus web-enriched author profiles, for/against reviews, cross-book views, and automatic links to the other books you've distilled. **AI book distillation is a map to use, not a substitute for reading the original** -- that line stays pinned at the bottom of every page.
 
@@ -73,11 +73,29 @@ The unit of analysis is different. The first asks "what does this book say"; the
 
 First case study, Dan Koe: 162 videos + 212 letters + 25 book chapters, synthesized into 399 sources, 1,836 pieces of evidence, 299 idea families.
 
+## It can also build an evidence-backed biography corpus
+
+A person's corpus of ideas is not the same as a historical biography. `creator_corpus` clusters idea families from a creator's own videos, essays, books, and podcasts. The new `biography_corpus` combines archives, correspondence, scholarship, collection records, and reliable web sources to answer a different set of questions: what happened, where the evidence is, why sources disagree, and which conclusions must remain contested.
+
+The path uses a one-way evidence chain -- `Source Unit -> Observation -> MergeDecision -> Canonical -> Editorial -> Projection` -- plus an experimental v2 candidate schema, initializer, and layered gates. The current data-contract version is `0.9.0-candidate`; it has its own version domain, separate from the repository SemVer, and may still change before stabilization. External models such as GLM-5.3 may scan for omissions or propose revisions, but their output is always `recommendation_only`; formal decisions must be signed by a `human` or `main_agent` reviewer registered in the manifest. Each person's namespace, route, assets, and CSS scope remain isolated, and corpus-level auditing catches cross-subject leakage.
+
+```bash
+python scripts/biography_store.py init \
+  --store-root ./biography-data/sample-scholar \
+  --slug sample-scholar --subject-id per-sample-scholar \
+  --catalog-name "Sample Scholar" --language en
+
+python scripts/biography_store.py audit \
+  --store-root ./biography-data/sample-scholar --mode strict-data
+```
+
+See [`references/biography-craft.md`](./references/biography-craft.md) for the full workflow and boundary contract. This repository owns the portable evidence model and validation tools, not the visual design, SEO, or deployment of a particular one-page website. Downstream products may read projections; they must not write back into the fact layer.
+
 ## When to use
 
-Say *"distill this book"*, *"拆这本书"*, *"distill this video series"*, *"distill this creator"*, or just drop an ebook file and ask for a distillation page -- Claude picks up this skill and runs the whole pipeline.
+Say *"distill this book"*, *"拆这本书"*, *"distill this video series"*, *"distill this creator"*, *"build an evidence-backed biography corpus"*, or just drop an ebook file and ask for a distillation page -- Claude picks up this skill and selects the right pipeline.
 
-**Not** for: writing an article, editing a video, or just wanting subtitles or a plain summary.
+**Not** for: writing an article, editing a video, just wanting subtitles or a plain summary, or implementing and deploying a website by itself.
 
 ## Install
 
@@ -109,8 +127,10 @@ To hear about new versions: watch the repo's [Releases](../../releases), or clic
 ## Quick start
 
 ```bash
+python --version             # Python >= 3.10 is required
 pip install ebooklib beautifulsoup4 pymupdf pillow playwright
 playwright install chromium
+# The biography_corpus candidate additionally needs: pip install "jsonschema>=4"
 # .azw3 / .mobi input also needs calibre's `ebook-convert`
 cp .env.example .env        # then set DISTILL_DATA_DIR (and the video keys if you use the video path)
 ```
@@ -161,6 +181,7 @@ This distillation approach didn't come from nowhere; we studied and blended less
 | Dependency | Purpose | When needed |
 |---|---|---|
 | `ebooklib` · `beautifulsoup4` · `pymupdf` · `pillow` · `playwright` (+ `playwright install chromium`) | Book parsing + page verification | Always |
+| `jsonschema>=4` (MIT) | Experimental biography v2 candidate schema and shared audit entry point | `biography_corpus` only |
 | `calibre` (`ebook-convert`) | Convert `.azw3` / `.mobi` | Only for those input formats |
 | `yt-dlp` | Fetch subtitles / comments | Video-series path only |
 | A subtitle / ASR tool | Transcribe subtitle-less video | Only for non-YouTube, subtitle-less video series |

@@ -1,6 +1,6 @@
 {
   "name": "sansheng-distill-marketplace",
-  "description": "叁笙's book distillation skill for Claude Code.",
+  "description": "叁笙's auditable distillation skill for books, media, creators, and biographies.",
   "owner": {
     "name": "叁笙 (sansheng)",
     "email": "sandypoli@gmail.com"
@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "sansheng-distill",
-      "description": "Turn a book (or a video series) into a single-file, interactive HTML distillation page.",
+      "description": "Distill books, video series, creator corpora, and evidence-backed biographies into auditable outputs.",
       "version": "0.7.0",
       "source": "./",
       "author": {
