@@ -9,7 +9,7 @@
     {
       "name": "sansheng-distill",
       "description": "Distill books, video series, creator corpora, and evidence-backed biographies into auditable outputs.",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "source": "./",
       "author": {
         "name": "叁笙 (sansheng)",
