@@ -28,6 +28,25 @@ CONTRACT_VERSION = "0.9.0-candidate"
 MANIFEST_V1 = "biography-store-manifest-v1"
 MANIFEST_V2 = "biography-store-manifest-v2"
 MERGE_DECISION_V2 = "biography-merge-decision-v2"
+LEGACY_V1_MIGRATION_CODES = frozenset(
+    {
+        "ASSET_NAMESPACE_REQUIRED",
+        "ASSET_TARGET_NAMESPACE_REQUIRED",
+        "CANONICAL_ENVELOPE_V2_REQUIRED",
+        "CANONICAL_PATHS_REQUIRED",
+        "CSS_SCOPE_REQUIRED",
+        "DECISION_OBSERVATIONS_INVALID",
+        "EVIDENCE_NOT_DECIDED",
+        "GOVERNANCE_DECLARATION_REQUIRED",
+        "INTERPRETATION_NOT_DECIDED",
+        "MANIFEST_SCHEMA_LEGACY",
+        "MERGED_INTO_FORBIDDEN",
+        "MERGE_DECISION_V2_REQUIRED",
+        "NAME_FORMS_REQUIRED",
+        "OBSERVATION_ENVELOPE_V2_REQUIRED",
+        "RELATION_ENDPOINTS_INCOMPLETE",
+    }
+)
 WINDOWS_RESERVED_BASENAMES = frozenset(
     {"con", "prn", "aux", "nul"}
     | {f"com{index}" for index in range(1, 10)}
@@ -3461,7 +3480,13 @@ def assert_store_ready(
         report = audit_store(root, mode="audit")
         allowed = frozenset(legacy_subject_ids or ())
         subject_id = manifest.get("subject_id")
-        if report.fatal_count or subject_id not in allowed:
+        unreviewed_issues = [
+            issue
+            for issue in report.issues
+            if issue.severity != "migration"
+            or issue.code not in LEGACY_V1_MIGRATION_CODES
+        ]
+        if report.fatal_count or subject_id not in allowed or unreviewed_issues:
             raise ValueError(format_human_report(report))
         return report
     if manifest_version != MANIFEST_V2:

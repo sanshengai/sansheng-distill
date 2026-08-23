@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- 收紧产品侧 v1 兼容例外：显式 allowlist 现在只放行已审阅的 legacy migration 代码；任何新出现的 error、fatal 或未登记迁移规则都会 fail closed，避免旧人物迁移期掩盖新的语义损坏。
+
 ## [0.8.0] -- 2026-08-23
 
 ### biography_corpus：新增可迁移、可审计的证据型人物传记路径

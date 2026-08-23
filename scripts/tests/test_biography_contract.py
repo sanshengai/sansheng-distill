@@ -16,8 +16,11 @@ TOOL_ROOT = Path(__file__).resolve().parents[1]
 if str(TOOL_ROOT) not in sys.path:
     sys.path.insert(0, str(TOOL_ROOT))
 
+import biography_contract as contract_module  # noqa: E402
 from biography_store import main as audit_main  # noqa: E402
 from biography_contract import (  # noqa: E402
+    ContractAuditReport,
+    ContractIssue,
     SCHEMA_DEFINITION_REGISTRY,
     assert_store_ready,
     audit_corpus,
@@ -1596,7 +1599,7 @@ def test_legacy_manifest_is_reported_as_migration_not_pass(tmp_path: Path) -> No
     assert audit_main(["audit", "--store-root", str(root), "--mode", "strict-data"]) == 1
 
 
-def test_legacy_store_requires_an_explicit_stable_subject_allowlist(tmp_path: Path) -> None:
+def test_legacy_store_requires_allowlist_and_rejects_real_semantic_errors(tmp_path: Path) -> None:
     root = build_sparse_second_subject(tmp_path / SUBJECT)
     write_json(
         root / "manifest.json",
@@ -1615,12 +1618,93 @@ def test_legacy_store_requires_an_explicit_stable_subject_allowlist(tmp_path: Pa
     with pytest.raises(ValueError, match="MANIFEST_SCHEMA_LEGACY"):
         assert_store_ready(root, phase="compile")
 
-    report = assert_store_ready(
+    with pytest.raises(ValueError, match="FORMAL_REVIEWER_UNREGISTERED"):
+        assert_store_ready(
+            root,
+            phase="compile",
+            legacy_subject_ids={SUBJECT_ID},
+        )
+
+
+def test_legacy_allowlist_accepts_only_reviewed_migration_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / SUBJECT
+    root.mkdir()
+    write_json(
+        root / "manifest.json",
+        {
+            "schema_version": "biography-store-manifest-v1",
+            "subject": SUBJECT,
+            "subject_id": SUBJECT_ID,
+            "id_namespace": SUBJECT,
+        },
+    )
+    report = ContractAuditReport(
+        str(root),
+        "audit",
+        SUBJECT,
+        "biography-store-manifest-v1",
+        [
+            ContractIssue(
+                "MANIFEST_SCHEMA_LEGACY",
+                "旧人物需迁移至 v2",
+                "manifest.json",
+                "migration",
+            )
+        ],
+    )
+    monkeypatch.setattr(contract_module, "audit_store", lambda *_args, **_kwargs: report)
+
+    accepted = contract_module.assert_store_ready(
         root,
         phase="compile",
         legacy_subject_ids={SUBJECT_ID},
     )
-    assert "MANIFEST_SCHEMA_LEGACY" in issue_codes(report)
+
+    assert accepted is report
+
+
+@pytest.mark.parametrize(
+    ("severity", "code"),
+    [
+        ("error", "SOURCE_SUBJECT_MISMATCH"),
+        ("migration", "NEW_UNREVIEWED_MIGRATION_RULE"),
+    ],
+)
+def test_legacy_allowlist_rejects_non_migration_or_unreviewed_findings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    severity: str,
+    code: str,
+) -> None:
+    root = tmp_path / SUBJECT
+    root.mkdir()
+    write_json(
+        root / "manifest.json",
+        {
+            "schema_version": "biography-store-manifest-v1",
+            "subject": SUBJECT,
+            "subject_id": SUBJECT_ID,
+            "id_namespace": SUBJECT,
+        },
+    )
+    report = ContractAuditReport(
+        str(root),
+        "audit",
+        SUBJECT,
+        "biography-store-manifest-v1",
+        [ContractIssue(code, "必须由产品迁移审查显式接纳", "manifest.json", severity)],
+    )
+    monkeypatch.setattr(contract_module, "audit_store", lambda *_args, **_kwargs: report)
+
+    with pytest.raises(ValueError, match=code):
+        contract_module.assert_store_ready(
+            root,
+            phase="compile",
+            legacy_subject_ids={SUBJECT_ID},
+        )
 
 
 @pytest.mark.parametrize(
