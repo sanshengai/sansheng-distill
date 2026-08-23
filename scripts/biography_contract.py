@@ -1550,6 +1550,26 @@ class _Auditor:
             self.audit_decision_exact_once()
 
     def ledger_object_id(self, kind: str, row: dict[str, Any]) -> str | None:
+        id_fields = {
+            "observations": "observation_id",
+            "merge_decisions": "decision_id",
+            "external_verifications": "verification_id",
+            "source_coverage_decisions": "decision_id",
+            "work_classifications": "classification_id",
+            "work_duplicate_decisions": "decision_id",
+            "work_identity_decisions": "cluster_id",
+            "quote_attribution_audits": "audit_id",
+            "prose_risk_reviews": "review_id",
+            "changesets": "changeset_id",
+            "model_recommendations": "recommendation_id",
+            "media_assets": "asset_id",
+        }
+        field_name = id_fields.get(kind)
+        if field_name is not None:
+            value = row.get(field_name)
+            return value if isinstance(value, str) else None
+
+        # Legacy callers without a ledger kind retain the best-effort fallback.
         candidates = (
             "verification_id",
             "audit_id",

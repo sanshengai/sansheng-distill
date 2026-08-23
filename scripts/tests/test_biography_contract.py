@@ -2141,6 +2141,17 @@ def test_media_review_is_bound_to_metadata_and_publishable_authenticity(
     assert "MEDIA_METADATA_HASH_MISMATCH" in issue_codes(changed_report)
 
 
+def test_media_asset_identity_is_not_confused_with_changeset_foreign_key(
+    tmp_path: Path,
+) -> None:
+    root = build_sparse_second_subject(tmp_path / SUBJECT)
+    add_media_asset(root)
+
+    report = audit_store(root, mode="strict-data")
+
+    assert "GOVERNANCE_ID_DUPLICATE" not in issue_codes(report)
+
+
 def test_formal_review_recommendation_requires_provenance_row(tmp_path: Path) -> None:
     root = build_sparse_second_subject(tmp_path / SUBJECT)
     path = root / "source-coverage-decisions.jsonl"
