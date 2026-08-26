@@ -18,18 +18,28 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 # 章节头召回正则(启发式,只求「有规整标题」的书能召回;纯意译短标题的外版书仍会偏低,接受)。
-# 各分支:① 第N章/回/讲/部/篇 与裸 N章(「第N部分」由「部」前缀覆盖);② Chapter N;
-# ③ 行首「N. 标题」/「N、标题」(负向前瞻排除 3.14 小数,水平空白防跨行吞标题);
-# ④ 罗马数字章「IV. 标题」(要求句点,避免行首 "I am ..." 整句误判)。
+# 行首允许一个装饰符 [｜|〔【] -- 全角竖线 U+FF5C 是中文传记常见的章标题包裹符(「｜第一章｜ …」)。
+# 各分支:① 第N章/回/讲/部/篇/卷/辑 与裸 N章(「第N部分」由「部」前缀覆盖);② Chapter N;
+# ③ 行首「N. 标题」/「N、标题」/「N．标题」(全角句点 U+FF0E 是中文书常见小节序号;
+#    负向前瞻排除 3.14 小数,水平空白防跨行吞标题);
+# ④ 罗马数字章「IV. 标题」(要求句点,避免行首 "I am ..." 整句误判);
+# ⑤ 中文古籍「体裁名 + 卷N」/「卷之N」(「奏稿 卷一」「卷之十四」)-- 曾国藩这类刻本全集的唯一版式。
 CH_PAT = re.compile(
-    r"^[ \t]*("
-    r"第?\s*[一二三四五六七八九十百0-9]+\s*[章回讲部篇]"
+    r"^[ \t]*[｜|〔【]?("
+    r"第?\s*[一二三四五六七八九十百0-9]+\s*[章回讲部篇卷辑]"
     r"|Chapter\s+\d+"
-    r"|\d{1,2}[.、](?!\d)[ \t]*\S"
+    r"|\d{1,2}[.、．](?!\d)[ \t]*\S"
     r"|[IVXLCDM]{1,9}\.[ \t]*\S"
+    r"|\S{0,8}[ \t]?卷[之一二三四五六七八九十]"
     r")",
     re.M,
 )
+
+
+# 空切片守卫阈值:容器文件大于 EMPTY_SLICE_CONTAINER_BYTES 而分册正文不足 EMPTY_SLICE_CHARS 字,
+# 判为「锚点切错/只拿到封面页」,降级需人工确认(exit 3),不许静默当成一本书交出去。
+EMPTY_SLICE_CHARS = 5000
+EMPTY_SLICE_CONTAINER_BYTES = 1_000_000
 
 
 def clean_filename(name: str) -> str:
@@ -58,15 +68,42 @@ def _toc_walk(node, hrefs: list, titles: list, depth: int = 0):
         hrefs.append(str(h).split("#")[0])
 
 
+def _href_of(node) -> str | None:
+    h = getattr(node, "href", None)
+    return str(h).split("#")[0] if h else None
+
+
+def _anchor_hrefs(node) -> list:
+    """顶层 TOC 节点的**正文锚点** href -- 有子项时只认子项,丢掉 Section 自身那个。
+
+    🔴 2026-08-25 曾国藩 12 册套装实证:NCX 里每个「曾国藩全集 N」顶层 Section **自身也带
+    href**,而它指向的是**别册**的正文文件(第 11 册《家书》的自身 href 指到奏稿卷十四)。
+    自身 href 混进 hrefs 后 `min(...)` 就锚到别的书上 -- 要家书拿回奏稿,exit 0 零警告。
+    子项 href 才是这一册真正的正文起点,所以有子项时自身 href 一律不参与算区间;
+    没有子项(Link 节点 / 光杆 Section)才回退用它自己。
+    """
+    if isinstance(node, (tuple, list)) and len(node) == 2 and isinstance(node[1], (tuple, list)):
+        head, children = node
+        child_hrefs = []
+        _toc_walk(children, child_hrefs, [])
+        if child_hrefs:
+            return child_hrefs
+        h = _href_of(head)
+        return [h] if h else []
+    hrefs = []
+    _toc_walk(node, hrefs, [])
+    return hrefs
+
+
 def epub_volumes(book) -> list:
-    """套装/合集 epub 的顶层分册:[(分册名, [href…], [TOC 标题…])]。
+    """套装/合集 epub 的顶层分册:[(分册名, [正文锚点 href…], [TOC 标题…])]。
     单本书的 TOC 顶层就是各章,此时「分册」概念不成立 -- 由调用方按数量与命中情况判断。"""
     vols = []
     for node in book.toc:
-        hrefs, titles = [], []
-        _toc_walk(node, hrefs, titles)
+        _h, titles = [], []
+        _toc_walk(node, _h, titles)
         name = titles[0] if titles else "?"
-        vols.append((name, hrefs, titles))
+        vols.append((name, _anchor_hrefs(node), titles))
     return vols
 
 
@@ -86,11 +123,36 @@ def _base(name: str) -> str:
     return str(name).replace("\\", "/").rsplit("/", 1)[-1]
 
 
-def extract_epub(p: Path, volume: str | None = None) -> tuple:
+class VolumeError(KeyError):
+    """分册寻址失败(不存在 / 同名歧义 / 下标越界)。继承 KeyError 保持向后兼容。"""
+
+
+GLYPH_MARK = "〔图字:"
+
+
+def _mark_inline_images(soup) -> None:
+    """把正文内联 <img> 换成可见标记,而不是让 get_text() 静默吞掉。
+
+    🔴 中文古籍电子书用**造字图**表示生僻字(曾文正公 16 册正文内联 img 2975 处、
+    家书 2137 处)。`soup.get_text()` 直接丢掉 <img>,字就凭空消失,而 garbled_ratio
+    检测不到(12 册实测 U+FFFD 比率 0.0002,远低于 0.02 阈值)-- 静默缺字。
+    """
+    for img in soup.find_all("img"):
+        alt = (img.get("alt") or "").strip()
+        if not alt:
+            src = img.get("src") or img.get("xlink:href") or ""
+            alt = _base(src).rsplit(".", 1)[0] or "?"
+        img.replace_with(f"{GLYPH_MARK}{alt[:40]}〕")
+
+
+def extract_epub(p: Path, volume: str | None = None,
+                 volume_index: int | None = None, info: dict | None = None) -> tuple:
     """→ (正文文本, TOC 标题列表)。
 
-    volume 非空时只抽该分册(套装合集按 TOC 顶层切分):以该分册在 spine 里的**区间**为准,
-    而非只取 TOC 列出的那几篇 -- 未列入 TOC 的正文续页也要收进来,否则会静默丢正文。
+    volume / volume_index 非空时只抽该分册(套装合集按 TOC 顶层切分):以该分册在 spine 里的
+    **区间**为准,而非只取 TOC 列出的那几篇 -- 未列入 TOC 的正文续页也要收进来,否则静默丢正文。
+    volume_index 是 --list-volumes 输出的数组下标(0-based),用于同名分册寻址。
+    info 非 None 时回填 {"volume_name": …, "volume_index": …} -- 避免调用方为拿分册名重读一遍 epub。
     """
     from ebooklib import epub
     from bs4 import BeautifulSoup
@@ -98,23 +160,43 @@ def extract_epub(p: Path, volume: str | None = None) -> tuple:
     book = epub.read_epub(str(p), options={"ignore_ncx": True})
     docs = _spine_docs(book)
     toc_titles = []
-    if volume:
+    if volume or volume_index is not None:
         vols = epub_volumes(book)
         names = [v[0] for v in vols]
-        hit = next((i for i, n in enumerate(names) if n == volume), None)
-        if hit is None:  # 退一步做包含匹配,容忍分册名带书名号/副标题
-            hit = next((i for i, n in enumerate(names) if volume in n or n in volume), None)
-        if hit is None:
-            raise KeyError(f"分册 {volume!r} 不在该 epub 的顶层目录中;可选: {names}")
+        if volume_index is not None:
+            if not (0 <= volume_index < len(vols)):
+                raise VolumeError(f"--volume-index {volume_index} 越界;该 epub 顶层共 {len(vols)} 个分册"
+                                  f"(合法下标 0..{len(vols) - 1});可选: {names}")
+            hit = volume_index
+        else:
+            exact = [i for i, n in enumerate(names) if n == volume]
+            # 🔴 同名分册不许静默取第一个:唐浩明套装顶层三个节点都叫「目录」,
+            #    首个精确匹配胜出 = 第 2、3 册在 CLI 下**根本无法寻址**,且切出来的是第 1 册。
+            if len(exact) > 1:
+                raise VolumeError(f"分册名 {volume!r} 在顶层目录中出现 {len(exact)} 次(下标 {exact}),"
+                                  f"无法确定要哪一册;请改用 --volume-index <下标>。全部分册: {names}")
+            hit = exact[0] if exact else None
+            if hit is None:  # 退一步做包含匹配,容忍分册名带书名号/副标题
+                fuzzy = [i for i, n in enumerate(names) if volume in n or n in volume]
+                if len(fuzzy) > 1:
+                    raise VolumeError(f"分册名 {volume!r} 模糊匹配到 {len(fuzzy)} 个节点(下标 {fuzzy}),"
+                                      f"无法确定要哪一册;请改用 --volume-index <下标>。全部分册: {names}")
+                hit = fuzzy[0] if fuzzy else None
+            if hit is None:
+                raise VolumeError(f"分册 {volume!r} 不在该 epub 的顶层目录中;可选: {names}")
+        if info is not None:
+            info["volume_name"], info["volume_index"] = names[hit], hit
         toc_titles = vols[hit][2]
         pos = {_base(d.get_name()): i for i, d in enumerate(docs)}
         starts = [pos[_base(h)] for h in vols[hit][1] if _base(h) in pos]
         if not starts:
-            raise KeyError(f"分册 {volume!r} 的目录项无法对应到正文文档(epub 结构异常)")
+            raise VolumeError(f"分册 {names[hit]!r} 的目录项无法对应到正文文档(epub 结构异常)")
         start = min(starts)
-        # 终点 = 下一个**有正文落点**的分册起点;没有则到全书末尾
+        # 终点 = 下一个**有正文落点**的分册起点;没有则到全书末尾。
+        # 这里用的同样是 _anchor_hrefs 过滤后的锚点 -- 后续分册的自身 href 若指向靠前的
+        # 别册文件,会把终点提前,正文被腰斩(甲书只剩第一篇)。
         later = []
-        for nm, hs, _t in vols[hit + 1:]:
+        for _nm, hs, _t in vols[hit + 1:]:
             ps = [pos[_base(h)] for h in hs if _base(h) in pos]
             if ps:
                 later.append(min(ps))
@@ -126,6 +208,7 @@ def extract_epub(p: Path, volume: str | None = None) -> tuple:
     parts = []
     for item in docs:
         soup = BeautifulSoup(item.get_content(), "html.parser")
+        _mark_inline_images(soup)
         parts.append(soup.get_text("\n", strip=True))
     return "\n\n".join(x for x in parts if x), toc_titles
 
@@ -218,6 +301,8 @@ def diagnose(text: str, fmt: str, pages: int, toc_titles: list | None = None) ->
             "pages_est": pages, "chars": len(text), "garbled_ratio": g,
             "toc_detected": len(chapters) >= 3, "chapters_detected": len(chapters),
             "chapters_source": "epub_toc" if n_toc > n_body else "body_regex",
+            # 正文内联造字图数量:>0 说明这本书用图片表示生僻字,引文里会看到〔图字:…〕标记
+            "inline_glyph_images": text.count(GLYPH_MARK),
             "recommendation": rec, "notes": []}
 
 
@@ -226,10 +311,15 @@ def main():
     ap.add_argument("input", help="电子书路径(epub/pdf/txt/azw3/mobi)")
     ap.add_argument("--outdir", help="输出书目录(仅 --list-volumes 时可省)")
     ap.add_argument("--force", action="store_true", help="book.txt 已存在时强制覆盖")
-    ap.add_argument("--volume", help="套装/合集 epub:只抽这一个分册(按 TOC 顶层分册名);先用 --list-volumes 查名字")
+    ap.add_argument("--volume", help="套装/合集 epub:只抽这一个分册(按 TOC 顶层分册名);先用 --list-volumes 查名字。同名分册会报错,改用 --volume-index")
+    ap.add_argument("--volume-index", type=int,
+                    help="套装/合集 epub:按 --list-volumes 输出的数组下标(0-based)抽分册;同名分册(如三个「目录」)只能这样寻址")
     ap.add_argument("--list-volumes", action="store_true",
                     help="列出 epub 顶层分册名与各自章数后退出(不写任何文件);判断是不是套装合集用这个")
     a = ap.parse_args()
+    if a.volume and a.volume_index is not None:
+        print("--volume 与 --volume-index 只能二选一", file=sys.stderr)
+        return 2
     src, out = Path(a.input), Path(a.outdir) if a.outdir else Path(".")
     if not src.is_file():
         print(f"输入文件不存在: {src}", file=sys.stderr)
@@ -240,9 +330,10 @@ def main():
             return 2
         from ebooklib import epub as _epub
         vols = epub_volumes(_epub.read_epub(str(src), options={"ignore_ncx": True}))
-        print(json.dumps([{"volume": n, "toc_entries": len(t),
+        # index 显式打出来:同名分册(唐浩明套装三个「目录」)只能靠 --volume-index 寻址
+        print(json.dumps([{"index": i, "volume": n, "toc_entries": len(t),
                            "chapters_detected": len([x for x in t if CH_PAT.search(x)])}
-                          for n, _h, t in vols], ensure_ascii=False, indent=1))
+                          for i, (n, _h, t) in enumerate(vols)], ensure_ascii=False, indent=1))
         return 0
     if not a.outdir:
         print("缺 --outdir(只有 --list-volumes 可省)", file=sys.stderr)
@@ -274,15 +365,17 @@ def main():
     pages = 0
     toc_titles = []
     if fmt == "epub":
+        vinfo: dict = {}
         try:
-            text, toc_titles = extract_epub(src, a.volume)
+            text, toc_titles = extract_epub(src, a.volume, a.volume_index, vinfo)
         except KeyError as e:
-            print(str(e), file=sys.stderr)
+            print(e.args[0] if e.args else str(e), file=sys.stderr)
             return 2
-        if a.volume:
-            notes.append(f"从套装/合集 epub 按 TOC 切出分册「{a.volume}」")
-    elif a.volume:
-        print("--volume 只支持 epub 输入", file=sys.stderr)
+        if vinfo:
+            title = vinfo["volume_name"]  # 分册名以 TOC 实际节点为准(--volume-index 时 a.volume 为空)
+            notes.append(f"从套装/合集 epub 按 TOC 切出分册「{title}」(顶层下标 {vinfo['volume_index']})")
+    elif a.volume or a.volume_index is not None:
+        print("--volume / --volume-index 只支持 epub 输入", file=sys.stderr)
         return 2
     elif fmt == "pdf":
         text, pages = extract_pdf(src)
@@ -294,6 +387,15 @@ def main():
         return 2
     d = diagnose(text, fmt, pages, toc_titles)
     d["notes"].extend(notes)
+    # 🔴 空切片守卫:容器上兆而分册只切出几百字 = 锚点切错了(唐浩明套装按书名切,
+    #    拿到的是 589 字的封面+版权页,却照样 recommendation:直接蒸馏 + exit 0)。
+    if (a.volume or a.volume_index is not None) and len(text) < EMPTY_SLICE_CHARS \
+            and orig_src.stat().st_size > EMPTY_SLICE_CONTAINER_BYTES:
+        d["notes"].append(
+            f"疑似空切片:容器文件 {orig_src.stat().st_size / 1e6:.1f}MB 却只切出 {len(text)} 字"
+            f"(<{EMPTY_SLICE_CHARS}),多半只拿到封面/版权页或锚点切错;"
+            "请用 --list-volumes 核对下标后改用 --volume-index")
+        force_manual = True
     if force_manual and d["recommendation"] != "需OCR":
         d["recommendation"] = "需人工确认"  # gb18030 误吞疑似假字,降级人工介入
     d = dict(d, input=str(orig_src), title=title)

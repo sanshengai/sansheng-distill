@@ -125,3 +125,72 @@ def test_freeform_titles_low_but_no_error(tmp_path):
     d = json.loads((tmp_path / "out" / "diagnose.json").read_text(encoding="utf-8"))
     assert d["chapters_detected"] < len(titles)        # 召回不足(固有局限)
     assert d["recommendation"] == "直接蒸馏"            # 局限不阻断蒸馏
+
+
+# ================================================================ BUG-3 CH_PAT 版式盲区
+# 立法背景:2026-08-25 曾国藩三本实测,CH_PAT 全部命中 0 --
+#   ① 曾文正公全集第一册真实 19 处「奏稿 卷一」:字符类 [章回讲部篇] 里**没有「卷」**;
+#   ② 张宏杰《曾国藩传》17 处「｜第一章｜ …」:行首那个是全角竖线 U+FF5C,
+#      而正则行首只允许 [ \t];
+#   ③ 同书 60 处「1．…」:序号后是全角句点 U+FF0E,序号分支只认 [.、]。
+# 命中 0 → chapters_detected 走 TOC 或直接为 0,蒸馏时手里没有原书章节划分。
+
+def test_classical_juan_headings_detected(tmp_path):
+    """中文古籍「体裁名 + 卷N」/「卷之N」版式必须召回。"""
+    lines = []
+    for i in ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]:
+        lines.append(f"奏稿 卷{i}")
+        lines.append("臣国藩跪奏为奏陈军情事。" * 40)
+    for i in ["十一", "十二", "十三", "十四"]:
+        lines.append(f"卷之{i}")
+        lines.append("覆陈华祝三胪奏折。" * 40)
+    src = tmp_path / "juan.txt"
+    src.write_text("\n".join(lines), encoding="utf-8")
+    r = run(str(src), "--outdir", str(tmp_path / "out"))
+    assert r.returncode == 0, r.stderr
+    d = json.loads((tmp_path / "out" / "diagnose.json").read_text(encoding="utf-8"))
+    assert d["chapters_detected"] == 14, d
+    assert d["toc_detected"] is True
+
+
+def test_fullwidth_bar_chapter_headings_detected(tmp_path):
+    """张宏杰《曾国藩传》版式:行首全角竖线 U+FF5C 包裹的「｜第一章｜」。"""
+    cn = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
+    lines = []
+    for i in cn:
+        lines.append("｜第%s章｜　七次科举之痛" % i)
+        lines.append("曾国藩的天资并不高。" * 40)
+    src = tmp_path / "bar.txt"
+    src.write_text("\n".join(lines), encoding="utf-8")
+    r = run(str(src), "--outdir", str(tmp_path / "out"))
+    assert r.returncode == 0, r.stderr
+    d = json.loads((tmp_path / "out" / "diagnose.json").read_text(encoding="utf-8"))
+    assert d["chapters_detected"] == 10, d
+
+
+def test_fullwidth_dot_numbered_sections_detected(tmp_path):
+    """序号后是全角句点 U+FF0E 的小节标题「1．…」也要召回。"""
+    lines = []
+    for i in range(1, 13):
+        lines.append("%d．第%d个小节的标题" % (i, i))
+        lines.append("这一节阐述其中的道理与依据。" * 40)
+    src = tmp_path / "fwdot.txt"
+    src.write_text("\n".join(lines), encoding="utf-8")
+    r = run(str(src), "--outdir", str(tmp_path / "out"))
+    assert r.returncode == 0, r.stderr
+    d = json.loads((tmp_path / "out" / "diagnose.json").read_text(encoding="utf-8"))
+    assert d["chapters_detected"] == 12, d
+
+
+def test_juan_pattern_does_not_swallow_prose(tmp_path):
+    """反向护栏:「卷」出现在行首 9 字之外的普通散文不许被当章节头。
+
+    ⚠️ 已知残留:「卷」正好落在行首前 9 字内的散文句仍会误报(与既有的「一部/六部」
+    误报同类)。这个分支只求召回,误报由 diagnose 的两路取大兜住,不在本次修复范围。
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(SCRIPT.parent))
+    from convert_book import CH_PAT
+    prose = ("他把那封信仔仔细细地读了一遍又一遍然后卷之藏于袖中。\n"
+             "风把院子里那些枯黄的落叶卷之而起,吹到了台阶下面去了。\n")
+    assert CH_PAT.findall(prose) == []
