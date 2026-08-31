@@ -4,7 +4,9 @@
 
 ## [未发布]
 
-## [0.9.0] -- 2026-08-26
+### 人物传记证据闭包
+
+- `canonical_resolution` 新增可签署的 `source_only` 裁决：已接纳的 Observation 在没有语义同一且经审核的 Canonical 对象时，可以显式保留为“仅来源所见”；其 `target_ids` 和 `superseded_ids` 必须为空，且不得反向出现在 Canonical `evidence_refs` 中。其他 resolution 仍强制非空 target，不放宽 exact-once 与证据反链门禁。
 
 ### 修复：套装电子书入书四类静默失败
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/sanshengai/sansheng-distill/v0.8.0/references/biography-contract-v0.9.0.schema.json",
+  "$id": "https://raw.githubusercontent.com/sanshengai/sansheng-distill/v0.9.0/references/biography-contract-v0.9.0.schema.json",
   "title": "Biography contract v0.9.0 candidate registry",
   "description": "Manifest、来源、治理账本与六类 Canonical 的结构单一真源；跨文件闭包由 biography_contract.py 消费本注册表后统一验证。",
   "$ref": "#/$defs/ManifestV2",
@@ -331,7 +331,7 @@
         "scope": {"enum": ["observation_admission", "canonical_resolution"]},
         "observation_ids": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ObservationId"}, "uniqueItems": true},
         "target_ids": {"$ref": "#/$defs/StringIdArray"}, "superseded_ids": {"$ref": "#/$defs/StringIdArray"},
-        "verdict": {"enum": ["accept", "hold", "reject", "adopt", "create", "enrich", "correct", "merge"]},
+        "verdict": {"enum": ["accept", "hold", "reject", "adopt", "create", "enrich", "correct", "merge", "source_only"]},
         "reason": {"type": "string", "minLength": 1}, "conflicts": {"type": "array", "items": {"type": "string"}},
         "review": {"$ref": "#/$defs/FormalReview"}, "changeset_id": {"type": "string", "pattern": "^cs-[a-z0-9-]+$"},
         "migration_basis": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/MigrationBasis"}]},
@@ -339,7 +339,9 @@
       },
       "allOf": [
         {"if": {"properties": {"scope": {"const": "observation_admission"}}, "required": ["scope"]}, "then": {"properties": {"verdict": {"enum": ["accept", "hold", "reject"]}, "target_ids": {"maxItems": 0}, "superseded_ids": {"maxItems": 0}}}},
-        {"if": {"properties": {"scope": {"const": "canonical_resolution"}}, "required": ["scope"]}, "then": {"properties": {"verdict": {"enum": ["adopt", "create", "enrich", "correct", "merge"]}, "target_ids": {"minItems": 1}}}},
+        {"if": {"properties": {"scope": {"const": "canonical_resolution"}}, "required": ["scope"]}, "then": {"properties": {"verdict": {"enum": ["adopt", "create", "enrich", "correct", "merge", "source_only"]}}}},
+        {"if": {"properties": {"scope": {"const": "canonical_resolution"}, "verdict": {"enum": ["adopt", "create", "enrich", "correct", "merge"]}}, "required": ["scope", "verdict"]}, "then": {"properties": {"target_ids": {"minItems": 1}}}},
+        {"if": {"properties": {"scope": {"const": "canonical_resolution"}, "verdict": {"const": "source_only"}}, "required": ["scope", "verdict"]}, "then": {"properties": {"target_ids": {"maxItems": 0}, "superseded_ids": {"maxItems": 0}, "migration_basis": {"type": "null"}}}},
         {"if": {"properties": {"scope": {"const": "canonical_resolution"}, "verdict": {"const": "merge"}}, "required": ["scope", "verdict"]}, "then": {"properties": {"superseded_ids": {"minItems": 1}}}},
         {"if": {"properties": {"scope": {"const": "canonical_resolution"}, "verdict": {"enum": ["adopt", "create", "enrich", "correct"]}}, "required": ["scope", "verdict"]}, "then": {"properties": {"superseded_ids": {"maxItems": 0}}}},
         {"if": {"properties": {"verdict": {"const": "adopt"}}, "required": ["verdict"]}, "then": {"properties": {"migration_basis": {"$ref": "#/$defs/MigrationBasis"}}}, "else": {"properties": {"migration_basis": {"type": "null"}}}}

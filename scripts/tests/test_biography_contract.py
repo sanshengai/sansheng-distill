@@ -808,6 +808,82 @@ def test_accepted_observation_requires_exactly_one_resolution(tmp_path: Path) ->
     assert "OBSERVATION_RESOLUTION_DUPLICATE" in issue_codes(duplicate)
 
 
+def test_accepted_observation_can_end_in_signed_source_only_resolution(
+    tmp_path: Path,
+) -> None:
+    root = build_sparse_second_subject(tmp_path / SUBJECT)
+    observation_id = "obs-sample-scholar-source-only"
+    append_observation(root, observation(observation_id, "来源保留了这段材料。"))
+    source_only = resolution(
+        "md-sample-scholar-source-only-resolution",
+        observation_id,
+        [],
+        verdict="source_only",
+    )
+    append_decisions(
+        root,
+        admission("md-sample-scholar-source-only-admission", observation_id),
+        source_only,
+    )
+
+    assert validate_schema_instance("MergeDecisionV2", source_only) == []
+    report = audit_store(root, mode="strict-data")
+    assert report.strict_ready, report.to_dict()
+
+
+def test_source_only_resolution_forbids_canonical_targets(tmp_path: Path) -> None:
+    root = build_sparse_second_subject(tmp_path / SUBJECT)
+    decisions_path = root / "merge-decisions.jsonl"
+    decisions = read_jsonl(decisions_path)
+    resolution_row = next(
+        row for row in decisions if row["scope"] == "canonical_resolution"
+    )
+    resolution_row["verdict"] = "source_only"
+    write_jsonl(decisions_path, decisions)
+
+    report = audit_store(root, mode="strict-data")
+    assert "SOURCE_ONLY_TARGETS_FORBIDDEN" in issue_codes(report)
+    assert "SCHEMA_MERGE_DECISION_INVALID" in issue_codes(report)
+
+
+def test_non_source_only_resolution_still_requires_target(tmp_path: Path) -> None:
+    root = build_sparse_second_subject(tmp_path / SUBJECT)
+    decisions_path = root / "merge-decisions.jsonl"
+    decisions = read_jsonl(decisions_path)
+    resolution_row = next(
+        row for row in decisions if row["scope"] == "canonical_resolution"
+    )
+    resolution_row["target_ids"] = []
+    write_jsonl(decisions_path, decisions)
+
+    report = audit_store(root, mode="strict-data")
+    assert "RESOLUTION_TARGETS_REQUIRED" in issue_codes(report)
+    assert "SCHEMA_MERGE_DECISION_INVALID" in issue_codes(report)
+
+
+def test_source_only_observation_cannot_back_canonical_evidence(tmp_path: Path) -> None:
+    root = build_sparse_second_subject(tmp_path / SUBJECT)
+    observation_id = "obs-sample-scholar-source-only"
+    append_observation(root, observation(observation_id, "仅保留来源所见。"))
+    append_decisions(
+        root,
+        admission("md-sample-scholar-source-only-admission", observation_id),
+        resolution(
+            "md-sample-scholar-source-only-resolution",
+            observation_id,
+            [],
+            verdict="source_only",
+        ),
+    )
+    people_path = root / "canonical" / "people.jsonl"
+    people = read_jsonl(people_path)
+    people[0]["evidence_refs"].append(observation_id)
+    write_jsonl(people_path, people)
+
+    report = audit_store(root, mode="strict-data")
+    assert "EVIDENCE_NOT_DECIDED" in issue_codes(report)
+
+
 def test_hold_or_reject_observation_must_not_have_resolution(tmp_path: Path) -> None:
     root = build_sparse_second_subject(tmp_path / SUBJECT)
     decisions_path = root / "merge-decisions.jsonl"

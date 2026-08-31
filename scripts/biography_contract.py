@@ -217,7 +217,14 @@ LEDGER_SCHEMA_VERSIONS = {
 }
 KNOWN_LEDGER_KINDS = set(LEGACY_LEDGER_REFS)
 ADMISSION_VERDICTS = {"accept", "hold", "reject"}
-RESOLUTION_VERDICTS = {"adopt", "create", "enrich", "correct", "merge"}
+RESOLUTION_VERDICTS = {
+    "adopt",
+    "create",
+    "enrich",
+    "correct",
+    "merge",
+    "source_only",
+}
 LEGACY_ACCEPTED_VERDICTS = {"create", "enrich", "correct", "duplicate", "merge"}
 CANONICAL_STATUSES = {"active", "hold", "merged_redirect"}
 NAME_FORM_KINDS = {
@@ -1690,10 +1697,18 @@ class _Auditor:
                     object_id=decision_id,
                 )
                 semantic_ok = False
-            if not target_ids:
+            if verdict == "source_only" and target_ids:
+                self.add(
+                    "SOURCE_ONLY_TARGETS_FORBIDDEN",
+                    "source_only resolution 的 target_ids 必须为空",
+                    path,
+                    object_id=decision_id,
+                )
+                semantic_ok = False
+            elif verdict != "source_only" and not target_ids:
                 self.add(
                     "RESOLUTION_TARGETS_REQUIRED",
-                    "canonical_resolution 必须有非空 target_ids",
+                    "非 source_only 的 canonical_resolution 必须有非空 target_ids",
                     path,
                     object_id=decision_id,
                 )
