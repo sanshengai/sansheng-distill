@@ -1,7 +1,7 @@
 {
   "name": "sansheng-distill",
   "description": "Distill books, video series, creator corpora, and evidence-backed biographies into auditable outputs.",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "author": {
     "name": "叁笙 (sansheng)",
     "email": "sandypoli@gmail.com"
