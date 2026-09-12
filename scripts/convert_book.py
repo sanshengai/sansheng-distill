@@ -351,7 +351,7 @@ def main():
     fmt = src.suffix.lower().lstrip(".")
     if fmt in ("azw3", "mobi"):
         if not shutil.which("ebook-convert"):
-            print(f"{fmt} 需 calibre 的 ebook-convert,请先安装: winget install calibre.calibre", file=sys.stderr)
+            print(f"{fmt} 需 calibre 的 ebook-convert,请先安装: brew install --cask calibre（Windows: winget install calibre.calibre）", file=sys.stderr)
             return 2
         tmp_epub = out / "_converted.epub"
         # encoding 显式 utf-8:Windows text=True 默认 cp936,calibre 输出含非 GBK 字节会裸崩

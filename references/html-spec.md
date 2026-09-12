@@ -15,9 +15,9 @@
 | `$SKILL` | 本 skill 目录(安装后为 `~/.claude/skills/sansheng-distill`) |
 | `$DATA` | 书数据根目录,由环境变量 `DISTILL_DATA_DIR` 指定(默认 `./distill-data`) |
 | `{书目录}` | 本书数据目录,**纯 `{slug}`**(如 `pei-haizi-zhongshen-chengzhang`);不含书名,避免中文目录名 |
-| 骨架 | `$SKILL\templates\page-skeleton.html` |
-| 本书产物页 | `$DATA\{书目录}\{slug}.html` |
-| distill / enrich | `$DATA\{书目录}\distill.json` / `enrich.json` |
+| 骨架 | `$SKILL/templates/page-skeleton.html` |
+| 本书产物页 | `$DATA/{书目录}/{slug}.html` |
+| distill / enrich | `$DATA/{书目录}/distill.json` / `enrich.json` |
 
 下文命令里的占位符直接替换成实值再执行。
 
@@ -399,7 +399,7 @@
 
 ## 3. 生成流程(逐步照做,直到 verify exit 0)
 
-1. **复制骨架**:`cp $SKILL\templates\page-skeleton.html $DATA\{书目录}\{slug}.html`(或读骨架另存到产物路径)。
+1. **复制骨架**:`cp $SKILL/templates/page-skeleton.html $DATA/{书目录}/{slug}.html`(或读骨架另存到产物路径)。
 2. **全局替换头信息**:`SLUG_PLACEHOLDER` → `{slug}`(`<main data-book-slug>` 拼进度 key);`{书名}` → 真实书名;`{作者}` → 真实作者(`<title>` / `.cb-title` / `.cb-author` / footer / `.subpage-title` / `.subpage-from` 都有)。
 3. **填头部两层**:`.cb-cover`(书籍须 `data:image` 封面)/ `.cb-kicker`(book_type + 领域)/ `.cb-title` / `.cb-author`(`.cb-author-link` 内嵌 `#sub-author` 链 + `.cb-author-hint` 备注)/ `.cb-intro`=`cover_intro`(过 §2.2 查重)/ `.hero h1`=hero 标语。**导读条 `.reading-guide` v3.1 已删,无需填。**
 4. **逐板填充(①→⑤,板内顺序固定)**:按 §1.2 各板块表把 distill / enrich 字段填进签名 class 槽位;anchor 一律进 `data-source`;金句 / excerpt / 书评原文照录不改写;章标题过 T5 自查。**核心观点卡展开态必填 explain+evidence+evidence_level(T8)**;**金句全落 `.quote-wall`,章内不填行内金句(T7)**;**②章行默认收起(T6)**。
@@ -408,7 +408,7 @@
 7. **删未用 dummy + 降级**:骨架「(示例)」「(dummy)」内容填真时删干净;可降级区块 / 子视图数据 null 的,整块(含 SLOT 注释 + 入口)删除(§1.5);⑤ 全空时隐藏 `#panel-extend` + 撤 tab。
 8. **跑出厂验证**(每次改完都跑,失败按提示改后重跑,直到 exit 0):
    ```
-   python $SKILL\scripts\verify_page.py $DATA\{书目录}\{slug}.html --distill $DATA\{书目录}\distill.json --source $DATA\{书目录}\book.txt --screenshot $DATA\{书目录}\_verify.png
+   python $SKILL/scripts/verify_page.py $DATA/{书目录}/{slug}.html --distill $DATA/{书目录}/distill.json --source $DATA/{书目录}/book.txt --screenshot $DATA/{书目录}/_verify.png
    # 已知心理学项目另加 --require-domain psychology；会自动查同目录 source-audit.json
    ```
    verify v3 覆盖(Task 6 建门禁):体积 ≤3MB / 必需区块齐(§1.5)/ 五 tab A 套文案 + panel id 对(含 `panel-extend`)/ **②目录态默认收起 + 全部展开钮存在(T6)** / 核心观点卡展开态三件齐(T8)/ **金句墙唯一、无 `.quote-inline`/`FQ`(T7)** / **cover_intro/hero 查重(§2.2,对齐 G16)** / 裁决条 + 底部 CTA 存在 / 字阶抽查(hero≤48px)/ 返回胶囊 + `.subpage-from` 存在 / 子视图一致性(`#sub-author` present IFF author_page 非 null、works 恰一条 is_this_book;`#sub-views` present IFF views_page 非 null)/ 「显示出处」按钮不存在 + `.src-note` 常显 / 无外链 script·link·img / lang="zh" / `data-source`≥20 / token 块外零 hex / 主题切换后 body 背景变化。传 `--distill` 另拦 method §5.1 六类 anchor / excerpts 版权红线(G14)/ primary·featured 越界(G15)/ layman_analogy 非空(G10)/ soul_module 合规(G11)/ self_check(G12)/ action_chain + detail(G13/G17)/ cover_intro(G16)/ credibility_verdict(G18)/ chain_step∈[1,5]或空；心理学严格域再核 source-audit 原文证据链和证据卡完整 scope/精确来源 URL 集合。

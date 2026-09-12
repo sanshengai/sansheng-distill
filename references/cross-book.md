@@ -13,9 +13,9 @@
 | `$SKILL` | 本 skill 目录(安装后为 `~/.claude/skills/sansheng-distill`) |
 | `$DATA` | 书数据根目录,由环境变量 `DISTILL_DATA_DIR` 指定(默认 `./distill-data`) |
 | `{书目录}` | 本书数据目录,**纯 `{slug}`**(如 `touzi-zui-zhongyao-de-shi`);不含书名,避免中文目录名 |
-| 跨书索引 | `$DATA\knowledge-index.json`(数据与 skill 分离,skill 升级不动此文件) |
-| 本书合并单 | `$DATA\{书目录}\index-merge.json`(本步产出,喂给 update_index.py) |
-| 索引脚本 | `$SKILL\scripts\update_index.py`(Task 2 产物) |
+| 跨书索引 | `$DATA/knowledge-index.json`(数据与 skill 分离,skill 升级不动此文件) |
+| 本书合并单 | `$DATA/{书目录}/index-merge.json`(本步产出,喂给 update_index.py) |
+| 索引脚本 | `$SKILL/scripts/update_index.py`(Task 2 产物) |
 
 下文命令里的 `$SKILL` / `$DATA` / `{书目录}` 直接替换成上表实值再执行。
 
@@ -25,7 +25,7 @@
 
 ## 1. 两个 schema(整块契约)
 
-**knowledge-index.json**(全局索引,`$DATA\knowledge-index.json`;不存在时 update_index.py 视为 `{"version":1,"concepts":[]}`):
+**knowledge-index.json**(全局索引,`$DATA/knowledge-index.json`;不存在时 update_index.py 视为 `{"version":1,"concepts":[]}`):
 
 ```json
 {
@@ -69,7 +69,7 @@
 **① 拿现有概念名单(只读):**
 
 ```
-python $SKILL\scripts\update_index.py query --index $DATA\knowledge-index.json --names-only
+python $SKILL/scripts/update_index.py query --index $DATA/knowledge-index.json --names-only
 ```
 
 输出 = JSON 概念名数组(索引不存在时输出 `[]`)。此步与 `enrich.md` §6 共用同一次 query,不必查两遍。去 `--names-only` 则输出全索引(含 entries),需要看某概念既有立场做匹配时用全量。
@@ -79,7 +79,7 @@ python $SKILL\scripts\update_index.py query --index $DATA\knowledge-index.json -
 把 `distill.json.concepts[]` **逐个**与 ① 的名单做语义匹配(同义合并规则见 §4),为每个概念决定 relation(判定标准见 §3),组装成数组写入:
 
 ```
-$DATA\{书目录}\index-merge.json
+$DATA/{书目录}/index-merge.json
 ```
 
 - 命中索引现有概念(含同义词)→ relation ∈ {SUPPORTS, REFINES, CONTRADICTS, NEW_SUB_ASPECT},`concept` 填**索引现名**。
@@ -90,7 +90,7 @@ $DATA\{书目录}\index-merge.json
 **③ dry-run 校验(不写盘):**
 
 ```
-python $SKILL\scripts\update_index.py register --index $DATA\knowledge-index.json --merge "$DATA\{书目录}\index-merge.json" --dry-run
+python $SKILL/scripts/update_index.py register --index $DATA/knowledge-index.json --merge "$DATA/{书目录}/index-merge.json" --dry-run
 ```
 
 exit 0 = 校验通过(打印「dry-run 通过: N 条待合并」);exit 1/2 见 §2.1,先修 index-merge.json 再重跑,**不通过不许进 ④**。
@@ -98,14 +98,14 @@ exit 0 = 校验通过(打印「dry-run 通过: N 条待合并」);exit 1/2 见 �
 **④ 真跑合并(去掉 --dry-run):**
 
 ```
-python $SKILL\scripts\update_index.py register --index $DATA\knowledge-index.json --merge "$DATA\{书目录}\index-merge.json"
+python $SKILL/scripts/update_index.py register --index $DATA/knowledge-index.json --merge "$DATA/{书目录}/index-merge.json"
 ```
 
 成功打印「合并完成: N 条, 现有概念 M 个」;写前自动备份 `knowledge-index.json.bak`。
 **仅当确为「重蒸同一本书」**(该 book_slug 已在索引、要用新蒸结果覆盖旧条目)才追加 `--force`:
 
 ```
-python $SKILL\scripts\update_index.py register --index $DATA\knowledge-index.json --merge "$DATA\{书目录}\index-merge.json" --force
+python $SKILL/scripts/update_index.py register --index $DATA/knowledge-index.json --merge "$DATA/{书目录}/index-merge.json" --force
 ```
 
 `--force` 幂等:同书同概念的旧 entry 被**覆盖**(按 book_slug 去重),不累加。
@@ -171,7 +171,7 @@ Step4 合并后,为页面 M11-network 的「跨书观点」子块生成**已蒸�
 **standalone 相对路径 与 上站的说明(重要):**
 
 - href 一律写**相对路径** `{对方slug}.html#...`,**不写**绝对 file 路径、不写 http 域名 -- 这样 extract 抽取时原样保留 a 链。
-- **standalone(file:// 直开)阶段**:各书在各自子目录 `$DATA\{书目录}\{slug}.html`,同级相对链接 `{对方slug}.html` 跨目录**不保证跳达**(可能 404)。这是**预期**的:互链是为**上站后**的站内布局设计的,standalone 阶段该链接主要供 extract 采集,**不作为可点验收项**。
+- **standalone(file:// 直开)阶段**:各书在各自子目录 `$DATA/{书目录}/{slug}.html`,同级相对链接 `{对方slug}.html` 跨目录**不保证跳达**(可能 404)。这是**预期**的:互链是为**上站后**的站内布局设计的,standalone 阶段该链接主要供 extract 采集,**不作为可点验收项**。
 - **上站后**:extract 保留 a 链,由 `[slug].astro` 路由把兄弟 slug 解析成站内可达路径。站内路径规则、extract 保链细节见 `website-publish.md`(本文档不重复其接入 SOP)。
 
 ---

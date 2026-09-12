@@ -135,16 +135,16 @@ source-audit.json
 
 单独查账本：
 
-```powershell
-python $SKILL\scripts\validate_psychology_source_audit.py "$DATA\{书目录}\source-audit.json"
+```bash
+python $SKILL/scripts/validate_psychology_source_audit.py "$DATA/{书目录}/source-audit.json"
 ```
 
 成品硬闸（会自动再次查账本并把四个 hash 与本次输入绑定）：
 
-```powershell
-python $SKILL\scripts\verify_page.py "$DATA\{书目录}\{slug}.html" `
-  --distill "$DATA\{书目录}\distill.json" `
-  --source "$DATA\{书目录}\book.txt" `
+```bash
+python $SKILL/scripts/verify_page.py "$DATA/{书目录}/{slug}.html" \
+  --distill "$DATA/{书目录}/distill.json" \
+  --source "$DATA/{书目录}/book.txt" \
   --require-domain psychology
 ```
 

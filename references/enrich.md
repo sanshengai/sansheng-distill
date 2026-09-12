@@ -14,8 +14,8 @@
 | `$SKILL` | 本 skill 目录(安装后为 `~/.claude/skills/sansheng-distill`) |
 | `$DATA` | 书数据根目录,由环境变量 `DISTILL_DATA_DIR` 指定(默认 `./distill-data`) |
 | `{书目录}` | 本书数据目录,**纯 `{slug}`**(如 `jinqian-xinlixue`);不含书名,避免中文目录名 |
-| 本书产物 | `$DATA\{书目录}\enrich.json` |
-| 跨书索引 | `$DATA\knowledge-index.json` |
+| 本书产物 | `$DATA/{书目录}/enrich.json` |
+| 跨书索引 | `$DATA/knowledge-index.json` |
 
 下文命令里的 `$SKILL` / `$DATA` / `{书目录}` 直接替换成上表实值再执行。
 
@@ -188,7 +188,7 @@
 
 ### 3.1 author_page 搜索 pass(v3 结构化,按字段分头检索)
 
-> **批量同作者:作者研究只做一次(2026-07-12 复盘 A-3)。** 一次拆同一作者多本书时,`author_page` 的联网搜索**一位作者只跑一次**,产物写 `$DATA\authors\{author_slug}\author.enrich.json`(与 StepA 作者演变页共用同一份);各书 `enrich.json` 的 `author_page` **引用/拷贝这份共享结果**(仅 `this_book`/`works.is_this_book` 按本书微调),**禁每本各搜一遍**(复盘中 6 本凯文各搜一遍「凯文·凯利」= ~19 轮冗余联网)。仅当该作者只蒸 1 本时才就地随本书搜。
+> **批量同作者:作者研究只做一次(2026-07-12 复盘 A-3)。** 一次拆同一作者多本书时,`author_page` 的联网搜索**一位作者只跑一次**,产物写 `$DATA/authors/{author_slug}/author.enrich.json`(与 StepA 作者演变页共用同一份);各书 `enrich.json` 的 `author_page` **引用/拷贝这份共享结果**(仅 `this_book`/`works.is_this_book` 按本书微调),**禁每本各搜一遍**(复盘中 6 本凯文各搜一遍「凯文·凯利」= ~19 轮冗余联网)。仅当该作者只蒸 1 本时才就地随本书搜。
 >
 > 每一步的目标都是**填结构化字段**,不再合成一坨散文。全程延续 §5 铁律:**查不到就删,绝不编造**--任一事实项拿不到即让渲染层整行/整栏删,不写「未知/暂无」占位、不凭记忆补。
 
@@ -284,7 +284,7 @@
 
 1. **共享读取(Step4 的 ① 步,只读)**:
    ```
-   python $SKILL\scripts\update_index.py query --index $DATA\knowledge-index.json --names-only
+   python $SKILL/scripts/update_index.py query --index $DATA/knowledge-index.json --names-only
    ```
    拿到当前跨书索引的概念名单。命令语义、退出码详见 `cross-book.md` §2。
 

@@ -27,14 +27,14 @@ description: Use when 用户要把一本书全文、单个视频（按 1 集）�
 |---|---|
 | 一本书全文 | 主管线 Step0-B（下表） |
 | 单个视频（按 1 集）/ 一个视频系列 | 主管线 Step0-V（下表） |
-| **一个博主/人物的全部作品（跨媒介思想蒸馏）** | **StepC · creator_corpus 路径（`references\creator-craft.md`）** |
-| **一个历史人物的生平、作品、关系、争议与引语（证据型传记）** | **Biography · biography_corpus 路径（`references\biography-craft.md`）** |
+| **一个博主/人物的全部作品（跨媒介思想蒸馏）** | **StepC · creator_corpus 路径（`references/creator-craft.md`）** |
+| **一个历史人物的生平、作品、关系、争议与引语（证据型传记）** | **Biography · biography_corpus 路径（`references/biography-craft.md`）** |
 
 判断口诀：分析单位是「作品」→ 主管线；分析单位是「一个创作者自己的思想输出」→ StepC；分析单位是「一个人的历史生平及其证据」→ `biography_corpus`。StepA/StepB 是主管线的可选聚合步，与后两条人物路径不冲突。
 
 > **人物路径边界**：`creator_corpus` 归并一个创作者跨媒介表达出的观点族，回答「他的思想体系是什么、如何变化」；`biography_corpus` 汇合多来源的史实观察、分歧与外部核验，回答「发生过什么、证据在哪里、哪些仍有争议」。把传记做成「一页」产品、网站页面、SEO 或正式部署属于下游产品与工程，不在本 Skill 内实现。
 
-> 🪶 **用轻量模型 / 弱 agent 跑本 skill(如 Gemini Flash 级、Antigravity 客户端)→ 先读 `references\flash-mode.md`。**
+> 🪶 **用轻量模型 / 弱 agent 跑本 skill(如 Gemini Flash 级、Antigravity 客户端)→ 先读 `references/flash-mode.md`。**
 > 那份卡不降低任何质量标准,只把「靠自觉」的环节换成「可自检的判据」,并钉死六个最容易滑落的点。
 > Opus / Sonnet 级模型照本文主管线走即可,不必读。
 
@@ -52,7 +52,7 @@ description: Use when 用户要把一本书全文、单个视频（按 1 集）�
 ## 数据目录约定(单书产物布局)
 
 ```
-$DATA\
+$DATA/
   knowledge-index.json          # 跨书概念索引(全库共享,Step4 维护,自动 .bak)
   {书目录}\
     book.txt                    # 全文(书=Step0-B;视频=Step0-V 组装的转写语料)  -- gitignore
@@ -81,16 +81,16 @@ $DATA\
 
 | 步 | 做什么 | 读哪个 reference | 跑哪条命令 | 产物 | 失败降级 |
 |---|---|---|---|---|---|
-| **Step0-B** 入书诊断 + 转 txt(蒸**书**走此行) | 电子书 → 全文 txt + 诊断(格式/可提取/扫描版/乱码率/目录识别) | 脚本自足;分流规则见 `method.md §0` | `python $SKILL\scripts\convert_book.py "<书文件>" --outdir "$DATA\{书目录}"`(重转加 `--force`)。**套装/合集 epub**:先 `--list-volumes` 列分册,再逐本 `--volume "<分册名>"` 切(按 TOC 顶层 + spine 区间,不漏未列入目录的正文续页);**分册重名**(如三册都叫「目录」)时 `--volume` 会报错列出候选下标,改用 `--volume-index <下标>` | `book.txt` / `diagnose.json` | exit 2 = 缺依赖/格式不支持/拒覆盖 → 装 calibre(azw3·mobi)或补 pip 依赖或加 `--force`;**exit 3 = 需OCR / 需人工确认 → 停下问用户(见硬门禁①),不硬读、不编内容** |
-| **Step0-V** 视频系列入库(蒸**视频**走此行) | 每个视频取材转写 → 手写 manifest → 组装语料 + 抓评论。章节=集数 | **`method.md §V.0`(取材 cascade,固定流程,先读)** + `§V`。分流:YouTube 优先抓字幕(**认准人工字幕**,`video-to-subtitle-summary`)/ 无字幕或需画面语义 → Gemini 原生在线(`claude-gemini-video`,免下载)/ 非 YouTube 先下载再解析 | ① 按 §V.0 取每视频**干净转写**(YouTube 人工字幕 `subtitle.{lang}.vtt` 可直喂 build_series;⚠️ 别用滚动重复 3× 的 `text.txt`/自动字幕),存 `$DATA\{书目录}\raw\{NN}_{id}\`;② 手写 `series-input.json`(`transcript` 指向选定的**干净**字幕文件);③ `python $SKILL\scripts\build_series.py --manifest "<series-input.json>" --outdir "$DATA\{书目录}"`;④ `python $SKILL\scripts\fetch_comments.py --series "$DATA\{书目录}\series.json" --out "$DATA\{书目录}\comments.json"`;⑤ 逐条 `yt-dlp --skip-download --print` 抓热度元数据(播放/赞/评论数/日期,供热度条;`--flat-playlist` 拿不到须逐条 full extract) | `book.txt` / `series.json` / `diagnose.json` / `comments.json` | build exit 3 = 全部视频缺转写/乱码 → 停下问用户(见硬门禁①);fetch exit 2 = 全失败或抖音不支持 → 评论整块降级(enrich.reviews 置 null),不阻塞蒸馏 |
+| **Step0-B** 入书诊断 + 转 txt(蒸**书**走此行) | 电子书 → 全文 txt + 诊断(格式/可提取/扫描版/乱码率/目录识别) | 脚本自足;分流规则见 `method.md §0` | `python $SKILL/scripts/convert_book.py "<书文件>" --outdir "$DATA/{书目录}"`(重转加 `--force`)。**套装/合集 epub**:先 `--list-volumes` 列分册,再逐本 `--volume "<分册名>"` 切(按 TOC 顶层 + spine 区间,不漏未列入目录的正文续页);**分册重名**(如三册都叫「目录」)时 `--volume` 会报错列出候选下标,改用 `--volume-index <下标>` | `book.txt` / `diagnose.json` | exit 2 = 缺依赖/格式不支持/拒覆盖 → 装 calibre(azw3·mobi)或补 pip 依赖或加 `--force`;**exit 3 = 需OCR / 需人工确认 → 停下问用户(见硬门禁①),不硬读、不编内容** |
+| **Step0-V** 视频系列入库(蒸**视频**走此行) | 每个视频取材转写 → 手写 manifest → 组装语料 + 抓评论。章节=集数 | **`method.md §V.0`(取材 cascade,固定流程,先读)** + `§V`。分流:YouTube 优先抓字幕(**认准人工字幕**,`video-to-subtitle-summary`)/ 无字幕或需画面语义 → Gemini 原生在线(`claude-gemini-video`,免下载)/ 非 YouTube 先下载再解析 | ① 按 §V.0 取每视频**干净转写**(YouTube 人工字幕 `subtitle.{lang}.vtt` 可直喂 build_series;⚠️ 别用滚动重复 3× 的 `text.txt`/自动字幕),存 `$DATA/{书目录}/raw/{NN}_{id}/`;② 手写 `series-input.json`(`transcript` 指向选定的**干净**字幕文件);③ `python $SKILL/scripts/build_series.py --manifest "<series-input.json>" --outdir "$DATA/{书目录}"`;④ `python $SKILL/scripts/fetch_comments.py --series "$DATA/{书目录}/series.json" --out "$DATA/{书目录}/comments.json"`;⑤ 逐条 `yt-dlp --skip-download --print` 抓热度元数据(播放/赞/评论数/日期,供热度条;`--flat-playlist` 拿不到须逐条 full extract) | `book.txt` / `series.json` / `diagnose.json` / `comments.json` | build exit 3 = 全部视频缺转写/乱码 → 停下问用户(见硬门禁①);fetch exit 2 = 全失败或抖音不支持 → 评论整块降级(enrich.reviews 置 null),不阻塞蒸馏 |
 | **Step1** 书型 + 领域判定 | 读诊断 + 全书抽样(首/中/末章),判书型、stakes;心理学书另写 `domain_profile` | `method.md §1` | 无(读 `diagnose.json` + `book.txt` 抽样) | `book_type/stakes/domain_profile?`(写入 distill.json) | 边界模糊按 §1.2 顺序裁决;`domain_profile` 不确定则不冒标,一旦标 psychology 就激活 G23/G24 |
 | **Step2·Pass1** 压缩骨架(凝练地图) | 三轮认知压缩 + 四嫁接件 + v2/v4 延展字段 + 逐条补锚点与原书转述状态;心理学 core_ideas/decision_rules 逐条补唯一 claim_id + claim_type | `method.md §2-§5`(心理学另读 §1.6/§4.5.17) | 无(内化方法蒸馏,产出 JSON) | `distill.json` 骨架层(**除 `chapters[].narrative`/`.excerpts` 外全部字段**) | diagnose=分组蒸馏 → 走 `method.md §8`;产出后过 §7 门禁 G1-G23(条件门按 stakes/domain 激活) |
 | **Step2·Pass2** 详实转述(详实正文) | 逐章两级检索(先读 Pass1 骨架保结构,再回 book.txt 该章原文 grep 案例/数字/原话保血肉)→ 讲书稿式 narrative(坡道开场 → 观点+完整案例故事+数据 → 一句接主线)+ 挑 excerpts。**长书按章 fan-out 并行**(每组≤5 章派 1 subagent 全 Opus,组内串行,主控合并) | `method.md §3.5`(两级检索 / 讲书稿模板 / 版权线 / fan-out) | 无(内化;长书分组各产 `_pass2_g*.json` 中间态,主控回填 distill.json) | 回填 `distill.json` 的 `chapters[].narrative`(书 800-1500 字/章·视频段 ≥400；**文章选编**设 `render_profile.archetype="文章选编"`，逐篇 ≥300 字)+ `chapters[].excerpts`(书每章 ≥1,原文 ≤150 字) | grep 不到支撑就降级不写该点,**禁凭印象编案例/编数字**；读者可见 narrative 禁写“蒸馏/审计/后续出版”等工作流元话语，禁用同章重复句凑字数；主控做 G9 / G14 机械核对 + **标志性案例保全抽检**(招牌故事必须整段完整出现,不得压成标签) |
 | **Step3** 联网增补(页内子视图 + 内联) | 产五个基础块;心理学书再逐 claim 查元分析/复制研究/官方勘误,产 `evidence_page`,并在最终 distill/enrich 定稿后封存原文审计账本 | `enrich.md`(§1.1 科学证据契约 + §3 搜索 pass;视频看 §V);心理学另读 `source-audit.md` | 联网检索按 §3.4 路由只选一个引擎;心理学学术检索走 Tavily且只采一手论文/官方材料;按 source-audit schema 生成 claim coverage + audit | 普通书五键;心理学书第六键 `evidence_page` + `claim-coverage.json` + `source-audit.json` | 基础块可据实置 null;心理学 evidence_page/审计账本不可整块降级,证据不足须标低置信/not_testable 仍全量覆盖 |
-| **Step4** 跨书索引登记 + 互链 | `distill.concepts` 逐个与现有索引语义匹配,赋 5-tag(SUPPORTS/REFINES/CONTRADICTS/NEW_SUB_ASPECT/NEW_CONCEPT),登记本书 entry + 渲染 ⑤ M11 已蒸书互链 | `cross-book.md`(§2 精确四步 + §3 tag 判定) | ① `python $SKILL\scripts\update_index.py query --index "$DATA\knowledge-index.json" --names-only` → ② 写 `index-merge.json` → ③ `... register --index "$DATA\knowledge-index.json" --merge "$DATA\{书目录}\index-merge.json" --dry-run`(exit 0)→ ④ 去 `--dry-run` 真跑 | `index-merge.json` / 更新 `knowledge-index.json`(+.bak) / M11 互链数据 | register exit 1 = 校验错 → 按 stderr 逐条修 `index-merge.json` 回 ③ 重校验(**禁用 `--force` 绕 exit 1**);exit 2 = 同书 slug 冲突 → 确为重蒸才加 `--force`,slug 撞车则换唯一 slug |
+| **Step4** 跨书索引登记 + 互链 | `distill.concepts` 逐个与现有索引语义匹配,赋 5-tag(SUPPORTS/REFINES/CONTRADICTS/NEW_SUB_ASPECT/NEW_CONCEPT),登记本书 entry + 渲染 ⑤ M11 已蒸书互链 | `cross-book.md`(§2 精确四步 + §3 tag 判定) | ① `python $SKILL/scripts/update_index.py query --index "$DATA/knowledge-index.json" --names-only` → ② 写 `index-merge.json` → ③ `... register --index "$DATA/knowledge-index.json" --merge "$DATA/{书目录}/index-merge.json" --dry-run`(exit 0)→ ④ 去 `--dry-run` 真跑 | `index-merge.json` / 更新 `knowledge-index.json`(+.bak) / M11 互链数据 | register exit 1 = 校验错 → 按 stderr 逐条修 `index-merge.json` 回 ③ 重校验(**禁用 `--force` 绕 exit 1**);exit 2 = 同书 slug 冲突 → 确为重蒸才加 `--force`,slug 撞车则换唯一 slug |
 | **Step5** 设计两遍工作法 | 为这本书出 token plan + signature 决策,过对抗自审;品牌锁八成、书魂放两成 | `design-craft.md`(两遍工作法)+ `brand-tokens.md`(主题 token 契约) | 无(设计决策,内化到 Step6 填槽) | token/signature 定调(不落独立文件,直接指导 Step6) | signature 命中反 slop 黑名单(蓝紫渐变/emoji 图标/圆角+左边框卡滥用/凑数数据)→ 改;衬线模式必配 CJK 衬线兜底 |
-| **Step6** 生成单文件 HTML | 复制骨架填五 tab + 两张页内子视图;删净 dummy;心理学书保留并填 `J-PSYCH-EVIDENCE`,普通书整段删 | `html-spec.md`(§1 区块规格 / §1.2.3 心理学证据 / §3 生成 / §5 体积) | 复制 `$SKILL\templates\page-skeleton.html` 到 `$DATA\{书目录}\{slug}.html` 后逐槽填充(vendor 已内联,勿动) | `$DATA\{书目录}\{slug}.html`(单文件,**≤3MB**) | 超体积先删 dummy 再压 excerpts/封面;禁删必需块、data-source 或心理学 G24 三栏 |
-| **Step7** 出厂验证 v2 | 静态 lint + 原文事实门禁 + Playwright 冒烟 + G1-G24 条件契约。心理学严格域另核 `source-audit.json` 四 hash、章界、逐项原文命中与覆盖，并核 HTML 三栏一一对应 | `html-spec.md §3` + `method.md §7` + `enrich.md §1.1` + `source-audit.md` | 通用:`python $SKILL\scripts\verify_page.py "$DATA\{书目录}\{slug}.html" --distill "$DATA\{书目录}\distill.json" --source "$DATA\{书目录}\book.txt" --screenshot "$DATA\{书目录}\_verify.png"`;**已知心理学批次必须追加 `--require-domain psychology`**;`echo "退出码=$?"` | 退出码 + `_verify.png` | exit 0 才算完成;绝不放宽验证阈值或删检查项假过关 |
+| **Step6** 生成单文件 HTML | 复制骨架填五 tab + 两张页内子视图;删净 dummy;心理学书保留并填 `J-PSYCH-EVIDENCE`,普通书整段删 | `html-spec.md`(§1 区块规格 / §1.2.3 心理学证据 / §3 生成 / §5 体积) | 复制 `$SKILL/templates/page-skeleton.html` 到 `$DATA/{书目录}/{slug}.html` 后逐槽填充(vendor 已内联,勿动) | `$DATA/{书目录}/{slug}.html`(单文件,**≤3MB**) | 超体积先删 dummy 再压 excerpts/封面;禁删必需块、data-source 或心理学 G24 三栏 |
+| **Step7** 出厂验证 v2 | 静态 lint + 原文事实门禁 + Playwright 冒烟 + G1-G24 条件契约。心理学严格域另核 `source-audit.json` 四 hash、章界、逐项原文命中与覆盖，并核 HTML 三栏一一对应 | `html-spec.md §3` + `method.md §7` + `enrich.md §1.1` + `source-audit.md` | 通用:`python $SKILL/scripts/verify_page.py "$DATA/{书目录}/{slug}.html" --distill "$DATA/{书目录}/distill.json" --source "$DATA/{书目录}/book.txt" --screenshot "$DATA/{书目录}/_verify.png"`;**已知心理学批次必须追加 `--require-domain psychology`**;`echo "退出码=$?"` | 退出码 + `_verify.png` | exit 0 才算完成;绝不放宽验证阈值或删检查项假过关 |
 
 > ⚠ **视频路径 v2 尚未跑 E2E 验证**:骨架 / `method.md §V` / `html-spec.md §V` / `enrich.md §V` / `verify_page.py` 的视频分支已随 v2 更新到位,但尚未用视频样本完整重蒸验收(书样本《金钱心理学》已 E2E 通过)。蒸视频系列时按 §V 照做,遇到骨架/门禁与视频不吻合的坑先记录再修。
 > 跑判成败的脚本别用 `\| tail` / `\| head` 取摘要(管道退出码取最后一段,`tail` 永远成功会吞失败);看完整结尾行或补 `; echo "退出码=$?"`。
@@ -103,11 +103,11 @@ $DATA\
 
 - **做什么**:只读各书 `distill.json`(**绝不重蒸**)聚合成 `author.json` → 渲染作者演变页 `author.html`(4 视图:时间线 / 母题 ribbon / 思想转向 / 概念演化图)。每书蒸馏页顶部「演变入口卡」(SLOT:AUTHOR-ENTRY)链到它。
 - **读哪个 reference**:`author-craft.md`(§0 事实 vs 叙事铁律 / §2 author.json schema / §4 四视图数据契约 / §5 板块骨架 / §6 转向证伪层 / §7 入口卡)。
-- **跑哪条命令**:`python $SKILL\scripts\build_author.py --author "<作者名>" --data-root "$DATA" --manual "$DATA\authors\{author_slug}\author.manual.json" --enrich "$DATA\authors\{author_slug}\author.enrich.json" --out "$DATA\authors\{author_slug}\author.json"`(已有 author.json 且 manual 缺失时防覆盖栏拒跑,确需重建加 `--force`;<2 部 exit 3 不生成);再复制 `templates\author-page-skeleton.html`、把 `#author-data` 槽替换为该 `author.json` 生成 `author.html`。
-- **产物**:`$DATA\authors\{author_slug}\author.json` + `author.html`。
+- **跑哪条命令**:`python $SKILL/scripts/build_author.py --author "<作者名>" --data-root "$DATA" --manual "$DATA/authors/{author_slug}/author.manual.json" --enrich "$DATA/authors/{author_slug}/author.enrich.json" --out "$DATA/authors/{author_slug}/author.json"`(已有 author.json 且 manual 缺失时防覆盖栏拒跑,确需重建加 `--force`;<2 部 exit 3 不生成);再复制 `templates/author-page-skeleton.html`、把 `#author-data` 槽替换为该 `author.json` 生成 `author.html`。
+- **产物**:`$DATA/authors/{author_slug}/author.json` + `author.html`。
 - **显式成员与站内书页**:需纳入合著作品或固定策展边界时,在 manual 写 `member_slugs:[slug]`;清单中任一成员缺失、损坏或内部 slug 不一致即 exit 2,不得静默缩小集合。可在 `book_meta.{slug}.web_url` 写站内根相对书页路径(如 `/library/work-a.html`);只接受安全的单 `/` 起始路径,非法值不进入产物。
 - **触发门槛 / 降级**:该作者 <2 部已蒸 → `build_author.py` exit 3 不生成、连网搜(enrich)不启、每书页入口卡整卡删。
-- **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\authors\{author_slug}\author.html"; echo "退出码=$?"`(自动识别作者页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / slug 与 `web_url` 安全 / 转向 verdict 一致;exit 0 才算完成)。
+- **出厂验证**:`python $SKILL/scripts/verify_page.py "$DATA/authors/{author_slug}/author.html"; echo "退出码=$?"`(自动识别作者页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / slug 与 `web_url` 安全 / 转向 verdict 一致;exit 0 才算完成)。
 
 ## StepB · 主题聚合(可选,同主题 ≥3 本已蒸时)
 
@@ -115,12 +115,12 @@ $DATA\
 
 - **做什么**:只读各书 `distill.json` + `knowledge-index.json`(**绝不重蒸**)聚合成 `topic.json` → 渲染主题聚合页 `topic.html`(4 视图:分类地图 / 分歧矩阵 / 维度对照表 / 书目导航)。每成员书蒸馏页顶部「主题入口卡」(SLOT:TOPIC-ENTRY)链到它。
 - **读哪个 reference**:`topic-craft.md`(§0 事实 vs 归纳分层铁律 + 成员圈定 / §2 topic.json schema / §4 四视图数据契约 / §5 板块骨架 / §6 外部争议 enrich / §7 入口卡)。
-- **跑哪条命令**:先手写 `$DATA\topics\{topic_slug}\topic.manual.json`(圈定 `members:[slug]` + schools 流派归类 + disputes 分歧分组 + dimensions 维度对照 + verdict 怎么选);再 `python $SKILL\scripts\build_topic.py --topic "<主题名>" --data-root "$DATA" --manual "$DATA\topics\{topic_slug}\topic.manual.json" --out "$DATA\topics\{topic_slug}\topic.json"`(已有 topic.json 且 manual 缺失时防覆盖栏拒跑,确需重建加 `--force`;<3 本 exit 3 不生成);再复制 `templates\topic-page-skeleton.html`、把 `#topic-data` 槽替换为该 `topic.json` 生成 `topic.html`。
-- **产物**:`$DATA\topics\{topic_slug}\topic.json` + `topic.html`。
+- **跑哪条命令**:先手写 `$DATA/topics/{topic_slug}/topic.manual.json`(圈定 `members:[slug]` + schools 流派归类 + disputes 分歧分组 + dimensions 维度对照 + verdict 怎么选);再 `python $SKILL/scripts/build_topic.py --topic "<主题名>" --data-root "$DATA" --manual "$DATA/topics/{topic_slug}/topic.manual.json" --out "$DATA/topics/{topic_slug}/topic.json"`(已有 topic.json 且 manual 缺失时防覆盖栏拒跑,确需重建加 `--force`;<3 本 exit 3 不生成);再复制 `templates/topic-page-skeleton.html`、把 `#topic-data` 槽替换为该 `topic.json` 生成 `topic.html`。
+- **产物**:`$DATA/topics/{topic_slug}/topic.json` + `topic.html`。
 - **成员圈定 = manual 显式列 slugs**:主题边界是编辑判断,不改 distill schema、不自动按 tag 归堆(见 topic-craft §0);清单中任一成员缺失、损坏或内部 slug 不一致即 exit 2,不得静默缩小集合。`book_meta.{slug}.web_url` 与 StepA 同样只允许安全的站内根相对路径。
 - **分歧与平行对照分流**:分歧矩阵只渲 `CONTRADICTS`(knowledge-index 已登记真对立,红旗)和 `curated`(编者归纳、金标,`note` 须给依据)。相关但不互斥、回答不同层次问题的材料写入独立 `parallel_comparisons[]`,至少两列且每列均有可回指成员与非空 `stance`,渲染为 `.cmp-card`,不计入分歧数;旧 manual 的 `disputes[].parallel:true` 会迁移到该独立数组。未显式声明、仅被算法判为 `parallel` 的松散并列仍剔除不渲。**编者归纳出 index 未登记的真分歧轴时,应回补进 knowledge-index**。
 - **触发门槛 / 降级**:有效成员 <3 → `build_topic.py` exit 3 不生成、每书页入口卡整卡删;`external_debate` 整块搜空 → 该板块隐藏,分类/分歧/维度作书内事实照发。
-- **出厂验证**:`python $SKILL\scripts\verify_page.py "$DATA\topics\{topic_slug}\topic.html"; echo "退出码=$?"`(自动识别主题页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / slug 与 `web_url` 安全 / index_relation + certainty 枚举 / 分歧与平行对照可回指 / `.dsp-card`、`.cmp-card` 数量精确;exit 0 才算完成)。
+- **出厂验证**:`python $SKILL/scripts/verify_page.py "$DATA/topics/{topic_slug}/topic.html"; echo "退出码=$?"`(自动识别主题页走独立门禁:4 视图齐 / 零外链 / Zero-Hex / lang=zh / 破折号 / slug 与 `web_url` 安全 / index_relation + certainty 枚举 / 分歧与平行对照可回指 / `.dsp-card`、`.cmp-card` 数量精确;exit 0 才算完成)。
 
 ## StepC · 人物/博主蒸馏(creator_corpus 路径)
 
@@ -129,7 +129,7 @@ $DATA\
 - **做什么**:全量采集 → 来源卡建库 → 去重聚类(观点族/主题/关系/时间线) → 总体蒸馏(系统/模型/张力/谱系) → **外部交叉核验 + 通俗化两道闸(必做)** → 产出与网站 creator-distill 契约一致的 10 份数据 JSON + 作者简介。
 - **读哪个 reference**:`creator-craft.md`(§0 路由 / §1 总原则「输入全量采集、分析完整建库、展示去重重构」/ §3 P0-P9 阶段管线与批次门 / §5 密度下限 / §6 外部交叉核验 / §7 通俗化两道闸 / §8 展示层信息架构 / §9 数据流规则)。
 - **产物**:`{人物项目目录}` 五层数据(L0-L4) + 下游网站数据包；页面渲染、契约测试与部署由消费该数据包的产品工程负责。
-- **先例与模板**:`references\creator-craft.md` 记录了经多人物实测收敛的来源卡、证据索引与导出契约；公开测试使用合成 fixture，不依赖任何私有项目目录。
+- **先例与模板**:`references/creator-craft.md` 记录了经多人物实测收敛的来源卡、证据索引与导出契约；公开测试使用合成 fixture，不依赖任何私有项目目录。
 - **与 StepA 的区别**:StepA 聚合「同一作者已蒸的 ≥2 本书」(只读 distill.json,绝不重蒸);StepC 从零蒸「一个人的全部语料」。人物出了书且书已单蒸,两者可共存。
 
 ## Biography · 证据型人物传记(biography_corpus 候选路径)
@@ -137,7 +137,7 @@ $DATA\
 当目标是复原人物生平，而不是总结其自有作品中的思想时，使用 `biography_corpus`。这条路径不生成书籍蒸馏 HTML，也不复用 StepC 的观点族 schema。
 
 - **做什么**：为每个人物初始化独立 store → 建 Source Unit 与逐条 Observation → 由正式 reviewer 签署 admission / resolution → 形成六类 Canonical → 编写 Editorial → 补外部核验 → 以同一语义审计器执行 audit / strict-data / publish-ready → 把只读投影交给下游产品。
-- **读哪个 reference**：`biography-craft.md`。当前实验契约为 `0.9.0-candidate`，机器形状以 `biography-contract-v0.9.0.schema.json` 为准，跨文件闭包以 `scripts\biography_contract.py` 为唯一实现。仓库 SemVer 与数据契约版本是两个独立版本域；候选契约在稳定前可能调整。
+- **读哪个 reference**：`biography-craft.md`。当前实验契约为 `0.9.0-candidate`，机器形状以 `biography-contract-v0.9.0.schema.json` 为准，跨文件闭包以 `scripts/biography_contract.py` 为唯一实现。仓库 SemVer 与数据契约版本是两个独立版本域；候选契约在稳定前可能调整。
 - **模型边界**：GLM-5.3 或其他外部模型可以并行做查漏、冲突扫描和修订建议，但只能写 `recommendation_only`；正式事实裁决只允许 manifest 中登记的 `human` 或 `main_agent` reviewer 签署。
 - **跨人物隔离**：每个人物都有独立 slug、稳定 subject ID、ID namespace、路由、资源目录和 CSS scope；共享资源必须显式登记为只读并绑定摘要，禁止从另一个人物项目继承隐式默认值。
 - **与「一页」产品的边界**：本路径交付公共数据契约、初始化骨架与门禁，不规定某个站点的信息架构、视觉、SEO 或发布流程。下游只读 Canonical / Editorial 投影，不能把页面状态反写事实层。
@@ -159,9 +159,9 @@ $DATA\
 4. **批量交付闸 exit 0 才许上站**(v0.5,蒸多本时):单本 verify 只回答「这一本合不合格」,回答不了「**这一批该有的都在吗**」。上站前把**预期名单显式**交给批量闸核对:
 
    ```
-   python $SKILL\scripts\verify_batch.py --data-root "$DATA" --slugs slug1,slug2,slug3; echo "退出码=$?"
+   python $SKILL/scripts/verify_batch.py --data-root "$DATA" --slugs slug1,slug2,slug3; echo "退出码=$?"
    # 已知心理学批次必须把严格域传播到每一本
-   python $SKILL\scripts\verify_batch.py --data-root "$DATA" --slugs slug1,slug2,slug3 --require-domain psychology; echo "退出码=$?"
+   python $SKILL/scripts/verify_batch.py --data-root "$DATA" --slugs slug1,slug2,slug3 --require-domain psychology; echo "退出码=$?"
    ```
 
    它逐本核 ①产物齐备(缺 distill/html = 这本根本没蒸完)②`verify_page.py` 退出码 ③交付卫生(enrich 缺失 / `_pass2_g*.json` 中间态残留)。心理学严格批次还强制 `book.txt` 与 `source-audit.json` 存在，自动传播 `--source` 并逐书复算审计 hash；默认批次行为不变。**退出码 0 才允许上站**;非 0 时二选一 -- 补完管线,或**把这本从上站名单里摘掉**。⚠ **名单留着而产物不存在 = 线上 404**(2026-07-26 实测:6 本里 2 本只跑到 Step0,仍被挂上作品集页)。
@@ -195,9 +195,9 @@ $DATA\
 - **跨会话并发闸**:**全局在飞的 Pass2 subagent ≤ 6-8 个**,不论开了几个会话 / 几个作者批次并行。**多作者批次禁同时段并跑 Pass2** —— 多作者通宵并发会直接引爆服务端 529 风暴(大量 agent 撞 529、大量 retry、墙钟拖到 8-9 小时)。批次之间**错峰发起**,别十分钟内齐发。
 - **1 本书 = 1 会话(或每会话 ≤2-3 本)**:避免单会话塞多本反复 compact(实测单会话曾 compact 8 次)。会话续接**只重读小的 `distill.json` checkpoint,禁重读 `book.txt` 全文**(实测 book.txt 曾被重复引用 60-198 次/会话)。
 - **批前估 token 预算**:铺量前粗估「N 本 × 每本约 X = 总量」,对照账户周/日用量上限;超则分日/分批跑,**预留撞用量上限的余量**(实测批量铺量曾把账户用量跑爆、被迫中途暂停)。全程用高能力模型、不做 token 节流仍成立,但要预判总量别中途断粮。
-- **失败先核盘再重派(防假重跑)**:agent 报「失败」多为已写盘、只是返回元数据时被限流。重派任何失败 agent 前,**先查 `$DATA\{书目录}\` 下 `_pass2_g*.json` / 产物是否已落盘**:已落盘只对缺章做**定点 gap-fill,禁整组重跑**。fan-out 合并后断言「N 章 narrative 全齐且达标」,只补真缺口(见 `method.md §3.5.5` 合并完整性门禁)。
+- **失败先核盘再重派(防假重跑)**:agent 报「失败」多为已写盘、只是返回元数据时被限流。重派任何失败 agent 前,**先查 `$DATA/{书目录}/` 下 `_pass2_g*.json` / 产物是否已落盘**:已落盘只对缺章做**定点 gap-fill,禁整组重跑**。fan-out 合并后断言「N 章 narrative 全齐且达标」,只补真缺口(见 `method.md §3.5.5` 合并完整性门禁)。
 - **Pass2 产物统一命名 `_pass2_gN.json` + 合并后清理**:并发多会话易各自即兴命名(曾并存 `_ch_N`/`_pass2_N`/`_pass2_gN`/`_pass2_batchX` 四套),漂移致合并对不齐、掉章。**统一只用 `_pass2_gN.json`**;**合并完整性门禁通过后,主控删本书 `_pass2_g*.json` 中间态**(已 gitignore、已回填 distill,别留到入库/聚合污染目录 -- 2026-07-15 复盘 13 本睡眠书 7 本残留)。见 `method.md §3.5.5` 清理步。
-- **同作者 enrich 只搜一次**:批量拆同一作者多本时,作者研究(author_page)**一位作者只联网搜一次**,写 `$DATA\authors\{author_slug}\author.enrich.json`,各书 enrich 的 author_page **引用它、不重搜**(否则同一作者多本各自重搜作者背景 = 大量冗余联网轮次);与 StepA 作者演变聚合页共用同一份作者研究(见 `enrich.md §3` + StepA)。
+- **同作者 enrich 只搜一次**:批量拆同一作者多本时,作者研究(author_page)**一位作者只联网搜一次**,写 `$DATA/authors/{author_slug}/author.enrich.json`,各书 enrich 的 author_page **引用它、不重搜**(否则同一作者多本各自重搜作者背景 = 大量冗余联网轮次);与 StepA 作者演变聚合页共用同一份作者研究(见 `enrich.md §3` + StepA)。
 - **索引串行登记**:Step4 的 `update_index.py register` 会写同一个 `knowledge-index.json`,批量时**串行**登记(逐本 dry-run→真跑),避免并发写盘互相覆盖;每次写前自动 `.bak`。
 
 ## 环境依赖
