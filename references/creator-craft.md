@@ -88,6 +88,7 @@
   3. 🔴 **模型只许返回族 ID 的分组，不许改写任何陈述**——合并后的代表句仍由代码按「explicit > 引文已核实 > 文本长」选，模型没有机会往里塞它自己编的话。
   4. 🔴 **切批前必须按相似度把族排成一条链**。按 ID 排序切批时，一个 189 个族的主题会切成 5 批，**跨批的重复观点永远不会被放进同一个上下文比较**，模型再准也合不掉——这是召回上不去的隐藏原因，不报错、不缺字段，只体现为「合并率低得奇怪」。
   5. 归并任务的 `max_tokens` 要给足（12000 起）。跑量模型会先写一长段 reasoning，给小了会被草稿吃光，`content` 返回空字符串而 HTTP 仍是 200 —— 静默失败。
+  6. 第二意见（shadow，只出建议表不改产物）：`python3 $SKILL/scripts/jev_merge_claims.py --claims claims.jsonl [--families families.jsonl] --out <建议表.json>`，用 Jev Noul 按上面三条判据逐对复核灰区候选对，与已归并结果比对分歧后人工定夺。
 - **抽样的系统性盲区**：按视频抽样时，**只在书里讲透、视频里很少完整讲的动作会被系统性低估**——它在族归并层面因为「没人重复讲」而排到很后面，最终漏出总体蒸馏。书章全量入库只兜住了一半，另一半要靠 P7-A 拿外部解读回来对照（Hormozi 例：四类保证与问题-方案矩阵两个核心动作，都是外部解读一致强调、而内部清单里没成族的，回原书取证后补进行动模型）。
 - **主题 themes**：每主题带 `central_question` + inclusion/exclusion 规则（防漏防塞）。
 - **跨媒介关系**：`REPEATS / REFINES / EXTENDS / REBRANDS / CONTRADICTS / RETRACTS / ORIGIN / APPLICATION`，双向登记（A→B 有，B→A 必须有）。
