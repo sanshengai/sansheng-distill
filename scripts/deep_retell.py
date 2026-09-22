@@ -11,7 +11,7 @@
 切法：toc-cn = 「一、」大章 + 「1.」小节（店长日记这类）；vertical = epub 把标题竖排成单字行（因为独特这类），
 「李翔：/王宁：」这种说话人标签会被识别成访谈节。
 """
-import argparse, collections, glob, html, json, os, re, sys
+import argparse, collections, glob, html, json, os, re, sys, tempfile
 
 D = lambda book: os.path.join(book, '_deepread')
 
@@ -303,10 +303,72 @@ def longest_common_run(a, b, minlen=30):
     return hits
 
 
+def _atomic_collect_json(path, value):
+    """完整序列化成功后才替换，失败不截断现有正式文件。"""
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=os.path.dirname(path),
+                                         prefix='.collect-', suffix='.tmp', delete=False) as handle:
+            tmp = handle.name
+            json.dump(value, handle, ensure_ascii=False, indent=1)
+            handle.write('\n'); handle.flush(); os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp and os.path.exists(tmp): os.unlink(tmp)
+
+
+def _collect_sections(data):
+    """只规范合法单段字符串；不丢弃或猜补损坏的正文结构。"""
+    if not isinstance(data, dict) or not isinstance(data.get('sections'), list) or not data['sections']:
+        raise ValueError('sections 必须是非空数组')
+    for i, sec in enumerate(data['sections'], 1):
+        if not isinstance(sec, dict) or not isinstance(sec.get('title'), str) or not sec['title'].strip():
+            raise ValueError(f'section {i} 缺合法标题')
+        if 'skipped' in sec or sec.get('paragraphs2'):
+            raise ValueError(f'section {i} 元数据混入正文或含未归并 paragraphs2')
+        paragraphs = sec.get('paragraphs')
+        if isinstance(paragraphs, str): paragraphs = [paragraphs]
+        if not isinstance(paragraphs, list) or not paragraphs or any(
+                not isinstance(p, str) or not p.strip() for p in paragraphs):
+            raise ValueError(f'section {i} paragraphs 必须是非空文本数组或单段文本')
+        if len(paragraphs) >= 20 and sum(len(p.strip()) <= 1 for p in paragraphs) / len(paragraphs) >= .9:
+            raise ValueError(f'section {i} 疑似正文被拆成单字')
+        sec['paragraphs'] = paragraphs
+        for field in ('covers', 'keywords'):
+            value = sec.get(field)
+            if value is not None and (not isinstance(value, list) or any(not isinstance(x, str) for x in value)):
+                raise ValueError(f'section {i} {field} 必须是文本数组')
+        if sec.get('quote') is not None and not isinstance(sec['quote'], str):
+            raise ValueError(f'section {i} quote 必须是文本')
+    skipped = data.get('skipped')
+    if skipped is not None and (not isinstance(skipped, list) or any(
+            not isinstance(x, dict) or not isinstance(x.get('id'), str) or
+            not isinstance(x.get('why'), str) or not x['why'].strip() for x in skipped)):
+        raise ValueError('skipped 必须逐项声明 id 和非空 why')
+    return data['sections']
+
+
 def collect(book, args):
-    units = json.load(open(os.path.join(D(book), 'units.json'), encoding='utf-8'))
+    diagnostics = os.path.join(D(book), 'collect-diagnostics.json')
+    def reject(issues):
+        _atomic_collect_json(diagnostics, {'status': 'rejected', 'formal_output_replaced': False, 'issues': issues})
+        print('🔴 collect 拒绝覆盖正式 deepread.json；诊断：' + diagnostics, file=sys.stderr)
+        raise SystemExit(2)
+    try:
+        with open(os.path.join(D(book), 'units.json'), encoding='utf-8') as handle:
+            units = json.load(handle)
+        if not isinstance(units, list) or not units: raise ValueError('units 必须是非空数组')
+        seen = set()
+        for u in units:
+            if not isinstance(u, dict) or type(u.get('no')) is not int or u['no'] < 1 or u['no'] in seen:
+                raise ValueError('units 含非法或重复编号')
+            seen.add(u['no'])
+            if any(not isinstance(u.get(k), str) for k in ('part', 'title', 'kind', 'text')) or not u['text'].strip():
+                raise ValueError(f"u{u['no']:03d} 源文本或元数据无效")
+    except (OSError, ValueError) as exc:
+        reject([{'code': 'invalid_units', 'detail': str(exc)}])
     out = {'book': args.book, 'author': args.author, 'units': []}
-    report = []; missing = []; badjson = []
+    report = []; missing = []; badjson = []; issues = []
     for u in units:
         f = os.path.join(args.out_dir, f"u{u['no']:03d}.response.txt")
         for alt in (args.out_dir + '-rw2', args.out_dir + '-rw'):  # 重写轮的产物优先
@@ -314,10 +376,17 @@ def collect(book, args):
             if os.path.exists(f2):
                 try: loads(open(f2, encoding='utf-8').read()); f = f2; break
                 except ValueError: pass
-        if not os.path.exists(f): report.append(f"u{u['no']:03d} 缺产物"); missing.append(u['no']); continue
+        if not os.path.exists(f):
+            report.append(f"u{u['no']:03d} 缺产物"); missing.append(u['no'])
+            issues.append({'code': 'missing_response', 'unit': u['no'], 'path': f}); continue
         try: d = loads(open(f, encoding='utf-8').read())
-        except ValueError: report.append(f"u{u['no']:03d} JSON 坏"); badjson.append(u['no']); continue
-        secs = d.get('sections') or []
+        except ValueError:
+            report.append(f"u{u['no']:03d} JSON 坏"); badjson.append(u['no'])
+            issues.append({'code': 'bad_json', 'unit': u['no'], 'path': f}); continue
+        try: secs = _collect_sections(d)
+        except ValueError as exc:
+            report.append(f"u{u['no']:03d} 正文结构坏：{exc}")
+            issues.append({'code': 'invalid_sections', 'unit': u['no'], 'path': f, 'detail': str(exc)}); continue
         def tidy(p):
             p = re.sub(r'《([^《》（）]+)（[^）]*）》', r'《\1》', p)  # 旁证书名带的「（作者，年份）」很累赘：《何以泡泡玛特（林开平，2025）》→《何以泡泡玛特》
             p = re.sub(r"'([^'\n]{1,40})'", r'「\1」', p)          # 模型为躲 JSON 转义用的英文单引号 → 「」
@@ -363,13 +432,12 @@ def collect(book, args):
         flag = ('雷同%d ' % len(runs) if runs else '') + ('无据数字%s ' % bad_nums[:4] if bad_nums else '') + ('引文不符%d ' % len(bad_q) if bad_q else '')
         flag += (f"覆盖{coverage:.0%}(漏{len(unaccounted)}) " if coverage < 0.7 or unaccounted else '') + (f"假声明{len(fake)}" if fake else '')
         report.append(f"u{u['no']:03d} {u['title'][:14]:16} 原 {len(u['text']):5} → 出 {len(text_out):5} ({ratio:.2f}) 小节 {len(secs)}  {flag}")
-    json.dump(out, open(os.path.join(book, 'deepread.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print('\n'.join(report))
+    if issues: reject(issues)
+    _atomic_collect_json(os.path.join(book, 'deepread.json'), out)
+    _atomic_collect_json(diagnostics, {'status': 'accepted', 'formal_output_replaced': True, 'units': len(out['units']), 'issues': []})
     tot_in = sum(u['src_chars'] for u in out['units']); tot_out = sum(u['out_chars'] for u in out['units'])
     P = sum(u['coverage']['paragraphs'] for u in out['units']); C = sum(u['coverage']['covered'] for u in out['units'])
-    if missing or badjson:
-        # 缺响应 / 坏 JSON 的节不会进 deepread.json，页面会静默少一节：报出来并非零退出，别让它悄悄过去
-        print(f"🔴 缺响应 {len(missing)} 节 {missing[:20]}；JSON 坏 {len(badjson)} 节 {badjson[:20]} —— 补跑或 rewrite 后重新 collect")
     print(f"单元 {len(out['units'])}/{len(units)} 节；" + f"合计 原 {tot_in:,} → 出 {tot_out:,}（{tot_out / max(1, tot_in):.2f}）；雷同 {sum(len(u['check']['verbatim_runs']) for u in out['units'])} 处，无据数字 {sum(len(u['check']['unsupported_numbers']) for u in out['units'])} 个，引文不符 {sum(len(u['check']['bad_quotes']) for u in out['units'])} 条；"
           f"源段覆盖 {C}/{P}（{C / max(1, P):.0%}），登记跳过 {sum(len(u['coverage']['skipped']) for u in out['units'])} 段，未交代 {sum(len(u['coverage']['unaccounted']) for u in out['units'])} 段，假声明 {sum(len(u['coverage']['fake_claims']) for u in out['units'])}")
 
