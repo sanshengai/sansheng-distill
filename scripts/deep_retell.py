@@ -48,18 +48,34 @@ def split_toc_cn(lines):
     return units
 
 
-def split_vertical(lines):
+def split_vertical(lines, part_re_s=None, sec_re_s=None):
     heads = []; i = 0
     while i < len(lines):
-        if len(lines[i].strip()) == 1 and not lines[i].strip().isdigit():
+        if len(lines[i].strip()) == 1:
             j = i
             while j < len(lines) and len(lines[j].strip()) == 1: j += 1
             if j - i >= 2:
                 t = ''.join(l.strip() for l in lines[i:j]); t2 = re.sub(r'(李翔|王宁)：$', '', t)
-                if t2 and t2 not in ('李翔', '王宁'): heads.append((i, j, t2, t != t2))
+                # 纯数字 / 无汉字的单字行串（页码、目录点）不算标题
+                if t2 and t2 not in ('李翔', '王宁') and re.search(r'[\u4e00-\u9fff]', t2): heads.append((i, j, t2, t != t2))
             i = j
         else: i += 1
     units = []; part = None
+    if part_re_s or sec_re_s:  # 有层级正则：只认匹配 sec 的标题做节，匹配 part 的做部，其余标题并回正文
+        pr = re.compile(part_re_s) if part_re_s else None; sr = re.compile(sec_re_s) if sec_re_s else None
+        cur = None
+        for k, (ln, end_head, title, interview) in enumerate(heads):
+            end = heads[k + 1][0] if k + 1 < len(heads) else len(lines)
+            body = [l.strip() for l in lines[end_head:end] if l.strip()]
+            if pr and pr.match(title): part = title; cur = None; continue
+            if sr and sr.match(title):
+                cur = {'no': len(units) + 1, 'part': part or '', 'title': title, 'kind': 'narrative', 'lines': []}; units.append(cur)
+                cur['lines'] += body; continue
+            if cur is not None: cur['lines'] += [title] + body  # 更低层级的小标题并回正文
+        for u in units: u['text'] = '\n'.join(u.pop('lines'))
+        units = [u for u in units if len(u['text']) >= 300]
+        for k, u in enumerate(units, 1): u['no'] = k
+        return units
     for k, (ln, end_head, title, interview) in enumerate(heads):
         end = heads[k + 1][0] if k + 1 < len(heads) else len(lines)
         body = [l.strip() for l in lines[end_head:end] if l.strip()]
@@ -69,6 +85,82 @@ def split_vertical(lines):
         if re.match(r'^版权', title): continue
         units.append({'no': len(units) + 1, 'part': part or '', 'title': title, 'kind': 'interview' if interview else 'narrative', 'text': text})
     return units
+
+
+PART_DEFAULT = r'^(第[一二三四五六七八九十百\d]+[章篇部]|引子|序章|附录|后记|尾声|前言|自序|推荐序|结语)'
+
+
+def split_toc_list(lines, part_re_s=PART_DEFAULT, junk=('封面', '扉页', '版权页', '目录', '版权信息')):
+    """书开头是一整块目录清单（没有「目录」两个字）：先取顶部连续短行做清单，正文里与清单逐字相同的行才是标题。
+    分「部」用 part_re；清单里其他行是节。"""
+    part_re = re.compile(part_re_s)
+    short = lambda l: 0 < len(l.strip()) <= 40 and not l.strip().startswith('〔图字')  # 标题可以带「！」，只按长度判
+    toc = []; i = 0
+    while i < len(lines) and (short(lines[i]) or not lines[i].strip() or lines[i].strip().startswith('〔图字')):
+        t = lines[i].strip()
+        if t and t not in junk and not t.startswith('〔图字'): toc.append(t)
+        i += 1
+    if len(toc) < 5: raise SystemExit('顶部目录清单太短，换个切法')
+    want = set(toc); body_start = i
+    units = []; part = None; cur = None
+    for j in range(body_start, len(lines)):
+        l = lines[j].strip()
+        if l in want:
+            if part_re.match(l): part = re.sub(r'\s+', ' ', l); cur = None
+            else:
+                cur = {'no': len(units) + 1, 'part': part or '', 'title': l, 'kind': 'narrative', 'lines': []}; units.append(cur)
+            continue
+        if cur is not None and l: cur['lines'].append(l)
+    for u in units: u['text'] = '\n'.join(u.pop('lines'))
+    units = [u for u in units if len(u['text']) >= 300]
+    for k, u in enumerate(units, 1): u['no'] = k
+    return units
+
+
+def split_chapter_subhead(lines, part_re_s=r'^第[一二三四五六七八九十]+章', max_head=22, sec_re_s=None):
+    """「第X章」之下没有编号小节，只有短行小标题（以慢制胜这类）：章内 ≤max_head 字、不以标点结尾的行当节标题；太短的节并入前一节。"""
+    part_re = re.compile(part_re_s)
+    last = {}
+    for i, l in enumerate(lines):
+        if part_re.match(l.strip()) and len(l.strip()) <= 40: last[l.strip()] = i  # 目录里那份在前，正文在后：取最后一次
+    starts = sorted(last.values())
+    if not starts: raise SystemExit('没找到「第X章」')
+    units = []
+    for k, st in enumerate(starts):
+        end = starts[k + 1] if k + 1 < len(starts) else len(lines)
+        part = re.sub(r'\s+', ' ', lines[st].strip()); cur = None
+        for j in range(st + 1, end):
+            l = lines[j].strip()
+            if not l: continue
+            is_head = re.match(sec_re_s, l) if sec_re_s else (1 < len(l) <= max_head and not re.search(r'[。！？；，、：…”」）)]$', l) and l != '注' and not l.startswith('〔图字'))
+            if is_head:
+                cur = {'no': len(units) + 1, 'part': part, 'title': l, 'kind': 'narrative', 'lines': []}; units.append(cur); continue
+            if cur is None:
+                cur = {'no': len(units) + 1, 'part': part, 'title': part, 'kind': 'narrative', 'lines': []}; units.append(cur)
+            cur['lines'].append(l)
+    for u in units: u['text'] = '\n'.join(u.pop('lines'))
+    merged = []
+    for u in units:
+        if merged and len(u['text']) < 600 and merged[-1]['part'] == u['part']: merged[-1]['text'] += '\n' + u['text']
+        else: merged.append(u)
+    merged = [u for u in merged if len(u['text']) >= 300]
+    for k, u in enumerate(merged, 1): u['no'] = k
+    return merged
+
+
+TPL_ESSAY = """你是一位讲书的作者。下面是《%(book)s》（%(author)s）%(where)s的原文，这是一本分析型的书。请用你自己的话把这一节的内容完整地重新讲一遍，讲给没读过这本书的读者听。
+要求：
+1. 保留原文六到七成的内容：作者的每个论点、支撑它的案例（案例要整段讲完：时间、人、做了什么、结果）、数字、比较、作者自己的判断和保留意见。只删重复、过渡和口号，不把一个案例压成一句话，不把论证压成结论。
+2. 像讲书一样连贯：顺着作者的论证推进，段与段之间有「因为 / 所以 / 但是」的衔接；不罗列要点，不用「首先 / 其次」，不写「本节讲了」式总结。
+3. 全文第三人称（「作者」或作者姓名），作者的判断写成「作者认为」；不添加原文没有的事实、案例、数字，不替作者补充论据。
+4. 分成 2–5 个小节，每个小节一个论点或一个案例，给一个 8–16 字的小标题（说清作者主张什么或讲了什么事，不用「之道」「的力量」「启示」这类词），再给 3–5 个关键词。
+5. 每个小节最多放一句原话，逐字照抄、加引号，不超过 150 字，只在非原话不可时用；除此之外不得有连续 30 字与原文相同。
+6. 简体中文，破折号用 --，不出现「本章」「本节」「原文」「作者写道」这类字眼。
+7. 原文每段前有段号（如 [P12]）。每个小节写完后列出它覆盖了哪些段号（covers）；原文里你没有写进任何小节的段，逐段列进 skipped 并写明原因（只允许三种：他人作品的引文 / 纯过渡或口号 / 与前文重复）。不许静默跳过。
+%(side)s
+只输出 JSON：{"sections":[{"title":"…","keywords":["…"],"paragraphs":["…","…"],"quote":"原话或空字符串","covers":["P1","P2"]}],"skipped":[{"id":"P7","why":"…"}]}，不要解释，不要 markdown 围栏。
+--- 原文开始 ---
+%(text)s"""
 
 
 # ---------- 旁证 ----------
@@ -137,7 +229,7 @@ def build(book, args):
         if u.get('side'):
             side = '旁证（其他书或报道对相关事情的记载；只有和本节讲的确实是同一件事时才用，最多用 2 条，写成「《…》里也记着……」或「据《…》的报道……」并写明书名 / 报道名；对不上就忽略）：\n' + '\n'.join(f"- 《{s['source'][:20]}》：{s['text'][:160]}" for s in u['side'])
         where = f"「{u['part']}」下的「{u['title']}」" if u['part'] else f"「{u['title']}」"
-        tpl = TPL_INTV if u['kind'] == 'interview' else TPL_NARR
+        tpl = {'interview': TPL_INTV, 'essay': TPL_ESSAY}.get(u['kind'], TPL_NARR)
         numbered = '\n'.join(f'[P{i + 1}] {line}' for i, line in enumerate(u['text'].split('\n')))
         task = tpl % dict(book=args.book, author=args.author, where=where, who=args.who, commentator=args.commentator, side=side, text=numbered)
         jobs.append({'job_id': f"u{u['no']:03d}", 'task': task})
@@ -213,8 +305,13 @@ def collect(book, args):
         try: d = loads(open(f, encoding='utf-8').read())
         except ValueError: report.append(f"u{u['no']:03d} JSON 坏"); continue
         secs = d.get('sections') or []
-        for sec in secs:  # 旁证书名带的「（作者，年份）」在正文里很累赘：《何以泡泡玛特（林开平，2025）》→《何以泡泡玛特》
-            sec['paragraphs'] = [re.sub(r'《([^《》（）]+)（[^）]*）》', r'《\1》', p) for p in sec.get('paragraphs', [])]
+        def tidy(p):
+            p = re.sub(r'《([^《》（）]+)（[^）]*）》', r'《\1》', p)  # 旁证书名带的「（作者，年份）」很累赘：《何以泡泡玛特（林开平，2025）》→《何以泡泡玛特》
+            p = re.sub(r"'([^'\n]{1,40})'", r'「\1」', p)          # 模型为躲 JSON 转义用的英文单引号 → 「」
+            p = re.sub(r'\s*——\s*|\s*—\s*', ' -- ', p)              # 转述正文破折号统一 --（宪法 / distill 机检口径）
+            return p
+        for sec in secs:
+            sec['paragraphs'] = [tidy(p) for p in sec.get('paragraphs', [])]
         text_out = '\n'.join(p for s in secs for p in s.get('paragraphs', []))
         quotes = [s.get('quote') or '' for s in secs]
         # 1) 连续雷同（引号内豁免：把引用原话从输出里挖掉再比）
@@ -355,12 +452,20 @@ def main():
     ap.add_argument('--who', default='作者'); ap.add_argument('--commentator', default='点评人')
     ap.add_argument('--claims'); ap.add_argument('--source-prefix', default=''); ap.add_argument('--exclude-source', action='append', default=[])
     ap.add_argument('--out-dir'); ap.add_argument('--min-runs', type=int, default=1)
+    ap.add_argument('--part-regex'); ap.add_argument('--sec-regex'); ap.add_argument('--kind', help='整本书的默认体裁：narrative|essay（访谈节由切法自动标 interview）')
     a = ap.parse_args(); a.book = a.book_title
     os.makedirs(D(a.book_dir if hasattr(a, 'book_dir') else sys.argv[2]), exist_ok=True)
     book = sys.argv[2]
     if a.cmd == 'split':
         lines = open(os.path.join(book, 'book.txt'), encoding='utf-8').read().split('\n')
-        units = split_toc_cn(lines) if a.mode == 'toc-cn' else split_vertical(lines)
+        if a.mode == 'toc-cn': units = split_toc_cn(lines)
+        elif a.mode == 'vertical': units = split_vertical(lines, a.part_regex, a.sec_regex)
+        elif a.mode == 'toc-list': units = split_toc_list(lines, a.part_regex or PART_DEFAULT)
+        elif a.mode == 'chapter-subhead': units = split_chapter_subhead(lines, a.part_regex or r'^第[一二三四五六七八九十]+章', sec_re_s=a.sec_regex)
+        else: raise SystemExit('未知 --mode')
+        if a.kind:
+            for u in units:
+                if u['kind'] == 'narrative': u['kind'] = a.kind
         if a.claims: units = side_evidence(units, a.claims, a.source_prefix, set(a.exclude_source))
         json.dump(units, open(os.path.join(D(book), 'units.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f"{len(units)} units；字数 {sum(len(u['text']) for u in units):,}；旁证 {sum(len(u.get('side', [])) for u in units)} 条")
