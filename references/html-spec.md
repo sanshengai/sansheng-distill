@@ -399,7 +399,7 @@
 
 ## 3. 生成流程(逐步照做,直到 verify exit 0)
 
-1. **复制骨架**:`cp $SKILL/templates/page-skeleton.html $DATA/{书目录}/{slug}.html`(或读骨架另存到产物路径)。
+1. **选择输入契约**:直接填模板时，`cp $SKILL/templates/page-skeleton.html $DATA/{书目录}/{slug}.html`(或读骨架另存到产物路径)。使用明确支持“已验收成品页作为结构参考”的渲染器时，传入实际已验收成品，不能传未填骨架；逐块重新投影全部书籍数据槽，可选空字段按契约清空或降级，不能继承旧书公式、作者、评价与隐藏子视图。两条路径都保留正式骨架的完整结构与交互，并对实际产出逐本验收。
 2. **全局替换头信息**:`SLUG_PLACEHOLDER` → `{slug}`(`<main data-book-slug>` 拼进度 key);`{书名}` → 真实书名;`{作者}` → 真实作者(`<title>` / `.cb-title` / `.cb-author` / footer / `.subpage-title` / `.subpage-from` 都有)。
 3. **填头部两层**:`.cb-cover`(书籍须 `data:image` 封面)/ `.cb-kicker`(book_type + 领域)/ `.cb-title` / `.cb-author`(`.cb-author-link` 内嵌 `#sub-author` 链 + `.cb-author-hint` 备注)/ `.cb-intro`=`cover_intro`(过 §2.2 查重)/ `.hero h1`=hero 标语。**导读条 `.reading-guide` v3.1 已删,无需填。**
 4. **逐板填充(①→⑤,板内顺序固定)**:按 §1.2 各板块表把 distill / enrich 字段填进签名 class 槽位;anchor 一律进 `data-source`;金句 / excerpt / 书评原文照录不改写;章标题过 T5 自查。**核心观点卡展开态必填 explain+evidence+evidence_level(T8)**;**金句全落 `.quote-wall`,章内不填行内金句(T7)**;**②章行默认收起(T6)**。

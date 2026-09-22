@@ -11,6 +11,8 @@ description: Use when 用户要把一本书全文、单个视频（按 1 集）�
 
 **这是入口编排文件。** 先读本文对齐管线,再在每一步按下表**读对应 reference / 跑对应 script**;references 是各步的执行细则,不要凭记忆做。
 
+**单书高保留要求**：用户要求管理书保留 80%–90% 等大部分知识时，先读 [high-retention-books.md](references/high-retention-books.md)，在 Step0–Step7 中增加起稿前知识分母、逐项语义审阅、图意核验及速览/理解/深读三层。`scripts/book_coverage.py` 的数据门与 Step7 实际页面门分别通过，不能以字数比、模型自评或 JSON 齐备代替。
+
 ## 先分流：蒸馏对象 → 路径
 
 | 蒸馏对象 | 走路径 |
@@ -86,7 +88,7 @@ $DATA/
 > ⚠ **视频路径 v2 尚未跑 E2E 验证**:骨架 / `method.md §V` / `html-spec.md §V` / `enrich.md §V` / `verify_page.py` 的视频分支已随 v2 更新到位,但尚未用视频样本完整重蒸验收(书样本《金钱心理学》已 E2E 通过)。蒸视频系列时按 §V 照做,遇到骨架/门禁与视频不吻合的坑先记录再修。
 > 跑判成败的脚本别用 `\| tail` / `\| head` 取摘要(管道退出码取最后一段,`tail` 永远成功会吞失败);看完整结尾行或补 `; echo "退出码=$?"`。
 
-> ⚠ Step6 只能在正式 page-skeleton.html 的基础上逐槽填入数据。严禁另起极简 HTML 壳，或删掉 theme-picker、initMindmap()、initHashRouter() 来“简化渲染”；这会丢失主题、脑图 viewer 和章节路由，Step7 会直接拒收。
+> ⚠ Step6 必须保留正式 page-skeleton.html 的完整结构与交互。可以直接填骨架，或使用明确支持“已验收成品页作为结构参考”的渲染器；两类输入不能混用。成品参考页中所有书籍数据槽必须重新投影，不能残留旧书公式、作者或隐藏子视图。严禁另起极简 HTML 壳，或删掉 theme-picker、initMindmap()、initHashRouter()；合成路由测试也不能替代实际书页的 Step7 与截图验收。
 
 ## StepA · 作者演变聚合(可选,同一作者 ≥2 部已蒸时)
 
