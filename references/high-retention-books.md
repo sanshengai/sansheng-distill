@@ -80,4 +80,16 @@ python3 "$SKILL/scripts/book_coverage.py" --book-dir "$DATA/<slug>"
 
 新增字段须沿用统一 HTML 转义、标点/破折号与公开来源格式规则，不能绕过旧字段已有的格式处理。
 
-逐本运行 Step7 的 `verify_page.py <HTML> --distill <distill.json> --source <book.txt>`，另核深读 DOM 与输入一致、所有单元可达、桌面/手机截图和五板块的真实书籍身份。对新增检测使用被测入口上的失败反例。最后再完成跨书索引、产品适配与发布；三者不能由 coverage 的绿灯替代。
+高保留页面使用完整入口：
+
+```sh
+python3 "$SKILL/scripts/verify_high_retention.py" --book-dir "$DATA/<slug>"
+```
+
+它在整本书上执行原 `verify_page.py` 的 HTML、distill、源文与浏览器检查，现场复算知识覆盖，并检查全部有效来源章、阅读部分、深读单元的映射和实际 DOM 正文一致。不能提交删去附记的临时子集来验收。`--skip-interact` 只供排错，报告会标明未检查浏览器；不构成 Step7 完成。批量时显式声明预期名单、逐本运行并检查每本退出码，不以已存在目录推断名单。非高保留书仍沿用原 Step7/批量入口。
+
+**短来源附记的有限长度规则**：真实来源本身不足800个非空白字符的致谢、编辑背景等，可保持信息完整的较短理解层。不能因标题短、字数少或标记成“附录”自动豁免。实质论证、方法、病例与对话附录仍按主内容验收。需要人工完成 `short-apparatus-review.json`：`schema_version: 1`，`input_sha256` 绑定 `book.txt`、`source-map.json`、`content-ledger.json`、`deepread.json`、`config.json`、`distill.json` 六份实际文件，`entries` 逐项记录阅读部分 `no`、`source_chapter_id`、`reviewer`、`decision: approved`、`rationale` 和全部 `knowledge_item_ids`。
+
+该来源章必须为已审的 `effective`、`source_scope=non_primary`；对应 config 的 `source_role` 只能是 `source_apparatus` 或 `editorial_context`。来源与正文都不得为空或只有标点，该章每个知识项须完整 covered，来源和语义审签均有效，理解层与深读仍完整显示在网页。满足这些条件时，入口只接受该阅读部分的精确 G9 下限差异，G14 引文、定位及其他全部错误仍会拒绝。回执不由工具自动签署；哈希只发现审阅之后的变化，不能替代人工判断其是否真为附记。机器报告列出所有采用该规则的部分，不将其伪装成800字。
+
+逐本另核所有单元可达、桌面/手机截图和五板块的真实书籍身份。对新增检测使用被测入口上的失败反例。最后再完成跨书索引、产品适配与发布；三者不能由 coverage 的绿灯替代。
