@@ -96,19 +96,28 @@ def split_toc_list(lines, part_re_s=PART_DEFAULT, junk=('封面', '扉页', '版
     part_re = re.compile(part_re_s)
     short = lambda l: 0 < len(l.strip()) <= 40 and not l.strip().startswith('〔图字')  # 标题可以带「！」，只按长度判
     toc = []; i = 0
+    for j, l in enumerate(lines[:300]):  # 书里有「目录」两个字时，从它之后开始扫清单（前面是书名 / 作者 / 版权）
+        if l.strip() in ('目录', '目 录', 'CONTENTS', 'Contents'): i = j + 1; break
     while i < len(lines) and (short(lines[i]) or not lines[i].strip() or lines[i].strip().startswith('〔图字')):
         t = lines[i].strip()
         if t and t not in junk and not t.startswith('〔图字'): toc.append(t)
         i += 1
     if len(toc) < 5: raise SystemExit('顶部目录清单太短，换个切法')
-    want = set(toc); body_start = i
+    # 正文里的小标题有时只写冒号前半截（目录「缘起：我为什么离开北大」→ 正文「缘起：」），两种写法都认
+    want = {}
+    for t in toc:
+        want[t] = t
+        for alias in (t.split('：')[0] + '：', t.split('：')[0], t.split('：', 1)[-1]):
+            if len(alias) >= 2: want.setdefault(alias, t)
+    body_start = i
     units = []; part = None; cur = None
     for j in range(body_start, len(lines)):
         l = lines[j].strip()
         if l in want:
-            if part_re.match(l): part = re.sub(r'\s+', ' ', l); cur = None
+            t = want[l]
+            if part_re.match(t): part = re.sub(r'\s+', ' ', t); cur = None
             else:
-                cur = {'no': len(units) + 1, 'part': part or '', 'title': l, 'kind': 'narrative', 'lines': []}; units.append(cur)
+                cur = {'no': len(units) + 1, 'part': part or '', 'title': t, 'kind': 'narrative', 'lines': []}; units.append(cur)
             continue
         if cur is not None and l: cur['lines'].append(l)
     for u in units: u['text'] = '\n'.join(u.pop('lines'))
@@ -120,10 +129,14 @@ def split_toc_list(lines, part_re_s=PART_DEFAULT, junk=('封面', '扉页', '版
 def split_chapter_subhead(lines, part_re_s=r'^第[一二三四五六七八九十]+章', max_head=22, sec_re_s=None):
     """「第X章」之下没有编号小节，只有短行小标题（以慢制胜这类）：章内 ≤max_head 字、不以标点结尾的行当节标题；太短的节并入前一节。"""
     part_re = re.compile(part_re_s)
-    last = {}
+    hits = {}
     for i, l in enumerate(lines):
-        if part_re.match(l.strip()) and len(l.strip()) <= 40: last[l.strip()] = i  # 目录里那份在前，正文在后：取最后一次
-    starts = sorted(last.values())
+        if part_re.match(l.strip()) and len(l.strip()) <= 40: hits.setdefault(l.strip(), []).append(i)
+    # 章名在目录里出现一次、正文里出现一次：按「正文那一次」取——即每个章名的最后一次，
+    # 但要求它们彼此递增且间距够大（章正文至少 20 行），否则退回第一次之后的那一次。
+    starts = sorted(v[-1] for v in hits.values())
+    if len(starts) > 1 and min(b - a for a, b in zip(starts, starts[1:])) < 20:
+        starts = sorted(v[0] for v in hits.values())
     if not starts: raise SystemExit('没找到「第X章」')
     units = []
     for k, st in enumerate(starts):
