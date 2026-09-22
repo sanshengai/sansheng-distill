@@ -397,8 +397,14 @@ def render(book, args):
             h.append(f'<details class="unit"><summary><span class="unit-no">{u["no"]}</span><span class="unit-t">{html.escape(u["title"])}</span><span class="unit-kw">{html.escape("・".join(kws[:6]))}</span></summary>')
             for s in u['sections']:
                 h.append(f'<details class="sec" open><summary><span class="sec-t">{html.escape(s.get("title", ""))}</span><br>' + ''.join(f'<span class="kw">{html.escape(k)}</span>' for k in s.get('keywords', [])) + '</summary>')
-                for p in s.get('paragraphs', []): h.append(f'<p>{html.escape(p)}</p>')
-                if s.get('quote'): h.append(f'<blockquote>{html.escape(s["quote"])}</blockquote>')
+                paras = s.get('paragraphs', []); q = s.get('quote') or ''
+                at = len(paras) - 1
+                if q and paras:  # 引文挂在与它最像的那一段后面（按三字组重合），不再一律放小节末尾脱离语境
+                    qt = trigrams(q); scores = [len(qt & trigrams(p)) for p in paras]
+                    at = max(range(len(paras)), key=lambda i: scores[i]) if max(scores) > 0 else len(paras) - 1
+                for i, p in enumerate(paras):
+                    h.append(f'<p>{html.escape(p)}</p>')
+                    if q and i == at: h.append(f'<blockquote>{html.escape(q)}</blockquote>')
                 h.append('</details>')
             cov = u.get('coverage') or {}
             h.append(f'<div class="meta">原文 {u["src_chars"]:,} 字 → 重述 {u["out_chars"]:,} 字' + (f' · 源段覆盖 {cov["coverage"]:.0%}' if cov else '') + '</div></details>')
@@ -446,6 +452,20 @@ def rewrite(book, args):
     print(f'{len(jobs)} 节重派 → {out}')
 
 
+def glance(book, args):
+    """速览层导出（一页 deep-prose §八 的检验法）：把全部节名 / 小节标题 / 关键词单独排成一页，
+    交给没读过正文的人——能不能讲出这本书发生了什么？不能就是速览层没写好。"""
+    d = json.load(open(os.path.join(book, 'deepread.json'), encoding='utf-8'))
+    out = [f"# {d['book']} · 速览层（{sum(len(u['sections']) for u in d['units'])} 个小节）", '']
+    part = None
+    for u in d['units']:
+        if u['part'] != part: part = u['part']; out.append(f"\n## {part or '正文'}")
+        out.append(f"### {u['no']}. {u['title']}")
+        for sec in u['sections']: out.append(f"- {sec.get('title', '')}  ｜ {'・'.join(sec.get('keywords', [])[:4])}")
+    path = os.path.join(book, 'deepread-glance.md')
+    open(path, 'w', encoding='utf-8').write('\n'.join(out) + '\n'); print('→', path)
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('cmd'); ap.add_argument('book')
     ap.add_argument('--mode', default='toc-cn'); ap.add_argument('--book', dest='book_title', default=''); ap.add_argument('--author', default='')
@@ -474,6 +494,7 @@ def main():
     elif a.cmd == 'collect': collect(book, a)
     elif a.cmd == 'render': render(book, a)
     elif a.cmd == 'rewrite': rewrite(book, a)
+    elif a.cmd == 'glance': glance(book, a)
 
 
 if __name__ == '__main__':
