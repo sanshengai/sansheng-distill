@@ -293,7 +293,7 @@ def longest_common_run(a, b, minlen=30):
 def collect(book, args):
     units = json.load(open(os.path.join(D(book), 'units.json'), encoding='utf-8'))
     out = {'book': args.book, 'author': args.author, 'units': []}
-    report = []
+    report = []; missing = []; badjson = []
     for u in units:
         f = os.path.join(args.out_dir, f"u{u['no']:03d}.response.txt")
         for alt in (args.out_dir + '-rw2', args.out_dir + '-rw'):  # 重写轮的产物优先
@@ -301,9 +301,9 @@ def collect(book, args):
             if os.path.exists(f2):
                 try: loads(open(f2, encoding='utf-8').read()); f = f2; break
                 except ValueError: pass
-        if not os.path.exists(f): report.append(f"u{u['no']:03d} 缺产物"); continue
+        if not os.path.exists(f): report.append(f"u{u['no']:03d} 缺产物"); missing.append(u['no']); continue
         try: d = loads(open(f, encoding='utf-8').read())
-        except ValueError: report.append(f"u{u['no']:03d} JSON 坏"); continue
+        except ValueError: report.append(f"u{u['no']:03d} JSON 坏"); badjson.append(u['no']); continue
         secs = d.get('sections') or []
         def tidy(p):
             p = re.sub(r'《([^《》（）]+)（[^）]*）》', r'《\1》', p)  # 旁证书名带的「（作者，年份）」很累赘：《何以泡泡玛特（林开平，2025）》→《何以泡泡玛特》
@@ -354,7 +354,10 @@ def collect(book, args):
     print('\n'.join(report))
     tot_in = sum(u['src_chars'] for u in out['units']); tot_out = sum(u['out_chars'] for u in out['units'])
     P = sum(u['coverage']['paragraphs'] for u in out['units']); C = sum(u['coverage']['covered'] for u in out['units'])
-    print(f"合计 原 {tot_in:,} → 出 {tot_out:,}（{tot_out / max(1, tot_in):.2f}）；雷同 {sum(len(u['check']['verbatim_runs']) for u in out['units'])} 处，无据数字 {sum(len(u['check']['unsupported_numbers']) for u in out['units'])} 个，引文不符 {sum(len(u['check']['bad_quotes']) for u in out['units'])} 条；"
+    if missing or badjson:
+        # 缺响应 / 坏 JSON 的节不会进 deepread.json，页面会静默少一节：报出来并非零退出，别让它悄悄过去
+        print(f"🔴 缺响应 {len(missing)} 节 {missing[:20]}；JSON 坏 {len(badjson)} 节 {badjson[:20]} —— 补跑或 rewrite 后重新 collect")
+    print(f"单元 {len(out['units'])}/{len(units)} 节；" + f"合计 原 {tot_in:,} → 出 {tot_out:,}（{tot_out / max(1, tot_in):.2f}）；雷同 {sum(len(u['check']['verbatim_runs']) for u in out['units'])} 处，无据数字 {sum(len(u['check']['unsupported_numbers']) for u in out['units'])} 个，引文不符 {sum(len(u['check']['bad_quotes']) for u in out['units'])} 条；"
           f"源段覆盖 {C}/{P}（{C / max(1, P):.0%}），登记跳过 {sum(len(u['coverage']['skipped']) for u in out['units'])} 段，未交代 {sum(len(u['coverage']['unaccounted']) for u in out['units'])} 段，假声明 {sum(len(u['coverage']['fake_claims']) for u in out['units'])}")
 
 
