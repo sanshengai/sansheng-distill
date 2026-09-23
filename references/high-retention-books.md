@@ -136,6 +136,7 @@ python3 "$SKILL/scripts/verify_high_retention.py" --book-dir "$DATA/<slug>"
 - `semantic_review.reviewer` 如实写审阅方式：Jev 通过的写「Jev <版本> 覆盖初审（p=0.xx）；主控随机抽检 N 条」，人工签的写主控与理由。不把 Jev 通过写成人工审定。
 - Jev 对同一输入多次打分有约 ±0.05 的波动，**以最后一轮为准签署**；最后一轮低于阈值的每一条都必须有主控记录，否则不签。
 - 抽检分母写清楚（抽了多少、从哪个池、发现几处问题），记在 `quality-review.json`。
+- **Jev 调用失败不是打分**：`ok=false` 的条目没有分数，不能按 0 分进补写/重写，也不能按「未支撑/不相关」处理；有失败的那一轮整轮作废重跑（`upgrade_jev.py` 已在有失败时拒绝写结果）。
 
 ### 6.3 试点实测的分母错误（冻结前逐类排查）
 
