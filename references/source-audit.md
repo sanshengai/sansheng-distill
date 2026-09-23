@@ -103,7 +103,6 @@ source-audit.json
 4. claim coverage 的每个 audit flag 恰有 1 条 `audit_flag` 记录，record `line_range` 与
    claim-map immutable range 完全相同。
 
-第二意见（shadow，只出报告不改账本）：`python3 $SKILL/scripts/jev_support_check.py --audit source-audit.json --out <报告.json>` 让 Jev 独立判一遍 `support`，分歧清单供人工复核；`audit_flag` 记录默认不核。
 
 ## 4. claim coverage 与 evidence 对账
 

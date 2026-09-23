@@ -11,13 +11,13 @@ description: Use when 用户要把一本书全文、单个视频（按 1 集）�
 
 **这是入口编排文件。** 先读本文对齐管线,再在每一步按下表**读对应 reference / 跑对应 script**;references 是各步的执行细则,不要凭记忆做。
 
-**单书高保留要求**：用户要求管理书保留 80%–90% 等大部分知识时，先读 [high-retention-books.md](references/high-retention-books.md)，在 Step0–Step7 中增加起稿前知识分母、逐项语义审阅、图意核验及速览/理解/深读三层。`scripts/book_coverage.py` 的数据门与 Step7 实际页面门分别通过，不能以字数比、模型自评或 JSON 齐备代替。管理书选书时先按该文 §0 定「深读档 / 导读档」（核心书默认深读）；深读档的逐项审阅按 §6 走「Jev 初审 + 主控审低分项与 10% 抽检 + 逐句事实审计」，参考实现在 Cowork `读书蒸馏/management-tools/upgrade_*.py`。
+**书籍默认路线（蒸馏任何一本书都先读）**：先按 [high-retention-books.md](references/high-retention-books.md) §0 定档——**深读档**（核心经典）按 §0.3 固定顺序「先冻结知识分母 → 写深读 → 覆盖检查 → 全句事实审计 → 签署放行」执行，默认比例、排除项、审阅预算见 §0.2/§0.4，不再逐本与用户商量；**导读档**走下表 Step0–Step7。机器初审用方舟 Coding Plan，不用按调用计费的判别模型（Jev 已停用于书籍蒸馏）。`scripts/book_coverage.py` 的数据门与 Step7 实际页面门分别通过，不能以字数比、模型自评或 JSON 齐备代替。参考实现在 Cowork `读书蒸馏/management-tools/upgrade_*.py`（操作手册 `UPGRADE-RUNBOOK.md`）。
 
 ## 先分流：蒸馏对象 → 路径
 
 | 蒸馏对象 | 走路径 |
 |---|---|
-| 一本书全文 | 主管线 Step0-B（下表） |
+| 一本书全文 | 先按 high-retention-books.md §0 定档；深读档走该文 §0.3，导读档走主管线 Step0-B（下表） |
 | 单个视频（按 1 集）/ 一个视频系列 | 主管线 Step0-V（下表） |
 | **一个博主/人物的全部作品（跨媒介思想蒸馏）** | **StepC · creator_corpus 路径（`references/creator-craft.md`）** |
 | **一个历史人物的生平、作品、关系、争议与引语（证据型传记）** | **Biography · biography_corpus 路径（`references/biography-craft.md`）** |
