@@ -368,14 +368,18 @@ def collect(book, args):
     except (OSError, ValueError) as exc:
         reject([{'code': 'invalid_units', 'detail': str(exc)}])
     out = {'book': args.book, 'author': args.author, 'units': []}
-    report = []; missing = []; badjson = []; issues = []
+    report = []; missing = []; badjson = []; issues = []; warnings = []
     for u in units:
         f = os.path.join(args.out_dir, f"u{u['no']:03d}.response.txt")
+        bad_alts = []
         for alt in (args.out_dir + '-rw2', args.out_dir + '-rw'):  # 重写轮的产物优先
             f2 = os.path.join(alt, f"u{u['no']:03d}.response.txt")
             if os.path.exists(f2):
                 try: loads(open(f2, encoding='utf-8').read()); f = f2; break
-                except ValueError: pass
+                except ValueError: bad_alts.append(f2)
+        # 改写轮回答坏了就退回上一轮——照做，但必须留痕：否则「改写没效果」和「改写结果没被用上」分不清（2026-09-23《道路与梦想》白跑一轮）
+        for f2 in bad_alts:
+            warnings.append({'code': 'rewrite_response_invalid', 'unit': u['no'], 'path': f2, 'fell_back_to': os.path.basename(os.path.dirname(f))})
         if not os.path.exists(f):
             report.append(f"u{u['no']:03d} 缺产物"); missing.append(u['no'])
             issues.append({'code': 'missing_response', 'unit': u['no'], 'path': f}); continue
@@ -402,7 +406,9 @@ def collect(book, args):
             if q: body = body.replace(q, '')
         runs = longest_common_run(body, u['text'], 30)
         # 2) 数字有据
-        nums = set(re.findall(r'\d[\d,.]*', re.sub(r'《[^》]*》', '', text_out))); src_nums = set(re.findall(r'\d[\d,.]*', u['text'] + ' '.join(s['text'] + s.get('quote', '') for s in u.get('side', []))))
+        # 千分位空格（「7 000」「6 202 米」）两边都并掉再比，否则重述写「7000」会被判无据（2026-09-23《道路与梦想》32 个误报）
+        thou = lambda t: re.sub(r'(?<=\d)[ \u00a0\u2009](?=\d{3}(?!\d))', '', t)
+        nums = set(re.findall(r'\d[\d,.]*', thou(re.sub(r'《[^》]*》', '', text_out)))); src_nums = set(re.findall(r'\d[\d,.]*', thou(u['text'] + ' '.join(s['text'] + s.get('quote', '') for s in u.get('side', [])))))
         bad_nums = sorted(n for n in nums if n not in src_nums and len(n) >= 2)
         # 3) 引文逐字
         bad_q = [q[:30] for q in quotes if q and re.sub(r'\s', '', q) not in re.sub(r'\s', '', u['text'])]
@@ -435,11 +441,12 @@ def collect(book, args):
     print('\n'.join(report))
     if issues: reject(issues)
     _atomic_collect_json(os.path.join(book, 'deepread.json'), out)
-    _atomic_collect_json(diagnostics, {'status': 'accepted', 'formal_output_replaced': True, 'units': len(out['units']), 'issues': []})
+    _atomic_collect_json(diagnostics, {'status': 'accepted', 'formal_output_replaced': True, 'units': len(out['units']), 'issues': [], 'warnings': warnings})
     tot_in = sum(u['src_chars'] for u in out['units']); tot_out = sum(u['out_chars'] for u in out['units'])
     P = sum(u['coverage']['paragraphs'] for u in out['units']); C = sum(u['coverage']['covered'] for u in out['units'])
     print(f"单元 {len(out['units'])}/{len(units)} 节；" + f"合计 原 {tot_in:,} → 出 {tot_out:,}（{tot_out / max(1, tot_in):.2f}）；雷同 {sum(len(u['check']['verbatim_runs']) for u in out['units'])} 处，无据数字 {sum(len(u['check']['unsupported_numbers']) for u in out['units'])} 个，引文不符 {sum(len(u['check']['bad_quotes']) for u in out['units'])} 条；"
-          f"源段覆盖 {C}/{P}（{C / max(1, P):.0%}），登记跳过 {sum(len(u['coverage']['skipped']) for u in out['units'])} 段，未交代 {sum(len(u['coverage']['unaccounted']) for u in out['units'])} 段，假声明 {sum(len(u['coverage']['fake_claims']) for u in out['units'])}")
+          f"源段覆盖 {C}/{P}（{C / max(1, P):.0%}），登记跳过 {sum(len(u['coverage']['skipped']) for u in out['units'])} 段，未交代 {sum(len(u['coverage']['unaccounted']) for u in out['units'])} 段，假声明 {sum(len(u['coverage']['fake_claims']) for u in out['units'])}"
+          + (f"；🔴 改写轮回答坏、已退回上一轮 {len(warnings)} 节（见 collect-diagnostics.json 的 warnings）" if warnings else ''))
 
 
 # ---------- render ----------

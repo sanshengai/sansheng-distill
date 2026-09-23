@@ -57,6 +57,25 @@ class CollectSafetyTests(unittest.TestCase):
         output = json.loads(self.formal.read_text())
         self.assertEqual(output['units'][0]['sections'][0]['paragraphs'], [text])
 
+    def test_bad_rewrite_response_falls_back_but_is_recorded(self):
+        rw = self.raw / 'responses-rw'; rw.mkdir()
+        (rw / 'u001.response.txt').write_text('{"sections": [坏掉的 JSON', encoding='utf-8')
+        result = self.cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        diagnosis = json.loads((self.raw / 'collect-diagnostics.json').read_text())
+        self.assertEqual([(w['code'], w['unit'], w['fell_back_to']) for w in diagnosis['warnings']],
+                         [('rewrite_response_invalid', 1, 'responses')])
+        self.assertIn('已退回上一轮 1 节', result.stdout)
+
+    def test_thousands_space_is_not_unsupported_but_fabricated_number_is(self):
+        self.unit['text'] = '当年员工增加到7 000人，土地储备6 202亩。'
+        self.dump(self.raw / 'units.json', [self.unit])
+        self.section['paragraphs'] = ['员工增加到7000人，土地储备6202亩，另有8000人待岗。']
+        self.dump(self.responses / 'u001.response.txt', {'sections': [self.section]})
+        self.assertEqual(self.cli().returncode, 0)
+        check = json.loads(self.formal.read_text())['units'][0]['check']
+        self.assertEqual(check['unsupported_numbers'], ['8000'])
+
     def test_missing_later_unit_preserves_all_prior_bytes(self):
         self.dump(self.raw / 'units.json', [self.unit, {**self.unit, 'no': 2}])
         self.rejected('missing_response')
