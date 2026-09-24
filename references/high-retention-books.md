@@ -38,7 +38,7 @@
 3. **知识清单（分母）**：写作模型按小节抽取（每个有效段至少进一条）→ 按块归并到 3～4 条/千字 → 机器忠实度检查一轮 → 主控审被标出的条目并随机抽 10% → 修补一轮 → 冻结（有效段全有去向、图段由 figure 类条目承接，反过来每条 figure 类条目也要整张承接一张图）。
 4. **写深读并先审事实**：按小节装单元逐条讲全 → 本地检查照抄、元话语和内部编号；可定点修的地方不整单元重写 → 对深读**全部句子**跑一轮机器事实审计（人物、数字、因果、真实与虚构、观点归属、凭空树靶子、加戏）→ 主控逐句复核被改的句子（审计模型也会编造；删掉的内容能在原文找到的先不落稿，见 §6.6）→ 按句式扫描复述式加戏 → 合著书全书搜作者名，共同主张写成「作者」。
 5. **覆盖检查与定点回审**：在事实修订落稿后才做首轮全量覆盖 → 补写一轮 → 只复查正文变过的单元。补写新增的句子再做定点原文事实核对，不能把首次全句审计的绿灯沿用到新句子；装配后只重判正文或知识陈述哈希变化的单元。
-6. **装配**：旧导读沿用，新增阅读部分补写理解层；卡片挂真实深读单元；锚点写「原书第 N 章」。
+6. **装配**：旧导读沿用，只为新增阅读部分补写理解层；没有旧导读的新书用 `assemble_new_chapters.py` 逐有效来源章产出待审章节草稿，主控复核后补齐书级观点与页面数据。卡片挂真实深读单元；锚点写「原书第 N 章」。
 7. **签署与放行**：主控抽检（高风险句 30 句对原文；正文删改掉的说法在分母里是否还写着；讲全项随机 10%）→ 签署 → `book_coverage.py` 退出码 0 → 渲染 → `verify_high_retention.py` 全过 → 用 Read 看截图（首屏、桌面与手机展开的深读单元）。
 8. **上站与沉淀**：发布到网站、更新跨书索引；在产品工作区（如 `一页/管理/`）追加工作日志、更新书目进度。
 
@@ -214,4 +214,4 @@ python3 "$SKILL/scripts/verify_high_retention.py" --book-dir "$DATA/<slug>"
 
 七本管理书（2026-09-23）：分母 449～1,270 条/本（3.9～4.8 条/千字），深读 7.4 万～20.9 万字/本，全程 1.5～5 小时/本；各书事实抽检错误率 7.5%～16.7%，全部经过全句审计与主控复核。
 
-参考实现在 Cowork 仓 `读书蒸馏/management-tools/`，命令顺序与审阅预算见 `UPGRADE-RUNBOOK.md`：source_map（扫描件找图 pdf_figures）→ inventory → consolidate → check faithful → rewrite_items →（audit_items）→ freeze → deepread write/polish → link → check coverage → deepread revise → check coverage --reuse → check fact → restate_scan → samples fact/fragments → assemble → samples covered → sign → render → shots；发布用 `publish_booknote.py`，上线收尾（i18n 计数、线上核验、工作日志）用 `upgrade_closeout.py`。页面模板参照一律用冻结副本，不引用别的书正在用的活页面。产物与本文件 §4 契约一致，最后仍以 `book_coverage.py` 与 `verify_high_retention.py` 放行。
+参考实现在 Cowork 仓 `读书蒸馏/management-tools/`，命令顺序与审阅预算见 `UPGRADE-RUNBOOK.md`：source_map（扫描件找图 pdf_figures）→ inventory → consolidate → check faithful（只一轮）→ rewrite_items →（audit_items）→ freeze → deepread write/polish → link → check fact → 主控裁决 + samples fact/fragments → check coverage → deepread revise → 补写句定点事实复核 → check coverage --reuse → assemble（新书章节走 `assemble_new_chapters.py`，旧书走 `upgrade_assemble.py`）→ samples covered → sign → render → shots。装配后若正文或分母变化，只按哈希复查相应单元并更新签署。发布用 `publish_booknote.py`，上线收尾（i18n 计数、线上核验、工作日志）用 `upgrade_closeout.py`。页面模板参照一律用冻结副本，不引用别的书正在用的活页面。产物与本文件 §4 契约一致，最后仍以 `book_coverage.py` 与 `verify_high_retention.py` 放行。
