@@ -56,6 +56,7 @@
 ### 0.5 算力分工
 
 - 写作、机器初审（分诊、忠实度、覆盖、事实审计）：**方舟 Coding Plan**（订阅内，不按量计费）；调用前读 `_ops/agent-rules/model-providers.md`。
+- GLM Flash 调 Responses API 时用协议模型名 `glm-5-3-flash`，必须传 `--reasoning-effort minimal`；复用回执时核任务哈希、模型和参数。遗漏该参数会显著增加隐藏推理 token 与等待，可能使长任务返回 `INCOMPLETE:length`。失败只按 job 重派，不以整书重跑补一个回执。
 - 主控（Claude）：定档、读图、复核被标出的问题与审计改动、抽检、签署、看页面。
 - **不用按调用计费的判别模型**：Jev（TypeSafe）2026-09-23 起停用于书籍蒸馏——七本实测每本约 1 美元，且分数在阈值附近波动带来大量重复人工核对。
 
