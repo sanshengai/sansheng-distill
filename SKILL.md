@@ -11,7 +11,7 @@ description: Use when 用户要把一本书全文、单个视频（按 1 集）�
 
 **这是入口编排文件。** 先读本文对齐管线,再在每一步按下表**读对应 reference / 跑对应 script**;references 是各步的执行细则,不要凭记忆做。
 
-**书籍默认路线（蒸馏任何一本书都先读）**：先按 [high-retention-books.md](references/high-retention-books.md) §0 定档并做来源完整性预检；**深读档**（核心经典）按 §0.3 固定顺序「来源放行 → 冻结知识分母 → 写深读 → 全句事实审计并裁决 → 逐项覆盖检查 → 签署放行」执行，默认比例、排除项、审阅预算见 §0.2/§0.4，不再逐本与用户商量；**导读档**走下表 Step0–Step7。机器初审用方舟 Coding Plan，不用按调用计费的判别模型（Jev 已停用于书籍蒸馏）。`scripts/book_coverage.py` 的数据门与 Step7 实际页面门分别通过，不能以字数比、模型自评或 JSON 齐备代替。参考实现在 Cowork `读书蒸馏/management-tools/upgrade_*.py`（操作手册 `UPGRADE-RUNBOOK.md`）。
+**书籍默认路线（蒸馏任何一本书都先读）**：先按 [high-retention-books.md](references/high-retention-books.md) §0 定档并做来源完整性预检；**深读档**（核心经典）按 §0.3 固定顺序「来源放行 → 冻结知识分母 → 写深读 → 全句事实审计并裁决 → 逐项覆盖检查 → 连续阅读验收 → 签署放行」执行，默认比例、排除项、审阅预算见 §0.2/§0.4，写法与跨书去重见 §5.1，不再逐本与用户商量；**导读档**走下表 Step0–Step7。机器初审用方舟 Coding Plan，不用按调用计费的判别模型（Jev 已停用于书籍蒸馏）。`scripts/book_coverage.py` 的数据门与 Step7 实际页面门分别通过，不能以字数比、模型自评或 JSON 齐备代替。参考实现在 Cowork `读书蒸馏/management-tools/upgrade_*.py`（操作手册 `UPGRADE-RUNBOOK.md`）。
 
 ## 先分流：蒸馏对象 → 路径
 
