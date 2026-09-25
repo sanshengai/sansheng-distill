@@ -15,7 +15,7 @@ import re
 import sys
 import unicodedata
 from collections import Counter, defaultdict
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Mapping
 
 
@@ -113,7 +113,14 @@ def _is_book_relative_file(value: Any) -> bool:
         return False
     raw = value.strip()
     path = Path(raw)
-    return not path.is_absolute() and len(path.parts) == 1 and path.name not in {".", ".."}
+    windows_path = PureWindowsPath(raw)
+    return (
+        not path.is_absolute()
+        and not windows_path.drive
+        and "\\" not in raw
+        and len(path.parts) == 1
+        and path.name not in {".", ".."}
+    )
 
 
 def sha256_file(path: Path) -> str:
