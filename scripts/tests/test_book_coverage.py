@@ -97,6 +97,7 @@ class CoverageCLI(unittest.TestCase):
     def test_complete_positive_and_excluded_front_matter(self):
         report = self.run_case(fixture(), 0)
         self.assertTrue(report["release_ready"])
+        self.assertNotIn("/", report["book_dir"])
         self.assertEqual(report["metrics"]["book"]["ratio"], 1)
         self.assertNotIn("c00", report["metrics"]["chapters"])
         self.assertEqual(report["metrics"]["effective_paragraphs"], 10)

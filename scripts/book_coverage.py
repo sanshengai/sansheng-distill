@@ -119,7 +119,7 @@ def audit_book(book_dir: Path) -> dict:
         return {
             "schema_version": VERSION,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "book_dir": str(book_dir.resolve()),
+            "book_dir": book_dir.name,
             "input_sha256": hashes,
             "machine_pass": machine_pass,
             "semantic_review_complete": semantic_complete,
