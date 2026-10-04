@@ -16,6 +16,7 @@
 | aggregate-author | aggregation-steps.md StepA；author-craft.md §1–§3 输入/构建、§4–§5 视图、§6 需要外部研究时读 |
 | aggregate-topic | aggregation-steps.md StepB；topic-craft.md §1–§3 输入/构建、§4–§5 比较视图、§6 需要外部争议时读 |
 | category-map | category-framework.md；不把当前书单当完整学科，不自动蒸新书 |
+| subject-curriculum | subject-curriculum.md；先盘点公认分法、给对比由用户选骨架，再分站、学派与内容件，改写后必做独立事实复核 |
 
 ## 2. 条件资源
 

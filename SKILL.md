@@ -28,6 +28,7 @@ description: 将书籍、单集或系列视频、创作者作品、人物生平�
 | 某人的“领导力/教育思想”等专题、某一时段或问题 | **person-topic**：限定范围，区分思想与史实 | [person-topics.md](references/person-topics.md)；不自动采集全人生/全部作品 |
 | 已蒸同作者 ≥2 本的思想演变；同问题 比较（正式主题页须 ≥3 本；两书可交比较资料） | **aggregate-author / aggregate-topic**：只聚合已有资料 | [aggregation-steps.md](references/aggregation-steps.md) 对应 StepA 或 StepB |
 | 心理学/管理学等类别全景、书目与空白 | **category-map**：类别导航 | [category-framework.md](references/category-framework.md) |
+| 把某个领域的已蒸书库做成一门能学完的学科（总览、分站、学派、学习顺序、关键想法、争论） | **subject-curriculum**：学科化，先给几种分法对比由用户选骨架 | [subject-curriculum.md](references/subject-curriculum.md) §1 |
 | 企业档案、经营机制、财务、控制权或企业现状 | **企业研究**主导；子任务分别返回上述路线 | 当前环境有 `sandy-firms` 时转企业研究入口；没有时按其已有项目契约处理，不冒充本 Skill 能独立完成企业研究 |
 
 “蒸馏这个人”先看目标是思想还是人生；目标未明且缺上下文时再澄清。“人物专题”优先于“人物全量”，“已蒸聚合”优先于“从零采集”。不因作者身份自动创建人物库。
