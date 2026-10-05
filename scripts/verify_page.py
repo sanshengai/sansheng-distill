@@ -353,6 +353,9 @@ def lint_distill_schema(data: dict) -> list:
             continue
         if is_video and k in VIDEO_EXEMPT_TOP_KEYS:
             continue
+        # reader 可明确不公开原文引句；仍要求 quotes 键为数组。
+        if k == "quotes" and data.get("quality_profile") == "reader" and data.get(k) == []:
+            continue
         if _missing(k):
             v.append(f"[schema] 缺顶层必需键 {k!r}(archetype={((prof or {}).get('archetype')) or 'legacy'} 未声明省略)")
     return v
@@ -435,6 +438,39 @@ def lint_psychology_distill(data: dict, required_domain: str | None = None) -> l
 def _effective_len(t: str) -> int:
     """去标点空白后的有效长度(CJK/字母/数字计入;Python3 \\w 默认含 CJK,不吃中文)。"""
     return len(re.sub(r"[^\w]", "", t, flags=re.UNICODE))
+
+
+def _has_source_note(html: str) -> bool:
+    """认可传统出处及 reader 单元出处；CSS、注释和空节点不能代替出处。"""
+    class Notes(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.active_tag = None
+            self.parts = []
+            self.found = False
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            classes = set((attrs.get("class") or "").split())
+            if classes & {"src-note", "deep-unit-source"}:
+                style = re.sub(r"\s+", "", attrs.get("style") or "").lower()
+                if "hidden" not in attrs and attrs.get("aria-hidden") != "true" and "display:none" not in style:
+                    self.active_tag = tag
+                    self.parts = []
+
+        def handle_data(self, data):
+            if self.active_tag:
+                self.parts.append(data)
+
+        def handle_endtag(self, tag):
+            if tag == self.active_tag:
+                self.found |= bool("".join(self.parts).strip())
+                self.active_tag = None
+
+    parser = Notes()
+    parser.feed(html)
+    parser.close()
+    return parser.found
 
 
 def _has_class(html: str, cls: str) -> bool:
@@ -656,8 +692,8 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
     # 「显示出处」开关 #srcToggle 已废 + .src-note 常显存在
     if 'id="srcToggle"' in html:
         v.append('[lint] 「显示出处」开关 #srcToggle 应删除(出处改 .src-note 随文常显)')
-    if 'class="src-note"' not in html and "src-note" not in re.sub(r"<!--.*?-->", "", html, flags=re.S):
-        v.append("[lint] 缺常显出处 .src-note")
+    if not _has_source_note(html):
+        v.append("[lint] 缺有实际文字的常显出处 .src-note / .deep-unit-source")
     # 零外链(script/link/img)
     if re.search(r'<script[^>]+src=["\']https?://', html) or re.search(r'<link[^>]+href=["\']https?://', html) \
        or re.search(r'<img[^>]+src=["\']https?://', html):
@@ -1148,11 +1184,11 @@ def _text_matches_any(rendered: str, candidates: list[str]) -> bool:
 def _research_has_status(rendered: str, status: str) -> bool:
     """允许状态代码或稳定中文标签，但必须在外证栏可见文本中真实出现。"""
     labels = {
-        "supported": ("supported", "有支持", "证据支持"),
-        "mixed": ("mixed", "证据混合", "结果混合"),
+        "supported": ("supported", "站得住", "有支持", "证据支持"),
+        "mixed": ("mixed", "证据混杂", "证据混合", "结果混合"),
         "contested": ("contested", "有争议", "仍有争议"),
-        "not_supported": ("not_supported", "不支持", "尚未支持"),
-        "not_testable": ("not_testable", "不可检验", "不适用检验"),
+        "not_supported": ("not_supported", "没能复现", "不支持", "尚未支持"),
+        "not_testable": ("not_testable", "无法检验", "不可检验", "不适用检验"),
     }
     raw = str(rendered or "").lower()
     if re.search(rf"(?<![a-z_]){re.escape(status.lower())}(?![a-z_])", raw):
@@ -1163,11 +1199,11 @@ def _research_has_status(rendered: str, status: str) -> bool:
 
 def _research_has_replication_status(rendered: str, status: str) -> bool:
     labels = {
-        "replicated": ("replicated", "已复制", "复制成功", "重复成功"),
-        "mixed": ("mixed", "复制结果混合", "重复结果混合"),
-        "failed": ("failed", "复制失败", "重复失败"),
-        "not_attempted": ("not_attempted", "尚未复制", "未尝试复制", "未直接复制"),
-        "not_applicable": ("not_applicable", "复制不适用", "不适用复制"),
+        "replicated": ("replicated", "已复现", "已复制", "复制成功", "重复成功"),
+        "mixed": ("mixed", "部分复现", "复制结果混合", "重复结果混合"),
+        "failed": ("failed", "未能复现", "复制失败", "重复失败"),
+        "not_attempted": ("not_attempted", "尚未检验", "尚未复制", "未尝试复制", "未直接复制"),
+        "not_applicable": ("not_applicable", "不适用", "复制不适用", "不适用复制"),
     }
     raw = str(rendered or "").lower()
     if re.search(rf"(?<![a-z_]){re.escape(status.lower())}(?![a-z_])", raw):
@@ -2653,11 +2689,13 @@ def smoke(path: Path, screenshot: str | None, distill: dict | None = None,
                     v.append("[渲染] 浏览器后退后 #sub-author 子视图未关闭")
         # .src-note 常显(computed display ≠ none)
         sn = pg.locator(".src-note").first
+        if not sn.count():
+            sn = pg.locator(".deep-unit-source").first
         if sn.count():
             if sn.evaluate("el => getComputedStyle(el).display") == "none":
                 v.append("[渲染] .src-note 出处被隐藏(应随文常显,display≠none)")
         else:
-            v.append("[渲染] 页面无 .src-note 常显出处")
+            v.append("[渲染] 页面无 .src-note / .deep-unit-source 常显出处")
         # 主题切换(竖列弹层):先点触发按钮开弹层、再点某主题项;挑与当前主题不同且有具名 token 块的第一颗
         if pg.locator("[data-theme-pick]").count():
             target = pg.evaluate("""() => {
