@@ -5,6 +5,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from verify_book_review_scope import validate_review_scope
+
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
@@ -27,8 +29,10 @@ def validate_reader_review(distill_path, source_path, receipt_path):
         errors.append("[reader] 正文未显式选择 reader 档")
     if not source.strip():
         errors.append("[reader] 来源不得为空")
-    if receipt.get("schema") != "reader-review-v1":
-        errors.append("[reader] 审阅记录 schema 必须为 reader-review-v1")
+    if receipt.get("schema") not in {"reader-review-v1", "reader-review-v2"}:
+        errors.append("[reader] 审阅记录 schema 必须为 reader-review-v2（v1仅兼容旧收据）")
+    if receipt.get("schema") == "reader-review-v2":
+        errors.extend(validate_review_scope(receipt.get("review_scope")))
     for key, expected in (("distill_sha256", sha256(raw)), ("source_sha256", sha256(source))):
         if receipt.get(key) != expected:
             errors.append(f"[reader] {key} 与当前输入不符")

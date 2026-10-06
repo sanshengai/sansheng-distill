@@ -133,6 +133,8 @@
 
 ## 3. 科学范围与旧状态
 
+先执行SKILL.md的书籍复审范围门：普通书默认接受原书事实，不因科学主题主动核验全部核心观点。下列科学卡契约只在用户或实际产品明确要求科学支持层时适用；过时更新按具体变化线索定项补充，不自动启动整书研究。
+
 核心观点/行动规则的研究范围由重要性决定，可先选约5–8个经验结论，但不是硬上限。所有对外科学证据卡仍遵守 enrich.md 的完整字段、claim_id对应和终审契约。不能把本来重要的行动结论移出核心，只为少做核验。
 
 未进入研究范围的非核心经验描述可作为明确归属的原书记载保留，注明未独立核验；不为其捏造证据卡，不将“没有查”写为not_supported或not_testable。框架/数学/规范建议按性质裁决，不套经验验证标签。原书来源忠实与当前科学正确分开签署；科学收据只签实际核过的对象。研究子Agent连续因网络中断失败时，不无限重派：由主控按DOI直接核对文献（题名、年份、期刊、第一作者，摘要依次取Crossref、Europe PMC、Semantic Scholar），取不到摘要就如实写取不到，不凭记忆补结论；有工具时做成命令，输出保持很小。旧书重蒸取消/改写的claim按语义登记保留、合并、替换或退出卡片，并核读者页没有隐藏重要结论。既有消费者如要求更大的研究范围，先真实完成或正式适配，不能仅改范围字段把旧硬门禁变绿。
@@ -151,7 +153,7 @@ strict与reader分别报告。reader完整性依据章节主论证/案例/反例
 
 收据契约由 `scripts/verify_reader_review.py` 验证，不自动生成签署：
 
-- 顶层 `schema: "reader-review-v1"`；当前文件字节的 `distill_sha256`、`source_sha256`；`authorization` 记录入口效率默认及本轮范围，或用户另指定的取舍；`reviewer`、ISO `reviewed_at`、`review_evidence` 记录实际审阅者、时间和审阅包位置；`unresolved_material_errors` 必须为整数0。
+- 顶层 `schema: "reader-review-v2"` 与内嵌 `review_scope`（须通过书籍复审范围门；v1仅兼容旧收据）；当前文件字节的 `distill_sha256`、`source_sha256`；`authorization` 记录入口效率默认及本轮范围，或用户另指定的取舍；`reviewer`、ISO `reviewed_at`、`review_evidence` 记录实际审阅者、时间和审阅包位置；`unresolved_material_errors` 必须为整数0。
 - `chapters` 与正文章节 `no` 集合精确一致，每项含正文 UTF-8 哈希 `narrative_sha256`、`fidelity: "reviewed"`、实际来源/审阅定位 `evidence`，以及 `coverage` 四项：`argument`、`cases`、`counterexamples`、`limits`。每项是含 `status` 和非空 `note` 的对象；主论证必须 reviewed，其余可 reviewed 或 not_applicable，后者写明原部分为何没有此项。记录实际审阅发现，不能批量填“均已审阅”代替审阅。
 
 本档用非空连续正文与逐章审阅记录替代固定800字和每章必配摘录；有价值的原话仍可保留，摘录长度/版权、来源锚点、科学字段、高后果约束及其他页面检查继续执行。源短不注水，源无必要原话不强配摘录。未选reader的旧输入保持原有校验行为。
