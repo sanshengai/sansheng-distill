@@ -569,7 +569,8 @@ def anchor_ok(s) -> bool:
 
 
 def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None,
-              allow_placeholder: bool = False, required_domain: str | None = None) -> list:
+              allow_placeholder: bool = False, required_domain: str | None = None,
+              production_only: bool = False) -> list:
     """allow_placeholder=True 仅供校验 templates/ 下的**骨架模板**(天然含 {{槽}}/dummy 示例)时使用;
     校验成品页一律用默认 False -- 成品残留占位符 = Step6 没填槽就交付。"""
     v = []
@@ -642,7 +643,7 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
         m = re.search(r"<h3[^>]*>(.*?)</h3>", body, re.S)
         if m:
             title = _strip_tags(m.group(1)).strip()
-            if gon_h("G8") and is_bad_title(title):  # 论点式标题门禁(语录/考试等 profile 可关,见 render_profile)
+            if not production_only and gon_h("G8") and is_bad_title(title):  # 论点式标题门禁(语录/考试等 profile 可关,见 render_profile)
                 v.append(f"[lint] 章标题非论点式(G8): {title!r}")
     # 书籍封面 img.cb-cover[src^="data:image"]
     _cover_m = (re.search(r'<img[^>]*\bclass="[^"]*\bcb-cover\b[^"]*"[^>]*\bsrc="(data:image[^"]*)"', html)
@@ -762,7 +763,7 @@ def lint_html(html: str, distill: dict | None = None, enrich: dict | None = None
         v += lint_psychology_html(html, distill, enrich)
     # 契约门禁(可选)
     if distill is not None:
-        v += lint_distill(distill, required_domain=required_domain)
+        v += lint_distill(distill, required_domain=required_domain, production_only=production_only)
     return v
 
 
@@ -1385,7 +1386,24 @@ def _norm_source_text(value: str) -> str:
     return re.sub(r"\s+", "", value or "")
 
 
-def lint_source_grounding(data: dict, source_text: str) -> list:
+def verified_production_style(distill_path: Path, source_path: Path, review_path: Path) -> bool:
+    """Accept native headings and within-unit repetition only with a valid explicit production receipt.
+
+    Bare render-profile flags cannot enable this path. Empty files, omitted units,
+    stale hashes and fake content-review signatures remain rejected by the receipt validator.
+    """
+    if not distill_path or not source_path or not review_path:
+        return False
+    if validate_reader_review(distill_path, source_path, review_path):
+        return False
+    try:
+        receipt = json.loads(Path(review_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return receipt.get("schema") == "reader-production-v1"
+
+
+def lint_source_grounding(data: dict, source_text: str, *, production_only: bool = False) -> list:
     """事实底线：摘录能逐字定位、章节锚点存在，且正文没有重复或编辑流程注水。"""
     v, source = [], _norm_source_text(source_text)
     chapter_nos = {str(ch.get("no")) for ch in (data.get("chapters", []) or [])}
@@ -1414,7 +1432,7 @@ def lint_source_grounding(data: dict, source_text: str) -> list:
         for sentence in re.split(r"(?<=[。！？!?])", narrative):
             if len(sentence) < 40:
                 continue
-            if sentence in seen_sentences:
+            if not production_only and sentence in seen_sentences:
                 v.append(f"[source] 第{no}章 narrative 存在≥40字重复句")
                 break
             seen_sentences.add(sentence)
@@ -1443,14 +1461,14 @@ def lint_source_grounding(data: dict, source_text: str) -> list:
 
 
 def lint_distill(data: dict, source_text: str | None = None,
-                 required_domain: str | None = None) -> list:
+                 required_domain: str | None = None, *, production_only: bool = False) -> list:
     """distill.json 契约门禁(§7 可机拦部分 G7-G22):evidence_level(G7)/ 章标题(G8)/ narrative(G9)/ §5.1 六类 anchor /
     excerpts(G14)/ primary·featured(G15)/ layman_analogy(G10)/ soul_module(G11)/ self_check(G12)/
     action_chain(G13)/ cover_intro(G16)/ detail(G17)/ credibility_verdict(G18)/ core_question(G19)/ chain_steps(G20)/
     hook(G21)/ chain_step 合法性 / certainty(G22,仅 stakes=high 激活)。"""
     v = []
     if source_text is not None:
-        v += lint_source_grounding(data, source_text)
+        v += lint_source_grounding(data, source_text, production_only=production_only)
     # T0-S schema 完整性(恒校验,先于取值校验:字段整个缺失时下面的 for 循环全部空转)
     v += lint_distill_schema(data)
     # G23 是 domain 条件门，不受 render_profile.active_gates 控制。
@@ -1484,7 +1502,7 @@ def lint_distill(data: dict, source_text: str | None = None,
             if not reader and narr_len < floor:
                 v.append(f"[distill] 第{no}章 narrative {narr_len} 字 < {floor}(G9 详实度)")
         # G8 章标题黑名单
-        if gon("G8") and is_bad_title(ch.get("title", "") or ""):
+        if not production_only and gon("G8") and is_bad_title(ch.get("title", "") or ""):
             v.append(f"[distill] 第{no}章标题非论点式(G8): {ch.get('title')!r}")
         # G14 excerpts:详实逐章档书籍每章 ≥1(视频/语录/清单档不强求),版权红线 ≤150 与 §5.1 anchor 恒为 Tier-0
         exs = ch.get("excerpts", []) or []
@@ -2809,10 +2827,14 @@ def main():
         if sib.exists():
             enrich_path = sib
             enrich = json.loads(sib.read_text(encoding="utf-8"))
-    v = lint_html(html, distill, enrich, required_domain=a.require_domain)
+    production_only = False
+    review_errors = []
     if isinstance(distill, dict) and distill.get("quality_profile") == "reader":
         review_path = a.reader_review or Path(a.distill).parent / "reader-review.json"
-        v += validate_reader_review(a.distill, a.source, review_path)
+        review_errors = validate_reader_review(a.distill, a.source, review_path)
+        production_only = not review_errors and verified_production_style(a.distill, a.source, review_path)
+    v = lint_html(html, distill, enrich, required_domain=a.require_domain, production_only=production_only)
+    v += review_errors
     if a.require_domain == "psychology":
         v += lint_required_psychology_source_audit(
             page_path,
@@ -2824,7 +2846,7 @@ def main():
         if not distill:
             v.append("[source] --source 必须与 --distill 同时使用")
         else:
-            v += lint_source_grounding(distill, Path(a.source).read_text(encoding="utf-8"))
+            v += (lint_source_grounding(distill, Path(a.source).read_text(encoding="utf-8"), production_only=True) if production_only else lint_source_grounding(distill, Path(a.source).read_text(encoding="utf-8")))
     if not a.skip_interact:
         evidence_page = enrich.get("evidence_page") if isinstance(enrich, dict) else None
         raw_claims = evidence_page.get("claims") if isinstance(evidence_page, dict) else None
