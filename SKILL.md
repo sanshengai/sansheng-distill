@@ -5,7 +5,7 @@ description: 蒸馏工艺：将书籍、单集或系列视频、创作者作品�
 
 # 蒸馏：识别对象，按需加载，复用已有成果
 
-交付忠实、可回查的阅读资料与结构化数据。本 Skill 是工艺层：被产品能力调用时，产品归属、板块位置与产品页面标准以调用方为准，这里不替它决定。默认效率优先：一条生产路线、一套权威正文、有限审阅、定点修复；不为凑流程重蒸。书页、人物库、专题资料的格式由所选路线和实际消费者决定。
+交付忠实、可回查的阅读资料与结构化数据。本 Skill 是工艺层：被产品能力调用时，产品归属、板块位置与产品页面标准以调用方为准，这里不替它决定。普通书默认 production_only：一条生产路线、一套权威正文、明确制作问题定点修复；内容审阅仅在用户要求时安排，不为凑流程重蒸。书页、人物库、专题资料的格式由所选路线和实际消费者决定。
 
 ## 1. 先识别本轮任务
 
@@ -19,7 +19,7 @@ description: 蒸馏工艺：将书籍、单集或系列视频、创作者作品�
 
 | 意图 / 识别线索 | 主路线 | 首次只读 |
 |---|---|---|
-| “蒸馏这本书”，保留全书主要论证 | **book-reader**：普通新书默认完整读者版 | [reader-edition-books.md](references/reader-edition-books.md) §1–§2；后续按阶段读 |
+| “蒸馏这本书”，保留全书主要论证 | **book-reader**：普通新书默认完整读者版 | [reader-edition-books.md](references/reader-edition-books.md) §1–§2 + [book-writing-quality.md](references/book-writing-quality.md)；后续按阶段读 |
 | 明确逐项审计、严格深读、精确覆盖；现有严格书续跑 | **book-strict**：严格知识分母与签署 | 新任务读 [high-retention-books.md](references/high-retention-books.md) §0；续跑先读当前阶段与 §6 变更契约 |
 | 明确只要导读、概览、低成本浏览页 | **book-guide**：导读主管线 | [pipeline-steps.md](references/pipeline-steps.md) 对应行 + [pipeline-rules.md](references/pipeline-rules.md) 适用门 |
 | 单个视频、播放列表、课程合集，目标是这些作品的内容 | **video-series**：单集是单成员系列 | pipeline-steps.md 的 Step0-V；[method.md](references/method.md) §V.0 |
@@ -36,23 +36,25 @@ description: 蒸馏工艺：将书籍、单集或系列视频、创作者作品�
 人物全传默认以出版传记为依据，保留连续故事并融合补充材料的独有细节；不设默认硬性字数配额。稿件阅读检查遗漏、重复、无据增写和接续，普通出版事实不逐条外查；篇幅要求与补查边界按 biography-craft.md §0 执行。
 网页人物传记交付同时按 biography-craft.md §0.5 准备头像、逐章开篇图、主题曲和统一排版；只交稿或资料不触发这些产品配套。
 
-## 书籍复审范围门（派任务前必过）
+## 书籍执行范围（派任务前必过）
 
 **蒸馏不是替原书做学术审计。原书的事实、案例与作者判断默认接受为来源，不逐条外查真假；检查的是“有没有忠实、完整地讲清原书”。** 不因育儿、心理学、年代久远或模型声称“可能误读”自动扩成事实审判。原文没给研究设计、页码或提名机构，不构成蒸馏缺陷；不为每句作者主张追加免责声明。
 
 只开放两类书外补查：①已有具体变化线索的过时内容，附原书位置、变化理由及当前资料，保留作者原意，另作简短更新；②用户明确授权的具体外查对象。书龄10年/20年本身不证明过时。不把普通书升级为研究项目。独立新写的学科总览/站故事、明确承诺科学支持的证据卡和当前医疗等操作指导，按各自契约核自己新增的主张，不能反向要求全书事实重证；已有消费者需证据卡时明确适配，不能伪签科学通过。
 
-**执行入口**：每次派书籍写作/复审任务前，以及接收拟采用意见后，必须运行 `python3 scripts/verify_book_review_scope.py <范围.json>`；失败不派发、不进入修订队列。范围为 `schema: book-review-scope-v1`、`book_facts: accept_as_source`、`exceptions: []`、非空 `items`；每项含唯一id与kind。默认kind仅 `source_fidelity/material_omission/author_attribution/unsupported_addition`；`style` 必须 `blocking:false`。`dated_update/external_truth_check` 必须引用对应例外id，例外必含具体claim及source_location，前者另含change_reason/current_source，后者另含user_authorization。任务文字须明确上述禁区；校验器不理解自然语言，不以PASS代替主控判别。
+**实际派发入口**：普通书不自动派内容审核。批量模型任务使用 [book-wave-execution.md](references/book-wave-execution.md) 的单一清单及 `scripts/run_book_wave.py`；范围检查在实际请求之前执行，并向最终提示注入禁区，保存清单和实际任务哈希。已有项目驱动须接入同一编译检查，不直接派未检查任务。操作类型须如实申报；结构门不能识破所有自然语言越界，也不证明内容正确。
+
+用户另要求内容审阅时，用 `requested_review` 记录授权，限一次有效审阅及变化处修复。审阅范围与采用意见仍运行 `scripts/verify_book_review_scope.py`，协议由读者版§5维护；不为写作任务伪造一份审阅范围。
 
 **用户明确取消内容审核时**：停止全部书本内容审阅任务，包括名为来源忠实度的整轮复审；并行仅做生产。只修明确的缺章、坏文件、图片错位和页面功能问题。书页采用 `reader-production-v1` 制作记录，填写用户指令、来源/正文哈希与实际装配检查，`content_review_performed:false`，不得伪填 `fidelity:reviewed` 或语义覆盖签收。该记录表示生产交付，不表示内容或科学审核通过。已有审阅不重跑。本规则优先于路线参考里的默认审核步骤。
 
-新书审阅收据用 `reader-review-v2`，内嵌通过校验的 `review_scope`，由实际书页验收调用同一范围门；`reader-review-v1` 仅兼容已存在旧收据，新任务不得生成v1逃过范围门。默认一次有效审阅、一次定点修正；误报、次要措辞与忠实原书但未经外查的记载，不能作为新一轮审核触发条件。
+新书审阅收据用 `reader-review-v2`，内嵌通过校验的 `review_scope`，由实际书页验收调用同一范围门；`reader-review-v1` 仅兼容已存在旧收据，新任务不得生成v1逃过范围门。仅获授权的内容审阅默认一次有效审阅、一次定点修正；误报、次要措辞与忠实原书但未经外查的记载，不能作为新一轮审核触发条件。
 
 ## 2. 渐进式披露与效率默认
 
-1. **选一路**：读取上表命中的首读资料；严格深读、读者版、导读三者互斥。本次普通书效率默认已经成立，无需逐书重新申请；明确档位与现有在制书契约优先。
+1. **选一路**：读取上表命中的首读资料；严格深读、读者版、导读三者互斥。本次普通书效率默认已经成立，无需逐书重新申请；明确档位与用户最新指令优先；取消审核立即停止，不以旧契约要求继续。
 2. **选当前阶段**：先定位相关标题/字段，再读对应段；长文不整份灌入。各阶段条件导航见 [reference-map.md](references/reference-map.md)，只在查找资源时打开。
-3. **复用与停止**：相同来源、正文和依赖版本的有效证据直接复用。一轮有效审核后只修实质错误并复核变化；发现系统性错误才扩大审查。预算未知不编数字，成本记录和批量调度仅在需要时读 [book-batch-operations.md](references/book-batch-operations.md)。
+3. **复用与停止**：相同来源、正文和依赖版本的有效证据直接复用。获授权的一轮审核后只修实质错误并复核变化；普通制作不因“可以更好”升级审查。预算未知不编数字，成本记录和批量调度仅在需要时读 [book-batch-operations.md](references/book-batch-operations.md)。
 4. **附加规则按条件加载**：心理学科学支持另读 [enrich.md](references/enrich.md) §1.1 和 [source-audit.md](references/source-audit.md)，读者版再读其 §3/§5；替换正式旧书读 [redistillation.md](references/redistillation.md)；仍有知识分母的管理流水线要提效才读 [efficient-book-distillation.md](references/efficient-book-distillation.md)。
 5. **到消费者才验收**：只有制作页面才加载 HTML/设计/品牌参考；只有批量页面交付才跑批量验收。只交资料不强制造 HTML、10 份网站 JSON 或推广文章。实现尚不支持目标格式时做明确适配并验证，不伪造旧契约回执。
 

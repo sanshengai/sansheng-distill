@@ -107,7 +107,7 @@
 | `views_page` | **子视图 `#sub-views`**(全屏) | 书中核心观点的国内外赞同方/质疑方对照,每条带来源 | 整块置 `null`;某 topic 缺一方 → 该方 `[]` |
 | `reviews` | **内联 ⑤**(该信几分·书评) | 评分 + 代表性书评(正反都收),每条带来源 | 整块置 `null`;有评分无书评 → `items: []` 保留 `rating` |
 | `cross_book_external` | **内联 ⑤**(跨书表·外部书立场) | 同一概念在**未蒸过的**其他书里的立场 | 整块置 `null` 或 `[]`(见 §6) |
-| `evidence_page` | **内联 ③**(心理学科学证据卡) | 按 claim_id 显示「原书怎么说 / 外部研究怎么说 / 适用边界与风险」 | 非心理学书省略;心理学书必填且不可为 `null`(G24) |
+| `evidence_page` | **内联 ③**(心理学科学证据卡) | 按 claim_id 显示「原书怎么说 / 外部研究怎么说 / 适用边界与风险」 | 仅在明确要求科学支持层、且消费者启用该契约时必填不可为 `null`(G24)；普通生产不由学科标签自动触发 |
 
 **主页短作者卡 = `author_page.tagline`**(≤50 字页顶导语,渲染层直接取用,比截断 bio_long 更短更钉人),点开 `#sub-author` 看完整结构化档案。因此 enrich.json **不再有独立 `author_card` 字段**--短卡是 `author_page` 的派生视图,单一来源,避免两处数据漂移。旧版 `similar_books` 已由 `similar_page` 取代(升级为带 author/why/fit/order/reading_path 的子视图),不再单列。
 
