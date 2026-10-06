@@ -85,3 +85,50 @@ def test_page_command_enforces_receipt_even_skip_interact(tmp_path, monkeypatch,
     review.unlink()
     assert verify_page.main() == 1
     assert "审阅记录不可读取" in capsys.readouterr().out
+
+
+def production_package(tmp_path):
+    distill, source, review, data, receipt = package(tmp_path)
+    data['chapters'][0].update(source_chapter_id='intro', source_lines=[1, 1])
+    distill.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    receipt.update(schema='reader-production-v1', distill_sha256=sha256(distill.read_bytes()),
+                   content_review_performed=False, book_facts='accept_as_source',
+                   user_no_content_review='用户明确：不要审核书本内容，只处理制作问题。',
+                   review_scope={'schema':'book-review-scope-v1','book_facts':'accept_as_source',
+                                 'exceptions':[], 'items':[{'id':'assembly','kind':'source_fidelity'}]})
+    receipt['chapters'] = [{'no':1, 'source_chapter_id':'intro', 'source_lines':[1,1],
+                           'narrative_sha256':sha256(data['chapters'][0]['narrative'].encode()),
+                           'assembly':'verified','evidence':'原文单元与正文文件绑定，未做内容审核'}]
+    review.write_text(json.dumps(receipt, ensure_ascii=False), encoding='utf-8')
+    return distill, source, review, data, receipt
+
+
+def test_explicit_no_content_review_production(tmp_path):
+    distill, source, review, _, _ = production_package(tmp_path)
+    assert validate_reader_review(distill, source, review) == []
+
+
+@pytest.mark.parametrize('mutation', ['no_user_instruction', 'fake_review', 'missing_unit',
+                                     'false_source_range', 'stale_hash', 'empty_source', 'empty_body'])
+def test_production_rejects_missing_or_fabricated_evidence(tmp_path, mutation):
+    distill, source, review, data, receipt = production_package(tmp_path)
+    if mutation == 'no_user_instruction':
+        del receipt['user_no_content_review']
+    elif mutation == 'fake_review':
+        receipt['chapters'][0]['fidelity'] = 'reviewed'
+    elif mutation == 'missing_unit':
+        receipt['chapters'] = []
+    elif mutation == 'false_source_range':
+        receipt['chapters'][0]['source_lines'] = [1,2]
+    elif mutation == 'stale_hash':
+        distill.write_text(distill.read_text()+'\n')
+    elif mutation == 'empty_source':
+        source.write_text('')
+        receipt['source_sha256'] = sha256(source.read_bytes())
+    elif mutation == 'empty_body':
+        data['chapters'][0]['narrative'] = ''
+        distill.write_text(json.dumps(data))
+        receipt['distill_sha256'] = sha256(distill.read_bytes())
+        receipt['chapters'][0]['narrative_sha256'] = sha256(b'')
+    review.write_text(json.dumps(receipt))
+    assert validate_reader_review(distill, source, review)

@@ -81,9 +81,10 @@ def validate_reader_review(distill_path, source_path, receipt_path):
         errors.append("[reader] 正文未显式选择 reader 档")
     if not source.strip():
         errors.append("[reader] 来源不得为空")
-    if receipt.get("schema") not in {"reader-review-v1", "reader-review-v2"}:
+    production_only = receipt.get("schema") == "reader-production-v1"
+    if receipt.get("schema") not in {"reader-review-v1", "reader-review-v2", "reader-production-v1"}:
         errors.append("[reader] 审阅记录 schema 必须为 reader-review-v2（v1仅兼容旧收据）")
-    if receipt.get("schema") == "reader-review-v2":
+    if receipt.get("schema") in {"reader-review-v2", "reader-production-v1"}:
         errors.extend(validate_review_scope(receipt.get("review_scope")))
     for key, expected in (("distill_sha256", sha256(raw)), ("source_sha256", sha256(source))):
         if receipt.get(key) != expected:
@@ -100,6 +101,13 @@ def validate_reader_review(distill_path, source_path, receipt_path):
     # Counts must be actual integers: False is not a signed zero.
     if type(receipt.get("unresolved_material_errors")) is not int or receipt["unresolved_material_errors"] != 0:
         errors.append("[reader] 未解决实质错误必须明确为整数 0")
+    if production_only:
+        if receipt.get("content_review_performed") is not False:
+            errors.append("[reader] 生产交付不得冒称内容已审阅")
+        if receipt.get("book_facts") != "accept_as_source":
+            errors.append("[reader] 生产交付必须直接接受原书事实")
+        if not isinstance(receipt.get("user_no_content_review"), str) or not receipt["user_no_content_review"].strip():
+            errors.append("[reader] 生产交付必须记录用户明确取消内容审核的指令")
     chapters = data.get("chapters")
     rows = receipt.get("chapters")
     if not isinstance(chapters, list) or not chapters or not isinstance(rows, list) or not rows:
@@ -122,6 +130,20 @@ def validate_reader_review(distill_path, source_path, receipt_path):
         row = by_no.get(no, {})
         if row.get("narrative_sha256") != sha256(body.encode("utf-8")):
             errors.append(f"[reader] 第{no}章正文哈希不符")
+        if production_only:
+            if "fidelity" in row or "coverage" in row:
+                errors.append(f"[reader] 第{no}章生产交付不得伪签忠实度或语义覆盖")
+            if row.get("assembly") != "verified" or not isinstance(row.get("evidence"), str) or not row["evidence"].strip():
+                errors.append(f"[reader] 第{no}章缺制作记录")
+            source_lines = chapter.get("source_lines")
+            if (not isinstance(source_lines, list) or len(source_lines) != 2
+                    or any(type(x) is not int for x in source_lines)
+                    or not 1 <= source_lines[0] <= source_lines[1] <= len(source.decode("utf-8").splitlines())
+                    or row.get("source_lines") != source_lines):
+                errors.append(f"[reader] 第{no}章来源单元范围缺失或不符")
+            if not isinstance(chapter.get("source_chapter_id"), str) or not chapter["source_chapter_id"] or row.get("source_chapter_id") != chapter["source_chapter_id"]:
+                errors.append(f"[reader] 第{no}章来源单元身份缺失或不符")
+            continue
         if row.get("fidelity") != "reviewed" or not isinstance(row.get("evidence"), str) or not row["evidence"].strip():
             errors.append(f"[reader] 第{no}章未完成来源忠实审阅或缺证据定位")
         coverage = row.get("coverage")

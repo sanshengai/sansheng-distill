@@ -44,6 +44,8 @@ description: 蒸馏工艺：将书籍、单集或系列视频、创作者作品�
 
 **执行入口**：每次派书籍写作/复审任务前，以及接收拟采用意见后，必须运行 `python3 scripts/verify_book_review_scope.py <范围.json>`；失败不派发、不进入修订队列。范围为 `schema: book-review-scope-v1`、`book_facts: accept_as_source`、`exceptions: []`、非空 `items`；每项含唯一id与kind。默认kind仅 `source_fidelity/material_omission/author_attribution/unsupported_addition`；`style` 必须 `blocking:false`。`dated_update/external_truth_check` 必须引用对应例外id，例外必含具体claim及source_location，前者另含change_reason/current_source，后者另含user_authorization。任务文字须明确上述禁区；校验器不理解自然语言，不以PASS代替主控判别。
 
+**用户明确取消内容审核时**：停止全部书本内容审阅任务，包括名为来源忠实度的整轮复审；并行仅做生产。只修明确的缺章、坏文件、图片错位和页面功能问题。书页采用 `reader-production-v1` 制作记录，填写用户指令、来源/正文哈希与实际装配检查，`content_review_performed:false`，不得伪填 `fidelity:reviewed` 或语义覆盖签收。该记录表示生产交付，不表示内容或科学审核通过。已有审阅不重跑。本规则优先于路线参考里的默认审核步骤。
+
 新书审阅收据用 `reader-review-v2`，内嵌通过校验的 `review_scope`，由实际书页验收调用同一范围门；`reader-review-v1` 仅兼容已存在旧收据，新任务不得生成v1逃过范围门。默认一次有效审阅、一次定点修正；误报、次要措辞与忠实原书但未经外查的记载，不能作为新一轮审核触发条件。
 
 ## 2. 渐进式披露与效率默认
